@@ -192,25 +192,27 @@ struct RCM
         {
           lmaxDeg = nnz;
         }
-      }, maxDeg);
+      }, Kokkos::Max<size_type>(maxDeg));
     return maxDeg;
   }
 
   nnz_lno_t find_bandwidth(lno_row_view_t rowptrs, lno_nnz_view_t colinds)
   {
-    size_type maxBand = 0;
+    nnz_lno_t maxBand = 0;
     Kokkos::parallel_reduce(range_policy_t(0, numRows),
-      KOKKOS_LAMBDA(size_type i, size_type& lmaxBand)
+      KOKKOS_LAMBDA(nnz_lno_t i, nnz_lno_t& lmaxBand)
       {
         for(size_type j = rowptrs(i); j < rowptrs(i + 1); j++)
         {
-          size_t thisBand = std::abs(colinds(j) - i);
+          nnz_lno_t thisBand = colinds(j) - i;
+          if(thisBand < 0)
+            thisBand = -thisBand;
           if(thisBand > lmaxBand)
           {
             lmaxBand = thisBand;
           }
         }
-      }, maxBand);
+      }, Kokkos::Max<nnz_lno_t>(maxBand));
     return maxBand;
   }
 
@@ -222,6 +224,7 @@ struct RCM
     using std::cout;
     //need to know maximum degree to allocate scratch space for threads
     auto maxDeg = find_max_degree();
+    //place these two magic values are at the top of nnz_lno_t's range
     const nnz_lno_t NOT_VISITED = Kokkos::ArithTraits<nnz_lno_t>::max();
     const nnz_lno_t QUEUED = NOT_VISITED - 1;
     //view for storing the visit timestamps
@@ -362,7 +365,7 @@ struct RCM
               //  a) no vertices were enqueued this iteration
               //  b) the loop over vertices to process will terminate after this iteration
               //  c) not all vertices have been labeled
-              if(qStart() == qEnd() && teamIndex < workEnd - mem.team_size() && visitCounter() != numRows)
+              if(qStart() == qEnd() && teamIndex + mem.team_size() >= workEnd && visitCounter() != numRows)
               {
                 std::cout << "\n\n\n*** WARNING: graph is not connected! ***\n\n\n";
                 //queue empty but not all vertices labeled

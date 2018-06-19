@@ -252,13 +252,12 @@ void test_gauss_seidel(lno_t numRows, size_type nnz, lno_t bandwidth, lno_t row_
 
 //Generate a symmetric, diagonally dominant matrix for testing RCM
 template<typename crsMat_t, typename scalar_t, typename lno_t, typename device, typename size_type>
-crsMat_t genSymmetricMatrix(lno_t numRows, lno_t nnzPerRow, lno_t bandwidth)
+crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
 {
   typedef typename crsMat_t::StaticCrsGraphType graph_t;
   typedef typename graph_t::row_map_type::non_const_type rowmap_view;
   typedef typename graph_t::entries_type::non_const_type colinds_view;
   typedef typename crsMat_t::values_type::non_const_type scalar_view;
-  std::cout << "Building matrix with " << numRows << " rows and " << nnzPerRow << " nz/row.\n";
   std::vector<bool> dense(numRows * numRows, false);
   auto addBand = [&](int n)
   {
@@ -278,17 +277,18 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t nnzPerRow, lno_t bandwidth)
   };
   //add diagonal and another band
   addBand(0);
-  addBand(6);
+  addBand(25);
   //add a bunch of random entries
-  for(int i = 0; i < numRows; i++)
+  /*
+  for(int i = 0; i < randNNZ; i++)
   {
-    for(int j = 0; j < nnzPerRow; j++)
-    {
-      int col = rand() % numRows;
-      dense[i + col * numRows] = true;
-      dense[col  + i * numRows] = true;
-    }
+    int row = rand() % numRows;
+    int col = rand() % numRows;
+    dense[row + col * numRows] = true;
+    dense[col + row * numRows] = true;
   }
+  */
+  //Add a minimum set of edges to make graph connected
   std::set<int> connected;
   for(int i = 0; i < numRows; i++)
   {
@@ -306,7 +306,7 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t nnzPerRow, lno_t bandwidth)
       }
     }
     //choose a random vertex in connected to connect to
-    size_t index = rand() % connected.size();
+    size_t index = connected.size() - 1;
     int inGraph;
     for(auto c : connected)
     {
@@ -339,7 +339,7 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t nnzPerRow, lno_t bandwidth)
       {
         Acolinds(total) = j;
         if(i == j)
-          Avalues(total) = nnzPerRow + 1;
+          Avalues(total) = 1000;
         else
           Avalues(total) = 1;
         total++;
@@ -369,7 +369,7 @@ void test_rcm(lno_t numRows, size_type nnz, size_type bandwidth)
       typename device::execution_space, typename device::memory_space,typename device::memory_space > KernelHandle;
 
   lno_t numCols = numRows;
-  crsMat_t A = genSymmetricMatrix<crsMat_t, scalar_t, lno_t, device, size_type>(numRows, nnz / numRows, bandwidth);
+  crsMat_t A = genSymmetricMatrix<crsMat_t, scalar_t, lno_t, device, size_type>(numRows, nnz, bandwidth);
 
   lno_view_t Arowmap("asdf", numRows + 1);
   nnz = A.graph.row_map(numRows);
@@ -489,7 +489,7 @@ TEST_F( TestCategory, sparse ## _ ## gauss_seidel ## _ ## SCALAR ## _ ## ORDINAL
   test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(10000, 10000 * 30, 200, 10); \
 } \
 TEST_F( TestCategory, sparse ## _ ## rcm ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(20, 20, 20); \
+  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 1000, 100); \
 }
 
 
