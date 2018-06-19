@@ -103,10 +103,10 @@ struct RCM
       rowmap(rowmap_), colinds(colinds_)
   {}
 
+  HandleType* handle;
+  size_type numRows;
   lno_row_view_t rowmap;
   lno_nnz_view_t colinds;
-  size_type numRows;
-  HandleType* handle;
 
   //compute a breadth-first search from start node
   //returns a view containing the visit timestamps for each node (starting at 2)
@@ -358,8 +358,13 @@ struct RCM
                 visit(q(teamIndex + thread)) = visitCounter()++;
               }
               //have to handle the case where graph is not connected
-              if(qStart() == qEnd() && visitCounter() != numRows)
+              //know this happens if these 3 conditions are all true:
+              //  a) no vertices were enqueued this iteration
+              //  b) the loop over vertices to process will terminate after this iteration
+              //  c) not all vertices have been labeled
+              if(qStart() == qEnd() && teamIndex < workEnd - mem.team_size() && visitCounter() != numRows)
               {
+                std::cout << "\n\n\n*** WARNING: graph is not connected! ***\n\n\n";
                 //queue empty but not all vertices labeled
                 //add the first NOT_VISITED node to the queue
                 for(size_type search = 0; search < numRows; search++)

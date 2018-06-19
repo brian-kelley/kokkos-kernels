@@ -260,30 +260,75 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t nnzPerRow, lno_t bandwidth)
   typedef typename crsMat_t::values_type::non_const_type scalar_view;
   std::cout << "Building matrix with " << numRows << " rows and " << nnzPerRow << " nz/row.\n";
   std::vector<bool> dense(numRows * numRows, false);
+  auto addBand = [&](int n)
+  {
+    for(int i = 0; i < numRows; i++)
+    {
+      if(i + n < numRows)
+      {
+        dense[i + n + i * numRows] = true;
+        dense[i + (i + n) * numRows] = true;
+      }
+      if(i - n >= 0)
+      {
+        dense[i - n + i * numRows] = true;
+        dense[i + (i - n) * numRows] = true;
+      }
+    }
+  };
+  //add diagonal and another band
+  addBand(0);
+  addBand(6);
+  //add a bunch of random entries
   for(int i = 0; i < numRows; i++)
   {
-    //diag
-    dense[i + i * numRows] = true;
-    //add another diagonal band so graph is more connected
-    if(i + 10 < numRows && i - 10 >= 0)
-    {
-      dense[i - 10 + i * numRows] = true;
-      dense[i + (i - 10) * numRows] = true;
-      dense[i + 10 + i * numRows] = true;
-      dense[i + (i + 10) * numRows] = true;
-    }
     for(int j = 0; j < nnzPerRow; j++)
     {
-      int randLo = std::max(0, i - bandwidth);
-      int randHi = std::min(numRows - 1, i + bandwidth);
-      int k = randLo + rand() % (randHi - randLo);
-      dense[k + i * numRows] = true;
-      dense[i + k * numRows] = true;
+      int col = rand() % numRows;
+      dense[i + col * numRows] = true;
+      dense[col  + i * numRows] = true;
     }
   }
+  std::set<int> connected;
+  for(int i = 0; i < numRows; i++)
+  {
+    if(dense[i])
+      connected.insert(i);
+  }
+  while(connected.size() < numRows)
+  {
+    int toConnect = 0;
+    for(; toConnect < numRows; toConnect++)
+    {
+      if(connected.find(toConnect) == connected.end())
+      {
+        break;
+      }
+    }
+    //choose a random vertex in connected to connect to
+    size_t index = rand() % connected.size();
+    int inGraph;
+    for(auto c : connected)
+    {
+      if(index == 0)
+      {
+        inGraph = c;
+        break;
+      }
+      index--;
+    }
+    dense[toConnect + inGraph * numRows] = true;
+    dense[inGraph + toConnect * numRows] = true;
+    for(int i = 0; i < numRows; i++)
+    {
+      if(dense[toConnect + i * numRows])
+        connected.insert(i);
+    }
+  }
+  size_t nnz = std::count_if(dense.begin(), dense.end(), [](bool v) {return v;});
   rowmap_view Arowmap("asdf", numRows + 1);
-  colinds_view Acolinds("asdf", numRows * (2 * nnzPerRow + 1));
-  scalar_view Avalues("asdf", numRows * (2 * nnzPerRow + 1));
+  colinds_view Acolinds("asdf", nnz);
+  scalar_view Avalues("asdf", nnz);
   size_t total = 0;
   for(int i = 0; i < numRows; i++)
   {
@@ -327,12 +372,13 @@ void test_rcm(lno_t numRows, size_type nnz, size_type bandwidth)
   crsMat_t A = genSymmetricMatrix<crsMat_t, scalar_t, lno_t, device, size_type>(numRows, nnz / numRows, bandwidth);
 
   lno_view_t Arowmap("asdf", numRows + 1);
-  lno_nnz_view_t Aentries("asdf", A.graph.row_map(numRows));
-  lno_nnz_view_t Avalues("asdf", A.graph.row_map(numRows));
+  nnz = A.graph.row_map(numRows);
+  lno_nnz_view_t Aentries("asdf", nnz);
+  lno_nnz_view_t Avalues("asdf", nnz);
   Kokkos::deep_copy(Arowmap, A.graph.row_map);
   std::cout << "Aentries dim: " << Aentries.dimension_0() << '\n';
   std::cout << "A.graph.entries dim: " << A.graph.entries.dimension_0() << '\n';
-  for(int i = 0; i < Arowmap(numRows); i++)
+  for(int i = 0; i < nnz; i++)
   {
     Aentries(i) = A.graph.entries(i);
     Avalues(i) = A.values(i);
@@ -443,7 +489,7 @@ TEST_F( TestCategory, sparse ## _ ## gauss_seidel ## _ ## SCALAR ## _ ## ORDINAL
   test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(10000, 10000 * 30, 200, 10); \
 } \
 TEST_F( TestCategory, sparse ## _ ## rcm ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 300, 100); \
+  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(20, 20, 20); \
 }
 
 
