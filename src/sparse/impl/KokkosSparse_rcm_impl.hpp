@@ -57,13 +57,6 @@ namespace KokkosSparse{
 
 namespace Impl{
 
-/*
-template <typename HandleType, typename lno_row_view_t_, typename lno_nnz_view_t_>
-typename lno_nnz_view_t::non_const_type RCM(
-    typename lno_row_view_t_::size_type numRows, typename lno_row_view_t_::size_type numCols,
-    lno_row_view_t rowmap, lno_nnz_view_t colinds)
- */
-
 template <typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t>
 struct RCM
 {
@@ -105,15 +98,14 @@ struct RCM
 
   typedef nnz_lno_t LO;
 
-  RCM(HandleType* handle_, size_type numRows_, size_type numCols_, lno_row_view_t rowmap_, lno_nnz_view_t colinds_)
-    : handle(handle_), numRows(numRows_), numCols(numCols_),
+  RCM(HandleType* handle_, size_type numRows_, lno_row_view_t rowmap_, lno_nnz_view_t colinds_)
+    : handle(handle_), numRows(numRows_),
       rowmap(rowmap_), colinds(colinds_)
   {}
 
   lno_row_view_t rowmap;
   lno_nnz_view_t colinds;
   size_type numRows;
-  size_type numCols;
   HandleType* handle;
 
   //compute a breadth-first search from start node
@@ -204,6 +196,24 @@ struct RCM
     return maxDeg;
   }
 
+  nnz_lno_t find_bandwidth(lno_row_view_t rowptrs, lno_nnz_view_t colinds)
+  {
+    size_type maxBand = 0;
+    Kokkos::parallel_reduce(range_policy_t(0, numRows),
+      KOKKOS_LAMBDA(size_type i, size_type& lmaxBand)
+      {
+        for(size_type j = rowptrs(i); j < rowptrs(i + 1); j++)
+        {
+          size_t thisBand = std::abs(colinds(j) - i);
+          if(thisBand > lmaxBand)
+          {
+            lmaxBand = thisBand;
+          }
+        }
+      }, maxBand);
+    return maxBand;
+  }
+
   //breadth-first search, producing a Cuthill-McKee ordering
   //nodes are labeled in the exact order they would be in a serial BFS,
   //and neighbors are visited in ascending order of degree
@@ -212,11 +222,12 @@ struct RCM
     using std::cout;
     //need to know maximum degree to allocate scratch space for threads
     auto maxDeg = find_max_degree();
-    const nnz_lno_t NOT_VISITED = 0;
-    const nnz_lno_t QUEUED = 1;
-    const nnz_lno_t START = 2;
+    const nnz_lno_t NOT_VISITED = Kokkos::ArithTraits<nnz_lno_t>::max();
+    const nnz_lno_t QUEUED = NOT_VISITED - 1;
     //view for storing the visit timestamps
     non_const_lno_nnz_view_t visit("BFS visited nodes", numRows);
+    Kokkos::parallel_for(range_policy_t(0, numRows),
+      KOKKOS_LAMBDA(size_type i) {visit(i) = NOT_VISITED;});
     //visitCounter atomically counts timestamps
     Kokkos::View<nnz_lno_t, MyTempMemorySpace> visitCounter("BFS visit counter (atomic)");
     //the visit queue
@@ -226,22 +237,26 @@ struct RCM
     Kokkos::View<nnz_lno_t, MyTempMemorySpace> qStart("BFS frontier start index (last in queue)");
     Kokkos::View<nnz_lno_t, MyTempMemorySpace> qEnd("BFS frontier end index (next in queue)");
     //make a temporary policy just to figure out how many threads AUTO makes
-    team_policy_t tempPolicy(1, Kokkos::AUTO());
-    Kokkos::parallel_for(team_policy_t(1, Kokkos::AUTO()).set_scratch_size(0, Kokkos::PerTeam(tempPolicy.team_size() * maxDeg * sizeof(nnz_lno_t))),
+    team_policy_t policy(1, Kokkos::AUTO());
+    Kokkos::View<nnz_lno_t*, MyTempMemorySpace> scratchSpace("Scratch, used by each thread", policy.team_size() * maxDeg);
+    std::cout << "Allocated " << maxDeg << " elements of scratch space per thread\n";
+    std::cout << "There are " << policy.team_size() << " threads.\n";
+    //Kokkos::parallel_for(team_policy_t(1, Kokkos::AUTO()).set_scratch_size(0, Kokkos::PerTeam(tempPolicy.team_size() * maxDeg * sizeof(nnz_lno_t))),
+    Kokkos::parallel_for(policy,
       KOKKOS_LAMBDA(team_member_t mem)
       {
         //initialize the frontier as just the starting node
         Kokkos::single(Kokkos::PerThread(mem),
           KOKKOS_LAMBDA()
           {
-            visitCounter() = START;
+            visitCounter() = 0;
             visit(start) = QUEUED;
             q(0) = start;
             qStart() = 0;
             qEnd() = 1;
           });
         auto tid = mem.team_rank();
-        nnz_lno_t* teamScratch = (nnz_lno_t*) mem.team_shmem().get_shmem(mem.team_size() * maxDeg * sizeof(nnz_lno_t));
+        nnz_lno_t* teamScratch = scratchSpace.data();
         nnz_lno_t* scratch = &teamScratch[tid * maxDeg];
         //all threads work until every node has been labeled
         cout << "Entering main loop of RCM BFS\n";
@@ -250,11 +265,11 @@ struct RCM
           //loop over the frontier, giving each thread one node to process
           size_type workStart = qStart();
           size_type workEnd = qEnd();
+          mem.team_barrier();
           cout << "Current queue contents: ";
           for(int i = workStart; i < workEnd; i++)
             cout << q(i) << ' ';
           cout << '\n';
-          mem.team_barrier();
           qStart() = qEnd();
           //inside this loop, qEnd will be advanced as neighbors are enqueued for next iteration
           for(size_type teamIndex = workStart; teamIndex < workEnd; teamIndex += mem.team_size())
@@ -283,11 +298,11 @@ struct RCM
                 cout << scratch[j] << ' ';
               cout << '\n';
               //insertion sort the neighbors in ascending order of degree
-              for(size_type j = 1; j < neiCount; j++)
+              for(nnz_lno_t j = 1; j < neiCount; j++)
               {
                 //move scratch[j] left into the correct position
-                size_type jdeg = rowmap(scratch[j] + 1) - rowmap(scratch[j]);
-                size_type k;
+                nnz_lno_t jdeg = rowmap(scratch[j] + 1) - rowmap(scratch[j]);
+                nnz_lno_t k;
                 for(k = j - 1; k >= 0; k--)
                 {
                   size_type kdeg = rowmap(scratch[k] + 1) - rowmap(scratch[k]);
@@ -343,7 +358,7 @@ struct RCM
                 visit(q(teamIndex + thread)) = visitCounter()++;
               }
               //have to handle the case where graph is not connected
-              if(qStart() == qEnd() && visitCounter() != numRows + 2)
+              if(qStart() == qEnd() && visitCounter() != numRows)
               {
                 //queue empty but not all vertices labeled
                 //add the first NOT_VISITED node to the queue
@@ -352,6 +367,7 @@ struct RCM
                   if(visit(search) == NOT_VISITED)
                   {
                     q(qEnd()++) = search;
+                    visit(search) = QUEUED;
                     break;
                   }
                 }
@@ -425,8 +441,8 @@ struct RCM
     std::cout << "Finding RCM permutation.\n";
     non_const_lno_nnz_view_t perm("RCM permutation", numRows);
     //find a peripheral node
-    //TODO: make mode configurable, but DOUBLE_BFS still the default
-    nnz_lno_t periph = find_peripheral(DOUBLE_BFS);
+    //TODO: make mode configurable, but still the default
+    nnz_lno_t periph = find_peripheral(MIN_DEGREE);
     std::cout << "Peripheral (starting) node is " << periph << '\n';
     //run Cuthill-McKee BFS from periph
     auto visit = parallel_rcm_bfs(periph);
@@ -436,8 +452,8 @@ struct RCM
     Kokkos::parallel_for(range_policy_t(0, numRows / 2),
       KOKKOS_LAMBDA(size_type i)
       {
-        nnz_lno_t temp = visit(numRows - 1 - i) - 2;
-        visit(numRows - 1 - i) = visit(i) - 2;
+        nnz_lno_t temp = visit(numRows - 1 - i);
+        visit(numRows - 1 - i) = visit(i);
         visit(i) = temp;
       });
     std::cout << "Done.\n";
