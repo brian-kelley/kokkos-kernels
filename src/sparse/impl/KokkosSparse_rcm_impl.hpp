@@ -281,10 +281,6 @@ struct RCM
         //all threads work until every node has been labeled
         while(qStart() != qEnd())
         {
-          std::cout << "Queue contents: ";
-          for(int i = qStart(); i < qEnd(); i++)
-            std::cout << q(i) << ' ';
-          std::cout << '\n';
           //loop over the frontier, giving each thread one node to process
           size_type workStart = qStart();
           size_type workEnd = qEnd();
@@ -299,7 +295,6 @@ struct RCM
             {
               //the node to process
               nnz_lno_t process = q(teamIndex + tid);
-              std::cout << "   Processing node " << process << '\n';
               offset_t rowStart = rowmap(process);
               offset_t rowEnd = rowmap(process + 1);
               //build a list of all non-visited neighbors
@@ -307,10 +302,8 @@ struct RCM
               for(offset_t j = rowStart; j < rowEnd; j++)
               {
                 nnz_lno_t col = colinds(j);
-                std::cout << "     Processing node has neighbor " << col << '\n';
                 if(visit(col) == NOT_VISITED && col != process)
                 {
-                  std::cout << "     " << col << " not visited, will add to queue later.\n";
                   scratch[neiCount++] = col;
                 }
               }
@@ -351,12 +344,6 @@ struct RCM
                 if(teamIndex + thread >= workEnd)
                   break;
                 nnz_lno_t* threadScratch = &teamScratch[thread * maxDeg];
-                std::cout << "     Full contents of thread " << thread << " scratch:\n";
-                for(int asdf = 0; asdf < maxDeg; asdf++)
-                {
-                  std::cout << threadScratch[asdf] << ' ';
-                }
-                std::cout << '\n';
                 for(nnz_lno_t neiIndex = 0; neiIndex < maxDeg; neiIndex++)
                 {
                   if(threadScratch[neiIndex] == Kokkos::ArithTraits<nnz_lno_t>::max())
@@ -367,15 +354,10 @@ struct RCM
                   nnz_lno_t nei = threadScratch[neiIndex];
                   if(visit(nei) == NOT_VISITED)
                   {
-                    std::cout << "  Adding " << nei << " to the queue.\n";
                     //enqueue nei
                     visit(nei) = QUEUED;
                     q(qEnd()) = nei;
                     qEnd()++;
-                  }
-                  else
-                  {
-                    std::cout << "  NOT adding " << nei << " to the queue because status is " << visit(nei) << '\n';
                   }
                 }
                 //assign final label to thread's current vertex
@@ -389,7 +371,6 @@ struct RCM
               //  c) not all vertices have been labeled
               if(qStart() == qEnd() && teamIndex + mem.team_size() >= workEnd && visitCounter() != (nnz_lno_t) numRows)
               {
-                std::cout << "WARNING: graph not connected!\n";
                 //queue empty but not all vertices labeled
                 //add the first NOT_VISITED node to the queue
                 for(size_type search = 0; search < numRows; search++)
