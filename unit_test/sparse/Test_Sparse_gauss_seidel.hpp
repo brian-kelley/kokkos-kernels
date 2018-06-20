@@ -198,12 +198,12 @@ void test_gauss_seidel(lno_t numRows, size_type nnz, lno_t bandwidth, lno_t row_
   const scalar_view_t solution_x = create_x_vector<scalar_view_t>(nv);
   scalar_view_t y_vector = create_y_vector(input_mat, solution_x);
 #ifdef gauss_seidel_testmore
-  GSAlgorithm gs_algorithms[] ={GS_DEFAULT, GS_TEAM, GS_PERMUTED};
-  int apply_count = 3;
-  for (int ii = 0; ii < 3; ++ii){
+  GSAlgorithm gs_algorithms[] ={GS_DEFAULT, GS_TEAM, GS_PERMUTED, GS_CLUSTER};
+  int apply_count = 4;
+  for (int ii = 0; ii < 4; ++ii){
 #else
   int apply_count = 1;
-  GSAlgorithm gs_algorithms[] ={GS_DEFAULT};
+  GSAlgorithm gs_algorithms[] ={GS_CLUSTER};
   for (int ii = 0; ii < 1; ++ii){
 #endif
     GSAlgorithm gs_algorithm = gs_algorithms[ii];
@@ -291,15 +291,6 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
     }
   };
   //add diagonal and another band
-  addBand(0);
-  add(0, 4);
-  add(1, 2);
-  add(1, 5);
-  add(1, 7);
-  add(2, 4);
-  add(3, 6);
-  add(5, 7);
-  /*
   addBand(25);
   //add random edges
   for(lno_t i = 0; i < randNNZ; i++)
@@ -347,7 +338,6 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
         connected.insert(i);
     }
   }
-  */
   size_t nnz = std::count_if(dense.begin(), dense.end(), [](bool v) {return v;});
   rowmap_view Arowmap("asdf", numRows + 1);
   colinds_view Acolinds("asdf", nnz);

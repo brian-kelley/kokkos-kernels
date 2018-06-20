@@ -241,7 +241,6 @@ struct RCM
   //and neighbors are visited in ascending order of degree
   perm_view_t parallel_rcm_bfs(nnz_lno_t start)
   {
-    using std::cout;
     //need to know maximum degree to allocate scratch space for threads
     auto maxDeg = find_max_degree();
     //place these two magic values are at the top of nnz_lno_t's range
@@ -262,8 +261,6 @@ struct RCM
     //make a temporary policy just to figure out how many threads AUTO makes
     team_policy_t policy(1, Kokkos::AUTO());
     perm_view_t scratchSpace("Scratch, used by each thread", policy.team_size() * maxDeg);
-    std::cout << "Allocated " << maxDeg << " elements of scratch space per thread\n";
-    std::cout << "There are " << policy.team_size() << " threads.\n";
     //Kokkos::parallel_for(team_policy_t(1, Kokkos::AUTO()).set_scratch_size(0, Kokkos::PerTeam(tempPolicy.team_size() * maxDeg * sizeof(nnz_lno_t))),
     Kokkos::parallel_for(policy,
       KOKKOS_LAMBDA(team_member_t mem)
@@ -282,17 +279,13 @@ struct RCM
         nnz_lno_t* teamScratch = scratchSpace.data();
         nnz_lno_t* scratch = &teamScratch[tid * maxDeg];
         //all threads work until every node has been labeled
-        cout << "Entering main loop of RCM BFS\n";
         while(qStart() != qEnd())
         {
           //loop over the frontier, giving each thread one node to process
           size_type workStart = qStart();
           size_type workEnd = qEnd();
           mem.team_barrier();
-          cout << "Current queue contents: ";
           for(size_type i = workStart; i < workEnd; i++)
-            cout << q(i) << ' ';
-          cout << '\n';
           qStart() = qEnd();
           //inside this loop, qEnd will be advanced as neighbors are enqueued for next iteration
           for(size_type teamIndex = workStart; teamIndex < workEnd; teamIndex += mem.team_size())
@@ -303,7 +296,6 @@ struct RCM
               size_type i = teamIndex + tid;
               //the node to process
               nnz_lno_t process = q(i);
-              cout << "Processing node " << process << '\n';
               offset_t rowStart = rowmap(process);
               offset_t rowEnd = rowmap(process + 1);
               //build a list of all non-visited neighbors
@@ -316,10 +308,6 @@ struct RCM
                   scratch[neiCount++] = col;
                 }
               }
-              cout << "Non-visited neighbors (unsorted): ";
-              for(nnz_lno_t j = 0; j < neiCount; j++)
-                cout << scratch[j] << ' ';
-              cout << '\n';
               //insertion sort the neighbors in ascending order of degree
               for(nnz_lno_t j = 1; j < neiCount; j++)
               {
@@ -343,10 +331,6 @@ struct RCM
                 }
                 scratch[k] = jcol;
               }
-              cout << "Non-visited neighbors (sorted): ";
-              for(nnz_lno_t j = 0; j < neiCount; j++)
-                cout << scratch[j] << ' ';
-              cout << '\n';
               //mark the end of the active neighbor list, if it is not full
               if(neiCount < maxDeg)
                 scratch[neiCount] = Kokkos::ArithTraits<nnz_lno_t>::max();
@@ -377,7 +361,6 @@ struct RCM
                   }
                 }
                 //assign final label to thread's current vertex
-                std::cout << "New label of node " << q(teamIndex + thread) << ": " << visitCounter() << '\n';
                 visit(q(teamIndex + thread)) = visitCounter()++;
               }
               //have to handle the case where graph is not connected
@@ -387,7 +370,6 @@ struct RCM
               //  c) not all vertices have been labeled
               if(qStart() == qEnd() && teamIndex + mem.team_size() >= workEnd && visitCounter() != (nnz_lno_t) numRows)
               {
-                std::cout << "\n\n\n*** WARNING: graph is not connected! ***\n\n\n";
                 //queue empty but not all vertices labeled
                 //add the first NOT_VISITED node to the queue
                 for(size_type search = 0; search < numRows; search++)
@@ -465,21 +447,17 @@ struct RCM
 
   perm_view_t rcm()
   {
-    std::cout << "Finding RCM permutation.\n";
     //find a peripheral node
     //TODO: make mode configurable, but still the default
     nnz_lno_t periph = find_peripheral(MIN_DEGREE);
-    std::cout << "Peripheral (starting) node is " << periph << '\n';
     //run Cuthill-McKee BFS from periph
     perm_view_t visit = parallel_rcm_bfs(periph);
-    std::cout << "Did BFS.\n";
     //reverse the visit order (for "reverse" C-M)
     Kokkos::parallel_for(range_policy_t(0, numRows),
       KOKKOS_LAMBDA(size_type i)
       {
         visit(i) = numRows - 1 - visit(i);
       });
-    std::cout << "Done.\n";
     return visit;
   }
 };

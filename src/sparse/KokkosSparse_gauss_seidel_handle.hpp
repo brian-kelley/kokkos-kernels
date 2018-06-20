@@ -125,7 +125,7 @@ private:
     color_set_xadj(), color_sets(), numColors(0),
     permuted_xadj(),  permuted_adj(), permuted_adj_vals(), old_to_new_map(),
     called_symbolic(false), called_numeric(false), permuted_y_vector(), permuted_x_vector(),
-    suggested_vector_size(0), suggested_team_size(0), permuted_diagonals(), block_size(1), cluster_size(1), max_nnz_input_row(-1),
+    suggested_vector_size(0), suggested_team_size(0), permuted_diagonals(), block_size(1), cluster_size(16), max_nnz_input_row(-1),
 	num_values_in_l1(-1), num_values_in_l2(-1),num_big_rows(0), level_1_mem(0), level_2_mem(0)
   {
     if (gs == GS_DEFAULT){
