@@ -211,6 +211,9 @@ private:
   nnz_lno_t get_num_colors() {
     return this->numColors;
   }
+  nnz_lno_t get_cluster_size() {
+    return this->cluster_size;
+  }
 
   row_lno_persistent_work_view_t get_new_xadj() {
     return this->permuted_xadj;

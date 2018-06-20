@@ -57,7 +57,7 @@ namespace KokkosSparse{
 
 namespace Impl{
 
-template <typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t>
+template <typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t, typename perm_view_t>
 struct RCM
 {
   enum PeripheralMode
@@ -86,6 +86,8 @@ struct RCM
   typedef typename HandleType::nnz_lno_temp_work_view_t nnz_lno_temp_work_view_t;
   typedef typename HandleType::nnz_lno_persistent_work_view_t nnz_lno_persistent_work_view_t;
   typedef typename HandleType::nnz_lno_persistent_work_host_view_t nnz_lno_persistent_work_host_view_t; //Host view type
+
+  typedef Kokkos::View<nnz_lno_t, MyTempMemorySpace, Kokkos::MemoryManaged> single_view_t;
 
   typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
 
@@ -121,15 +123,15 @@ struct RCM
     const nnz_lno_t QUEUED = 1;
     const nnz_lno_t START = 2;
     //view for storing the visit timestamps
-    non_const_lno_nnz_view_t visit("BFS visited nodes", numRows);
+    perm_view_t visit("BFS visited nodes", numRows);
     //visitCounter atomically counts timestamps
-    Kokkos::View<nnz_lno_t, MyTempMemorySpace> visitCounter("BFS visit counter (atomic)");
+    single_view_t visitCounter("BFS visit counter (atomic)");
     //the visit queue
     //will process the elements in [qStart, qEnd) in parallel during each sweep
     //the queue doesn't need to be circular since each node is visited exactly once
-    non_const_lno_nnz_view_t q("BFS queue", numRows);
-    Kokkos::View<nnz_lno_t, MyTempMemorySpace> qStart("BFS frontier start index (last in queue)");
-    Kokkos::View<nnz_lno_t, MyTempMemorySpace> qEnd("BFS frontier end index (next in queue)");
+    perm_view_t q("BFS queue", numRows);
+    single_view_t  qStart("BFS frontier start index (last in queue)");
+    single_view_t  qEnd("BFS frontier end index (next in queue)");
     Kokkos::parallel_for(team_policy_t(1, Kokkos::AUTO()),
       KOKKOS_LAMBDA(team_member_t mem)
       {
@@ -237,7 +239,7 @@ struct RCM
   //breadth-first search, producing a Cuthill-McKee ordering
   //nodes are labeled in the exact order they would be in a serial BFS,
   //and neighbors are visited in ascending order of degree
-  non_const_lno_nnz_view_t parallel_rcm_bfs(nnz_lno_t start)
+  perm_view_t parallel_rcm_bfs(nnz_lno_t start)
   {
     using std::cout;
     //need to know maximum degree to allocate scratch space for threads
@@ -246,20 +248,20 @@ struct RCM
     const nnz_lno_t NOT_VISITED = Kokkos::ArithTraits<nnz_lno_t>::max();
     const nnz_lno_t QUEUED = NOT_VISITED - 1;
     //view for storing the visit timestamps
-    non_const_lno_nnz_view_t visit("BFS visited nodes", numRows);
+    perm_view_t visit("BFS visited nodes", numRows);
     Kokkos::parallel_for(range_policy_t(0, numRows),
       KOKKOS_LAMBDA(size_type i) {visit(i) = NOT_VISITED;});
     //visitCounter atomically counts timestamps
-    Kokkos::View<nnz_lno_t, MyTempMemorySpace> visitCounter("BFS visit counter (atomic)");
+    single_view_t visitCounter("BFS visit counter (atomic)");
     //the visit queue
     //process the elements in [qStart, qEnd) in parallel during each sweep
     //the queue doesn't need to be circular since each node is visited exactly once
-    non_const_lno_nnz_view_t q("BFS queue", numRows);
-    Kokkos::View<nnz_lno_t, MyTempMemorySpace> qStart("BFS frontier start index (last in queue)");
-    Kokkos::View<nnz_lno_t, MyTempMemorySpace> qEnd("BFS frontier end index (next in queue)");
+    perm_view_t q("BFS queue", numRows);
+    single_view_t  qStart("BFS frontier start index (last in queue)");
+    single_view_t  qEnd("BFS frontier end index (next in queue)");
     //make a temporary policy just to figure out how many threads AUTO makes
     team_policy_t policy(1, Kokkos::AUTO());
-    Kokkos::View<nnz_lno_t*, MyTempMemorySpace> scratchSpace("Scratch, used by each thread", policy.team_size() * maxDeg);
+    perm_view_t scratchSpace("Scratch, used by each thread", policy.team_size() * maxDeg);
     std::cout << "Allocated " << maxDeg << " elements of scratch space per thread\n";
     std::cout << "There are " << policy.team_size() << " threads.\n";
     //Kokkos::parallel_for(team_policy_t(1, Kokkos::AUTO()).set_scratch_size(0, Kokkos::PerTeam(tempPolicy.team_size() * maxDeg * sizeof(nnz_lno_t))),
@@ -461,16 +463,15 @@ struct RCM
     return 0;
   }
 
-  non_const_lno_nnz_view_t rcm()
+  perm_view_t rcm()
   {
     std::cout << "Finding RCM permutation.\n";
-    non_const_lno_nnz_view_t perm("RCM permutation", numRows);
     //find a peripheral node
     //TODO: make mode configurable, but still the default
     nnz_lno_t periph = find_peripheral(MIN_DEGREE);
     std::cout << "Peripheral (starting) node is " << periph << '\n';
     //run Cuthill-McKee BFS from periph
-    auto visit = parallel_rcm_bfs(periph);
+    perm_view_t visit = parallel_rcm_bfs(periph);
     std::cout << "Did BFS.\n";
     //reverse the visit order (for "reverse" C-M)
     Kokkos::parallel_for(range_policy_t(0, numRows),
