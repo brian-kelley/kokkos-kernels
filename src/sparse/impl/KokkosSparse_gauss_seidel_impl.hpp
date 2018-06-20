@@ -884,8 +884,14 @@ public:
       {
         rcmPerm[rcmOrder[i]] = i;
       });
+    std::cout << "Orig | RCM Order | RCM Perm \n";
+    for(int i = 0; i < num_rows; i++)
+    {
+      std::cout << i << "  " << rcmOrder(i) << "  " << rcmPerm(i) << '\n';
+    }
+    std::cout << '\n';
 #ifdef BMK_TIME
-    std::cout << "RCM:" << timer.seconds() << std::endl;
+    std::cout << "\nRCM:" << timer.seconds() << '\n';
     timer.reset();
 #endif
     size_type clusterSize = gsHandler->get_cluster_size();
@@ -997,7 +1003,7 @@ public:
         }
       });
 #ifdef BMK_TIME
-    std::cout << "Cluster graph construction: " << timer.seconds();
+    std::cout << "Cluster graph construction: " << timer.seconds() << '\n';
     timer.reset();
 #endif
     //now that cluster graph is computed, color it
@@ -1009,9 +1015,20 @@ public:
     auto clusterColors = coloringHandle->get_vertex_colors();
     color_t numClusterColors = coloringHandle->get_num_colors();
 #ifdef BMK_TIME
-    std::cout << "Cluster graph coloring: " << timer.seconds();
+    std::cout << "Cluster graph coloring: " << timer.seconds() << '\n';
     timer.reset();
 #endif
+    std::cout << "\n\nClusters:\n";
+    for(int i = 0; i < numClusters; i++)
+    {
+      std::cout << i << ": ";
+      for(int j = 0; j < clusterSize; j++)
+      {
+        std::cout << rcmPerm(i * clusterSize + j) << ' ';
+      }
+      std::cout << '\n';
+    }
+    std::cout << '\n';
     //for each cluster color, assign "colors" to the original vertices belonging to cluster
     //this can be done in parallel (over clusters of a given color)
     size_type clusterBaseColor = 1;
@@ -1039,9 +1056,15 @@ public:
       clusterBaseColor += clusterSize;
     }
 #ifdef BMK_TIME
-    std::cout << "Final vertex labeling: " << timer.seconds();
+    std::cout << "Final vertex labeling: " << timer.seconds() << '\n';
     timer.reset();
 #endif
+    std::cout << "Vertex labeling:\n\n";
+    for(int i = 0; i < num_rows; i++)
+    {
+      std::cout << i << ": " << vertexColors(i) << '\n';
+    }
+    std::cout << '\n';
     //Find the actual number of colors used to label vertices
     //num_rows % clusterSize were used in the 
     numColors = clusterBaseColor;

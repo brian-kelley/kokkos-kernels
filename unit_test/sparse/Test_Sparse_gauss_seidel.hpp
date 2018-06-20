@@ -101,7 +101,7 @@ int run_gauss_seidel_1(
   kh.set_team_work_size(16);
   kh.set_dynamic_scheduling(true);
   if(gs_algorithm == GS_CLUSTER)
-    kh.create_gs_handle(39);
+    kh.create_gs_handle(4);
   else
     kh.create_gs_handle(gs_algorithm);
 
@@ -173,12 +173,16 @@ vector_t create_y_vector(crsMat_t crsMat, vector_t x_vector){
 
 }
 
+template<typename crsMat_t, typename scalar_t, typename lno_t, typename device, typename size_type>
+crsMat_t gen2DLaplacian(lno_t meshSize);
+
 template <typename scalar_t, typename lno_t, typename size_type, typename device>
 void test_gauss_seidel(lno_t numRows, size_type nnz, lno_t bandwidth, lno_t row_size_variance) {
 
   using namespace Test;
   srand(245);
   typedef typename KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type> crsMat_t;
+
   //typedef typename crsMat_t::StaticCrsGraphType graph_t;
   //typedef typename graph_t::row_map_type lno_view_t;
   //typedef typename graph_t::entries_type lno_nnz_view_t;
@@ -186,9 +190,11 @@ void test_gauss_seidel(lno_t numRows, size_type nnz, lno_t bandwidth, lno_t row_
   typedef typename crsMat_t::values_type::non_const_type scalar_view_t;
 
   lno_t numCols = numRows;
-  crsMat_t input_mat = KokkosKernels::Impl::kk_generate_diagonally_dominant_sparse_matrix<crsMat_t>(numRows,numCols,nnz,row_size_variance, bandwidth);
+  crsMat_t input_mat = gen2DLaplacian<crsMat_t, scalar_t, lno_t, device, size_type>(6);
 
-  lno_t nv = input_mat.numRows();
+  numRows = input_mat.numRows();
+  lno_t nv = numRows;
+  nnz = input_mat.nnz();
 
   //KokkosKernels::Impl::print_1Dview(input_mat.graph.row_map);
   //KokkosKernels::Impl::print_1Dview(input_mat.graph.entries);
@@ -261,6 +267,96 @@ uint32_t myrand()
   mrs ^= mrs >> 17;
   mrs ^= mrs << 5;
   return mrs;
+}
+
+//Generate a symmetric, diagonally dominant matrix for testing RCM
+template<typename crsMat_t, typename scalar_t, typename lno_t, typename device, typename size_type>
+crsMat_t gen2DLaplacian(lno_t meshSize)
+{
+  typedef typename crsMat_t::StaticCrsGraphType graph_t;
+  typedef typename graph_t::row_map_type::non_const_type rowmap_view;
+  typedef typename graph_t::entries_type::non_const_type colinds_view;
+  typedef typename crsMat_t::values_type::non_const_type scalar_view;
+  size_t numRows = meshSize * meshSize;
+  std::vector<bool> dense(numRows * numRows, false);
+  auto add = [&](int i, int j)
+  {
+    dense[i + j * numRows] = true;
+    dense[j + i * numRows] = true;
+  };
+  auto addBand = [&](int n)
+  {
+    for(int i = 0; i < numRows; i++)
+    {
+      if(i + n < numRows)
+      {
+        dense[i + n + i * numRows] = true;
+        dense[i + (i + n) * numRows] = true;
+      }
+      if(i - n >= 0)
+      {
+        dense[i - n + i * numRows] = true;
+        dense[i + (i - n) * numRows] = true;
+      }
+    }
+  };
+  //diagonal
+  addBand(0);
+  //vertical
+  for(int i = 0; i < meshSize - 1; i++)
+  {
+    for(int j = 0; j < meshSize; j++)
+    {
+      std::cout << "Connecting " << i * meshSize + j << " to " << (i + 1) * meshSize + j << '\n';
+      add(i * meshSize + j, (i + 1) * meshSize + j);
+    }
+  }
+  //horizontal
+  for(int i = 0; i < meshSize; i++)
+  {
+    for(int j = 0; j < meshSize - 1; j++)
+    {
+      std::cout << "Connecting " << i * meshSize + j << " to " << i * meshSize + j + 1 << '\n';
+      add(i * meshSize + j, i * meshSize + j + 1);
+    }
+  }
+  std::cout << "Sparsity pattern of " << meshSize << "^2 Laplacian:\n";
+  for(int i = 0; i < numRows; i++)
+  {
+    for(int j = 0; j < numRows; j++)
+    {
+      if(dense[i * numRows + j])
+        std::cout << '*';
+      else
+        std::cout << ' ';
+    }
+    std::cout << '\n';
+  }
+  std::cout << '\n';
+  size_t nnz = std::count_if(dense.begin(), dense.end(), [](bool v) {return v;});
+  rowmap_view Arowmap("asdf", numRows + 1);
+  colinds_view Acolinds("asdf", nnz);
+  scalar_view Avalues("asdf", nnz);
+  size_t total = 0;
+  for(lno_t i = 0; i < numRows; i++)
+  {
+    Arowmap(i) = total;
+    for(lno_t j = 0; j < numRows; j++)
+    {
+      if(dense[i * numRows + j])
+      {
+        Acolinds(total) = j;
+        if(i == j)
+          Avalues(total) = 1000;
+        else
+          Avalues(total) = 1;
+        total++;
+      }
+    }
+  }
+  Arowmap(numRows) = total;
+  graph_t Agraph(Acolinds, Arowmap);
+  return crsMat_t("RCM test matrix", numRows, Avalues, Agraph);
 }
 
 //Generate a symmetric, diagonally dominant matrix for testing RCM
@@ -502,7 +598,7 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
 
 #define EXECUTE_TEST(SCALAR, ORDINAL, OFFSET, DEVICE) \
 TEST_F( TestCategory, sparse ## _ ## gauss_seidel ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(10000, 10000 * 30, 200, 10); \
+  test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 100 * 10, 30, 30); \
 } \
 TEST_F( TestCategory, sparse ## _ ## rcm ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
   test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 100, 100); \
