@@ -864,6 +864,10 @@ public:
 
   typename HandleType::GraphColoringHandleType::color_view_t initialize_symbolic_cluster(const_lno_row_view_t& xadj, const_lno_nnz_view_t& adj, color_t& numColors)
   {
+#define BMK_TIME
+#ifdef BMK_TIME
+    Kokkos::Impl::Timer timer;
+#endif
     typename HandleType::GaussSeidelHandleType *gsHandler = this->handle->get_gs_handle();
     typedef typename HandleType::GraphColoringHandleType::color_view_t color_view_t;
     //compute the RCM ordering of the graph
@@ -880,6 +884,10 @@ public:
       {
         rcmPerm[rcmOrder[i]] = i;
       });
+#ifdef BMK_TIME
+    std::cout << "RCM:" << timer.seconds() << std::endl;
+    timer.reset();
+#endif
     size_type clusterSize = gsHandler->get_cluster_size();
     size_type numClusters = (num_rows + clusterSize - 1) / clusterSize;
     //build the cluster graph using the (implicitly permuted) RCM order of the matrix (xadj, adj)
@@ -891,9 +899,6 @@ public:
     Kokkos::View<size_type*, MyTempMemorySpace, Kokkos::MemoryManaged> denseClusterRow("Scratch for dense cluster graph rows", wordsPerRow * nthreads);
     Kokkos::View<size_type*, MyTempMemorySpace, Kokkos::MemoryManaged> clusterRowmap("Row ptrs for cluster graph", numClusters + 1);
     //TODO: use a team policy and shared memory here
-    std::cout << "Counting entries in cluster graph\n";
-    std::cout << "Have " << numClusters << " clusters, and " << nthreads << " threads.\n";
-    std::cout << "Original graph has " << num_rows << " rows and " << xadj(num_rows) << " entries.\n";
     Kokkos::parallel_for(my_exec_space(0, nthreads),
       KOKKOS_LAMBDA(size_type tid)
       {
@@ -938,23 +943,7 @@ public:
         }
       });
     //Prefix sum cluster entry counts to get clusterRowmap
-    std::cout << "Cluster graph row counts:\n";
-    for(int i = 0; i <= numClusters; i++)
-    {
-      std::cout << clusterRowmap(i) << ' ';
-      if(i % 20 == 19)
-        std::cout << '\n';
-    }
-    std::cout << "\n\n";
     KokkosKernels::Impl::exclusive_parallel_prefix_sum<non_const_lno_row_view_t, MyExecSpace>(numClusters + 1, clusterRowmap);
-    std::cout << "Cluster graph row ptrs:\n";
-    for(int i = 0; i <= numClusters; i++)
-    {
-      std::cout << clusterRowmap(i) << ' ';
-      if(i % 20 == 19)
-        std::cout << '\n';
-    }
-    std::cout << "\n\n";
     auto clusterNNZ = Kokkos::subview(clusterRowmap, numClusters);
     auto h_clusterNNZ = Kokkos::create_mirror_view(clusterNNZ);
     Kokkos::deep_copy(h_clusterNNZ, clusterNNZ );
@@ -1007,17 +996,10 @@ public:
           }
         }
       });
-    std::cout << "Full cluster graph:\n";
-    for(int i = 0; i < numClusters; i++)
-    {
-      std::cout << i << ": ";
-      for(int j = clusterRowmap(i); j < clusterRowmap(i + 1); j++)
-      {
-        std::cout << clusterEntries(j) << ' ';
-      }
-      std::cout << '\n';
-    }
-    std::cout << '\n';
+#ifdef BMK_TIME
+    std::cout << "Cluster graph construction: " << timer.seconds();
+    timer.reset();
+#endif
     //now that cluster graph is computed, color it
     HandleType kh;
     kh.create_graph_coloring_handle();
@@ -1026,6 +1008,10 @@ public:
     auto coloringHandle = kh.get_graph_coloring_handle();
     auto clusterColors = coloringHandle->get_vertex_colors();
     color_t numClusterColors = coloringHandle->get_num_colors();
+#ifdef BMK_TIME
+    std::cout << "Cluster graph coloring: " << timer.seconds();
+    timer.reset();
+#endif
     //for each cluster color, assign "colors" to the original vertices belonging to cluster
     //this can be done in parallel (over clusters of a given color)
     size_type clusterBaseColor = 1;
@@ -1052,17 +1038,14 @@ public:
         });
       clusterBaseColor += clusterSize;
     }
+#ifdef BMK_TIME
+    std::cout << "Final vertex labeling: " << timer.seconds();
+    timer.reset();
+#endif
     //Find the actual number of colors used to label vertices
     //num_rows % clusterSize were used in the 
     numColors = clusterBaseColor;
     kh.destroy_graph_coloring_handle();
-    std::cout << "Vertex coloring (from clusters, same color = updated concurrently):\n";
-    for(nnz_lno_t i = 0; i < num_rows; i++)
-      std::cout << i << ">" << vertexColors(i) << "    ";
-    std::cout << "\n\n";
-    std::cout << "Cluster graph colored with " << numClusterColors << " colors.\n";
-    std::cout << "Labeled all vertices in orig graph with " << numColors << " colors.\n";
-    std::cout << "Avg parallelism vs. serial GS: " << (double) num_rows / numColors << '\n';
     return vertexColors;
   }
 

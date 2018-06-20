@@ -100,7 +100,10 @@ int run_gauss_seidel_1(
   KernelHandle kh;
   kh.set_team_work_size(16);
   kh.set_dynamic_scheduling(true);
-  kh.create_gs_handle(gs_algorithm);
+  if(gs_algorithm == GS_CLUSTER)
+    kh.create_gs_handle(39);
+  else
+    kh.create_gs_handle(gs_algorithm);
 
 
   const size_t num_rows_1 = input_mat.numRows();
