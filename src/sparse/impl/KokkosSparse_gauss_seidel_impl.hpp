@@ -47,6 +47,7 @@
 #include <impl/Kokkos_Timer.hpp>
 #include <Kokkos_Sort.hpp>
 #include <Kokkos_MemoryTraits.hpp>
+#include "KokkosSparse_rcm_impl.hpp"
 #include "KokkosGraph_graph_color.hpp"
 #include "KokkosKernels_Uniform_Initialized_MemoryPool.hpp"
 #ifndef _KOKKOSGSIMP_HPP
@@ -568,8 +569,6 @@ public:
       gchandle = this->handle->get_graph_coloring_handle();
     }
 
-
-
     const_lno_row_view_t xadj = this->row_map;
     const_lno_nnz_view_t adj = this->entries;
     size_type nnz = adj.extent(0);
@@ -577,6 +576,9 @@ public:
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
     Kokkos::Impl::Timer timer;
 #endif
+
+    typename HandleType::GaussSeidelHandleType *gsHandler = this->handle->get_gs_handle();
+    if(gsHandler->get_algorithm_type() != GS_CLUSTER)
     {
       if (!is_symmetric){
 
@@ -600,6 +602,10 @@ public:
       else {
         KokkosGraph::Experimental::graph_color_symbolic <HandleType, const_lno_row_view_t, const_lno_nnz_view_t> (this->handle, num_rows, num_rows, xadj , adj);
       }
+    }
+    else
+    {
+      initialize_symbolic_cluster();
     }
     color_t numColors = gchandle->get_num_colors();
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
@@ -726,7 +732,6 @@ public:
     timer.reset();
 #endif
 
-    typename HandleType::GaussSeidelHandleType *gsHandler = this->handle->get_gs_handle();
     nnz_lno_t block_size = this->handle->get_gs_handle()->get_block_size();
 
     //MD: if block size is larger than 1;
@@ -853,6 +858,42 @@ public:
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
     std::cout << "ALLOC:" << timer.seconds() << std::endl;
 #endif
+  }
+
+  void initialize_symbolic_cluster()
+  {
+    typename HandleType::GaussSeidelHandleType *gsHandler = this->handle->get_gs_handle();
+    //compute the RCM ordering of the graph
+    RCM<HandleType, const_lno_row_view_t, const_lno_nnz_view_t> rcm(this->handle, num_rows, xadj, adj);
+    //rcmOrder maps (bijectively) from original rows to RCM-ordered rows
+    //rcmPerm is the inverse mapping
+    const_lno_nnz_view_t rcmOrder = rcm.rcm();
+    //rcmPerm[i] = the original label of RCM vertex i
+    non_const_lno_nnz_view_t rcmPerm("RCM permutation vector", num_rows);
+    Kokkos::parallel_for(my_exec_space(0, num_rows),
+      KOKKOS_LAMBDA(size_type i)
+      {
+        rcmPerm[rcmOrder[i]] = i;
+      });
+    nnz_lno_t clusterSize = gsHandler->get_cluster_size();
+    size_type numClusters = (num_rows + clusterSize - 1) / clusterSize;
+    //build the cluster graph using the (implicitly permuted) RCM order of the matrix (xadj, adj)
+    //first, count the entries per row
+    non_const_lno_row_view_t clusterRowcounts("GS cluster row entry counts", numClusters);
+    Kokkos::parallel_for(my_exec_space(0, numClusters),
+      KOKKOS_LAMBDA(size_type i)
+      {
+        nnz_lno_t clusterBegin = i * clusterSize;
+        nnz_lno_t clusterEnd = clusterBegin + clusterSize;
+        if(clusterEnd > num_rows)
+          clusterEnd = num_rows;
+        for(nnz_lno_t rcmRow = clusterBegin; rcmRow < clusterEnd; rcmRow++)
+        {
+          nnz_lno_t origRow = rcmPerm
+        }
+      });
+    non_const_lno_row_view_t clusterRowmap("GS cluster rowmap", numClusters + 1);
+    non_const_lno_nnz_view_t clusterEntries("GS cluster ", 
   }
 
   struct create_permuted_xadj{

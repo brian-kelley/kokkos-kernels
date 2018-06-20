@@ -75,6 +75,7 @@ struct RCM
 
   typedef typename lno_row_view_t::const_type const_lno_row_view_t;
   typedef typename lno_row_view_t::non_const_type non_const_lno_row_view_t;
+  typedef typename non_const_lno_row_view_t::value_type offset_t;
 
   typedef typename lno_nnz_view_t::non_const_type non_const_lno_nnz_view_t;
 
@@ -216,6 +217,23 @@ struct RCM
     return maxBand;
   }
 
+  double find_average_bandwidth(lno_row_view_t rowptrs, lno_nnz_view_t colinds)
+  {
+    size_type totalBand = 0;
+    Kokkos::parallel_reduce(range_policy_t(0, numRows),
+      KOKKOS_LAMBDA(nnz_lno_t i, size_type& lsum)
+      {
+        for(offset_t j = rowptrs(i); j < rowptrs(i + 1); j++)
+        {
+          if(colinds(j) < i)
+            lsum += i - colinds(j);
+          else
+            lsum += colinds(j) - i;
+        }
+      }, Kokkos::Sum<size_type>(totalBand));
+    return (double) totalBand / rowptrs(numRows);
+  }
+
   //breadth-first search, producing a Cuthill-McKee ordering
   //nodes are labeled in the exact order they would be in a serial BFS,
   //and neighbors are visited in ascending order of degree
@@ -270,7 +288,7 @@ struct RCM
           size_type workEnd = qEnd();
           mem.team_barrier();
           cout << "Current queue contents: ";
-          for(int i = workStart; i < workEnd; i++)
+          for(size_type i = workStart; i < workEnd; i++)
             cout << q(i) << ' ';
           cout << '\n';
           qStart() = qEnd();
@@ -284,11 +302,11 @@ struct RCM
               //the node to process
               nnz_lno_t process = q(i);
               cout << "Processing node " << process << '\n';
-              size_type rowStart = rowmap(process);
-              size_type rowEnd = rowmap(process + 1);
+              offset_t rowStart = rowmap(process);
+              offset_t rowEnd = rowmap(process + 1);
               //build a list of all non-visited neighbors
-              size_type neiCount = 0;
-              for(size_type j = rowStart; j < rowEnd; j++)
+              nnz_lno_t neiCount = 0;
+              for(offset_t j = rowStart; j < rowEnd; j++)
               {
                 nnz_lno_t col = colinds(j);
                 if(visit(col) == NOT_VISITED && col != process)
@@ -297,18 +315,18 @@ struct RCM
                 }
               }
               cout << "Non-visited neighbors (unsorted): ";
-              for(size_type j = 0; j < neiCount; j++)
+              for(nnz_lno_t j = 0; j < neiCount; j++)
                 cout << scratch[j] << ' ';
               cout << '\n';
               //insertion sort the neighbors in ascending order of degree
               for(nnz_lno_t j = 1; j < neiCount; j++)
               {
                 //move scratch[j] left into the correct position
-                nnz_lno_t jdeg = rowmap(scratch[j] + 1) - rowmap(scratch[j]);
+                offset_t jdeg = rowmap(scratch[j] + 1) - rowmap(scratch[j]);
                 nnz_lno_t k;
                 for(k = j - 1; k >= 0; k--)
                 {
-                  size_type kdeg = rowmap(scratch[k] + 1) - rowmap(scratch[k]);
+                  offset_t kdeg = rowmap(scratch[k] + 1) - rowmap(scratch[k]);
                   if(jdeg > kdeg)
                   {
                     //scratch[j] belongs at position k + 1, stop
@@ -317,14 +335,14 @@ struct RCM
                   }
                 }
                 nnz_lno_t jcol = scratch[j];
-                for(size_type shifting = j - 1; shifting >= k; shifting--)
+                for(nnz_lno_t shifting = j - 1; shifting >= k; shifting--)
                 {
                   scratch[shifting + 1] = scratch[shifting];
                 }
                 scratch[k] = jcol;
               }
               cout << "Non-visited neighbors (sorted): ";
-              for(size_type j = 0; j < neiCount; j++)
+              for(nnz_lno_t j = 0; j < neiCount; j++)
                 cout << scratch[j] << ' ';
               cout << '\n';
               //mark the end of the active neighbor list, if it is not full
@@ -336,12 +354,12 @@ struct RCM
             mem.team_barrier();
             if(tid == 0)
             {
-              for(size_type thread = 0; thread < mem.team_size(); thread++)
+              for(size_type thread = 0; thread < (size_type) mem.team_size(); thread++)
               {
                 if(teamIndex + thread >= workEnd)
                   break;
                 nnz_lno_t* threadScratch = &teamScratch[thread * maxDeg];
-                for(size_type neiIndex = 0; neiIndex < maxDeg; neiIndex++)
+                for(nnz_lno_t neiIndex = 0; neiIndex < maxDeg; neiIndex++)
                 {
                   if(threadScratch[neiIndex] == Kokkos::ArithTraits<nnz_lno_t>::max())
                   {
@@ -365,7 +383,7 @@ struct RCM
               //  a) no vertices were enqueued this iteration
               //  b) the loop over vertices to process will terminate after this iteration
               //  c) not all vertices have been labeled
-              if(qStart() == qEnd() && teamIndex + mem.team_size() >= workEnd && visitCounter() != numRows)
+              if(qStart() == qEnd() && teamIndex + mem.team_size() >= workEnd && visitCounter() != (nnz_lno_t) numRows)
               {
                 std::cout << "\n\n\n*** WARNING: graph is not connected! ***\n\n\n";
                 //queue empty but not all vertices labeled
@@ -398,8 +416,8 @@ struct RCM
       Kokkos::parallel_reduce(range_policy_t(0, numRows),
         KOKKOS_LAMBDA(size_type i, ValLoc& lminloc)
         {
-          auto nnzInRow = rowmap(i + 1) - rowmap(i);
-          if(nnzInRow < lminloc.val)
+          offset_t nnzInRow = rowmap(i + 1) - rowmap(i);
+          if((nnz_lno_t) nnzInRow < lminloc.val)
           {
             lminloc.val = nnzInRow;
             lminloc.loc = i;
@@ -410,7 +428,6 @@ struct RCM
     else
     {
       //BFS from node 0, then BFS again from the most distant node
-      typedef Kokkos::MaxLoc<nnz_lno_t, nnz_lno_t, MyTempMemorySpace> MaxLocT;
       nnz_lno_t mostDistant;
       {
         auto visitOrder1 = parallel_bfs(0);
@@ -455,14 +472,11 @@ struct RCM
     //run Cuthill-McKee BFS from periph
     auto visit = parallel_rcm_bfs(periph);
     std::cout << "Did BFS.\n";
-    //reverse the visit order (for "reverse" C-M), and remove the bias.
-    //removing bias just shifts range down to [0, numRows)
-    Kokkos::parallel_for(range_policy_t(0, numRows / 2),
+    //reverse the visit order (for "reverse" C-M)
+    Kokkos::parallel_for(range_policy_t(0, numRows),
       KOKKOS_LAMBDA(size_type i)
       {
-        nnz_lno_t temp = visit(numRows - 1 - i);
-        visit(numRows - 1 - i) = visit(i);
-        visit(i) = temp;
+        visit(i) = numRows - 1 - visit(i);
       });
     std::cout << "Done.\n";
     return visit;

@@ -250,6 +250,16 @@ void test_gauss_seidel(lno_t numRows, size_type nnz, lno_t bandwidth, lno_t row_
   //device::execution_space::finalize();
 }
 
+static uint32_t mrs = 4;
+
+uint32_t myrand()
+{
+  mrs ^= mrs << 13;
+  mrs ^= mrs >> 17;
+  mrs ^= mrs << 5;
+  return mrs;
+}
+
 //Generate a symmetric, diagonally dominant matrix for testing RCM
 template<typename crsMat_t, typename scalar_t, typename lno_t, typename device, typename size_type>
 crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
@@ -259,6 +269,11 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
   typedef typename graph_t::entries_type::non_const_type colinds_view;
   typedef typename crsMat_t::values_type::non_const_type scalar_view;
   std::vector<bool> dense(numRows * numRows, false);
+  auto add = [&](int i, int j)
+  {
+    dense[i + j * numRows] = true;
+    dense[j + i * numRows] = true;
+  };
   auto addBand = [&](int n)
   {
     for(int i = 0; i < numRows; i++)
@@ -277,27 +292,33 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
   };
   //add diagonal and another band
   addBand(0);
-  addBand(25);
-  //add a bunch of random entries
+  add(0, 4);
+  add(1, 2);
+  add(1, 5);
+  add(1, 7);
+  add(2, 4);
+  add(3, 6);
+  add(5, 7);
   /*
-  for(int i = 0; i < randNNZ; i++)
+  addBand(25);
+  //add random edges
+  for(lno_t i = 0; i < randNNZ; i++)
   {
-    int row = rand() % numRows;
-    int col = rand() % numRows;
+    int row = myrand() % numRows;
+    int col = myrand() % numRows;
     dense[row + col * numRows] = true;
     dense[col + row * numRows] = true;
   }
-  */
   //Add a minimum set of edges to make graph connected
-  std::set<int> connected;
-  for(int i = 0; i < numRows; i++)
+  std::set<lno_t> connected;
+  for(lno_t i = 0; i < numRows; i++)
   {
     if(dense[i])
       connected.insert(i);
   }
-  while(connected.size() < numRows)
+  while((lno_t) connected.size() < numRows)
   {
-    int toConnect = 0;
+    lno_t toConnect = 0;
     for(; toConnect < numRows; toConnect++)
     {
       if(connected.find(toConnect) == connected.end())
@@ -305,9 +326,10 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
         break;
       }
     }
-    //choose a random vertex in connected to connect to
     size_t index = connected.size() - 1;
-    int inGraph;
+    if(connected.size() >= 4 && myrand() % 2)
+      index -= 4;
+    lno_t inGraph;
     for(auto c : connected)
     {
       if(index == 0)
@@ -319,21 +341,22 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
     }
     dense[toConnect + inGraph * numRows] = true;
     dense[inGraph + toConnect * numRows] = true;
-    for(int i = 0; i < numRows; i++)
+    for(lno_t i = 0; i < numRows; i++)
     {
       if(dense[toConnect + i * numRows])
         connected.insert(i);
     }
   }
+  */
   size_t nnz = std::count_if(dense.begin(), dense.end(), [](bool v) {return v;});
   rowmap_view Arowmap("asdf", numRows + 1);
   colinds_view Acolinds("asdf", nnz);
   scalar_view Avalues("asdf", nnz);
   size_t total = 0;
-  for(int i = 0; i < numRows; i++)
+  for(lno_t i = 0; i < numRows; i++)
   {
     Arowmap(i) = total;
-    for(int j = 0; j < numRows; j++)
+    for(lno_t j = 0; j < numRows; j++)
     {
       if(dense[i * numRows + j])
       {
@@ -353,23 +376,23 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
   return crsMat_t("RCM test matrix", numRows, Avalues, Agraph);
 }
 
-template <typename scalar_t, typename lno_t, typename size_type, typename device>
-void test_rcm(lno_t numRows, size_type nnz, size_type bandwidth)
+template <typename scalar_t, typename lno_t, typename offset_t, typename device>
+void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
 {
   using namespace Test;
-  srand(245);
-  typedef typename KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type> crsMat_t;
+  mrs = 245;
+  numRows = 8;
+  typedef typename KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, offset_t> crsMat_t;
   typedef typename crsMat_t::StaticCrsGraphType graph_t;
   typedef typename graph_t::row_map_type::non_const_type lno_view_t;
   typedef typename graph_t::entries_type::non_const_type lno_nnz_view_t;
+  typedef typename lno_view_t::size_type size_type;
   //typedef typename graph_t::entries_type::non_const_type   color_view_t;
-  typedef typename crsMat_t::values_type::non_const_type scalar_view_t;
   typedef KokkosKernelsHandle
-      <size_type,lno_t, scalar_t,
-      typename device::execution_space, typename device::memory_space,typename device::memory_space > KernelHandle;
+      <offset_t, lno_t, scalar_t,
+      typename device::execution_space, typename device::memory_space,typename device::memory_space> KernelHandle;
 
-  lno_t numCols = numRows;
-  crsMat_t A = genSymmetricMatrix<crsMat_t, scalar_t, lno_t, device, size_type>(numRows, nnz, bandwidth);
+  crsMat_t A = genSymmetricMatrix<crsMat_t, scalar_t, lno_t, device, offset_t>(numRows, nnz, bandwidth);
 
   lno_view_t Arowmap("asdf", numRows + 1);
   nnz = A.graph.row_map(numRows);
@@ -378,7 +401,7 @@ void test_rcm(lno_t numRows, size_type nnz, size_type bandwidth)
   Kokkos::deep_copy(Arowmap, A.graph.row_map);
   std::cout << "Aentries dim: " << Aentries.dimension_0() << '\n';
   std::cout << "A.graph.entries dim: " << A.graph.entries.dimension_0() << '\n';
-  for(int i = 0; i < nnz; i++)
+  for(offset_t i = 0; i < nnz; i++)
   {
     Aentries(i) = A.graph.entries(i);
     Avalues(i) = A.values(i);
@@ -392,10 +415,10 @@ void test_rcm(lno_t numRows, size_type nnz, size_type bandwidth)
   typedef KokkosSparse::Impl::RCM<KernelHandle, decltype(Arowmap), decltype(Aentries)> rcm_t;
   rcm_t rcm(&kh, numRows, Arowmap, Aentries);
   std::cout << "Matrix for RCM testing (raw CRS)\n";
-  for(int i = 0; i < numRows; i++)
+  for(lno_t i = 0; i < numRows; i++)
   {
     std::cout << "Row " << i << ": ";
-    for(int j = Arowmap(i); j < Arowmap(i + 1); j++)
+    for(offset_t j = Arowmap(i); j < Arowmap(i + 1); j++)
     {
       std::cout << Aentries(j) << ' ';
     }
@@ -403,12 +426,12 @@ void test_rcm(lno_t numRows, size_type nnz, size_type bandwidth)
   }
   std::cout << '\n';
   std::cout << "Matrix for RCM testing, full (" << numRows << " rows, " << nnz << " entries):\n\n";
-  for(int i = 0; i < numRows; i++)
+  for(lno_t i = 0; i < numRows; i++)
   {
     std::vector<char> line(numRows, ' ');
-    for(int j = Arowmap(i); j < Arowmap(i + 1); j++)
+    for(offset_t j = Arowmap(i); j < Arowmap(i + 1); j++)
       line[Aentries(j)] = '*';
-    for(int j = 0; j < numRows; j++)
+    for(lno_t j = 0; j < numRows; j++)
       std::cout << line[j];
     std::cout << '\n';
   }
@@ -417,27 +440,27 @@ void test_rcm(lno_t numRows, size_type nnz, size_type bandwidth)
   auto rcmOrder = rcm.rcm();
   //perm(i) = the node with timestamp i
   std::cout << "RCM row list that was returned:\n";
-  for(int i = 0; i < rcmOrder.dimension_0(); i++)
+  for(size_type i = 0; i < rcmOrder.dimension_0(); i++)
   {
     std::cout << rcmOrder(i) << ' ';
   }
   std::cout << '\n';
   lno_nnz_view_t perm("RCM permutation", numRows);
-  for(int i = 0; i < numRows; i++)
+  for(lno_t i = 0; i < numRows; i++)
   {
     perm(rcmOrder(i)) = i;
   }
   std::cout << "Permutation array:\n";
-  for(int i = 0; i < perm.dimension_0(); i++)
+  for(size_type i = 0; i < perm.dimension_0(); i++)
   {
     std::cout << perm(i) << ' ';
   }
   std::cout << '\n';
   //make sure that perm is in fact a permuation matrix (contains each row exactly once)
-  std::set<int> rowSet;
-  for(int i = 0; i < numRows; i++)
+  std::set<lno_t> rowSet;
+  for(lno_t i = 0; i < numRows; i++)
     rowSet.insert(perm(i));
-  if(rowSet.size() != numRows)
+  if((lno_t) rowSet.size() != numRows)
   {
     std::cout << "Only got back " << rowSet.size() << " unique row IDs.\n";
     return;
@@ -446,13 +469,13 @@ void test_rcm(lno_t numRows, size_type nnz, size_type bandwidth)
   lno_view_t Browmap("rcm perm rowmap", numRows + 1);
   lno_nnz_view_t Bentries("rcm perm entries", nnz);
   //permute rows (compute row counts, then prefix sum, then copy in entries)
-  for(int i = 0; i < numRows; i++)
+  for(lno_t i = 0; i < numRows; i++)
   {
     //row i of B is row perm(i) of A
     Browmap(i) = Arowmap(perm(i) + 1) - Arowmap(perm(i));
   }
   size_t total = 0;
-  for(int i = 0; i <= numRows; i++)
+  for(lno_t i = 0; i <= numRows; i++)
   {
     size_t temp = 0;
     if(i != numRows)
@@ -460,10 +483,10 @@ void test_rcm(lno_t numRows, size_type nnz, size_type bandwidth)
     Browmap(i) = total;
     total += temp;
   }
-  for(int i = 0; i < numRows; i++)
+  for(lno_t i = 0; i < numRows; i++)
   {
     size_t Arow = perm(i);
-    for(int j = 0; j < Arowmap(Arow + 1) - Arowmap(Arow); j++)
+    for(offset_t j = 0; j < Arowmap(Arow + 1) - Arowmap(Arow); j++)
     {
       auto Acol = Aentries(Arowmap(Arow) + j);
       Bentries(Browmap(i) + j) = rcmOrder(Acol);
@@ -471,17 +494,17 @@ void test_rcm(lno_t numRows, size_type nnz, size_type bandwidth)
   }
   //Print sparsity pattern of B
   std::cout << "A (RCM-reordered):\n\n";
-  for(int i = 0; i < numRows; i++)
+  for(lno_t i = 0; i < numRows; i++)
   {
     std::vector<char> line(numRows, ' ');
-    for(int j = Browmap(i); j < Browmap(i + 1); j++)
+    for(offset_t j = Browmap(i); j < Browmap(i + 1); j++)
       line[Bentries(j)] = '*';
-    for(int j = 0; j < numRows; j++)
+    for(lno_t j = 0; j < numRows; j++)
       std::cout << line[j];
     std::cout << '\n';
   }
   std::cout << '\n';
-  std::cout << "Change in bandwidth: " << rcm.find_bandwidth(Arowmap, Aentries) << " -> " << rcm.find_bandwidth(Browmap, Bentries) << '\n';
+  std::cout << "Change in average bandwidth: " << rcm.find_average_bandwidth(Arowmap, Aentries) << " -> " << rcm.find_average_bandwidth(Browmap, Bentries) << '\n';
 }
 
 #define EXECUTE_TEST(SCALAR, ORDINAL, OFFSET, DEVICE) \
@@ -489,7 +512,7 @@ TEST_F( TestCategory, sparse ## _ ## gauss_seidel ## _ ## SCALAR ## _ ## ORDINAL
   test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(10000, 10000 * 30, 200, 10); \
 } \
 TEST_F( TestCategory, sparse ## _ ## rcm ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 1000, 100); \
+  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 100, 100); \
 }
 
 
