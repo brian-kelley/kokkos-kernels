@@ -887,8 +887,9 @@ public:
     const size_type bitsPerST = 8 * sizeof(size_type);
     const size_type wordsPerRow = (numClusters + bitsPerST - 1)  / bitsPerST;
     const size_type nthreads = MyExecSpace::concurrency();
-    Kokkos::View<size_type*, MyTempMemorySpace> denseClusterRow(new size_type[wordsPerRow * nthreads], wordsPerRow * nthreads);
-    Kokkos::View<size_type*, MyTempMemorySpace> clusterRowmap(new size_type[numClusters + 1], numClusters + 1);
+    const size_type one = 1;
+    Kokkos::View<size_type*, MyTempMemorySpace, Kokkos::MemoryManaged> denseClusterRow("Scratch for dense cluster graph rows", wordsPerRow * nthreads);
+    Kokkos::View<size_type*, MyTempMemorySpace, Kokkos::MemoryManaged> clusterRowmap("Row ptrs for cluster graph", numClusters + 1);
     //TODO: use a team policy and shared memory here
     std::cout << "Counting entries in cluster graph\n";
     std::cout << "Have " << numClusters << " clusters, and " << nthreads << " threads.\n";
@@ -921,7 +922,7 @@ public:
                 nnz_lno_t clusterNei = rcmNei / clusterSize;
                 //record the entry in dense row
                 //this should be fast since bitsPerST is a power of 2
-                denseRow[clusterNei / bitsPerST] |= (1 << (clusterNei % bitsPerST));
+                denseRow[clusterNei / bitsPerST] |= (one << (clusterNei % bitsPerST));
               }
             }
             //count the 1 bits in denseRow
@@ -937,12 +938,28 @@ public:
         }
       });
     //Prefix sum cluster entry counts to get clusterRowmap
+    std::cout << "Cluster graph row counts:\n";
+    for(int i = 0; i <= numClusters; i++)
+    {
+      std::cout << clusterRowmap(i) << ' ';
+      if(i % 20 == 19)
+        std::cout << '\n';
+    }
+    std::cout << "\n\n";
     KokkosKernels::Impl::exclusive_parallel_prefix_sum<non_const_lno_row_view_t, MyExecSpace>(numClusters + 1, clusterRowmap);
+    std::cout << "Cluster graph row ptrs:\n";
+    for(int i = 0; i <= numClusters; i++)
+    {
+      std::cout << clusterRowmap(i) << ' ';
+      if(i % 20 == 19)
+        std::cout << '\n';
+    }
+    std::cout << "\n\n";
     auto clusterNNZ = Kokkos::subview(clusterRowmap, numClusters);
     auto h_clusterNNZ = Kokkos::create_mirror_view(clusterNNZ);
     Kokkos::deep_copy(h_clusterNNZ, clusterNNZ );
     //can now allocate the entries of cluster graph
-    Kokkos::View<nnz_lno_t*, MyTempMemorySpace> clusterEntries("GS cluster ", h_clusterNNZ());
+    Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryManaged> clusterEntries("GS cluster ", h_clusterNNZ());
     Kokkos::parallel_for(my_exec_space(0, nthreads),
       KOKKOS_LAMBDA(size_type tid)
       {
@@ -971,17 +988,20 @@ public:
                 nnz_lno_t clusterNei = rcmNei / clusterSize;
                 //record the entry in dense row
                 //this should be fast since bitsPerST is a power of 2
-                denseRow[clusterNei / bitsPerST] |= (1 << (clusterNei % bitsPerST));
+                denseRow[clusterNei / bitsPerST] |= (one << (clusterNei % bitsPerST));
               }
             }
             //write sparse cluster graph entries
             size_type numEntries = 0;
-            for(size_type j = 0; j < numClusters; j++)
+            for(size_type j = 0; j < wordsPerRow; j++)
             {
-              if(denseRow[j / bitsPerST] & (1 << (j % bitsPerST)))
+              for(size_type bitPos = 0; bitPos < bitsPerST; bitPos++)
               {
-                clusterEntries(clusterRowmap(i) + numEntries) = j;
-                numEntries++;
+                if(denseRow[j] & (one << bitPos))
+                {
+                  clusterEntries(clusterRowmap(c) + numEntries) = j * bitsPerST + bitPos;
+                  numEntries++;
+                }
               }
             }
           }
@@ -1036,8 +1056,6 @@ public:
     //num_rows % clusterSize were used in the 
     numColors = clusterBaseColor;
     kh.destroy_graph_coloring_handle();
-    delete[] denseClusterRow.data();
-    delete[] clusterRowmap.data();
     std::cout << "Vertex coloring (from clusters, same color = updated concurrently):\n";
     for(nnz_lno_t i = 0; i < num_rows; i++)
       std::cout << i << ">" << vertexColors(i) << "    ";
