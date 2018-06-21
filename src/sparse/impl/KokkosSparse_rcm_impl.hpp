@@ -270,7 +270,6 @@ struct RCM
     #endif
     //TODO: place this in shared. Check for allocation failure, fall back to global?
     perm_view_t scratchSpace("Scratch buffer shared by threads", nthreads * maxDeg);
-    std::cout << "Running RCM with a team of " << nthreads << " threads.\n";
     Kokkos::parallel_for(team_policy_t(1, nthreads),
     KOKKOS_LAMBDA(const team_member_t& mem)
     {
@@ -290,22 +289,15 @@ struct RCM
           activeQSize() = 1;
           nextQSize() = 0;
         });
+        mem.team_barrier();
         //do until every node has been visited and labeled
         while(visitCounter() < numRows)
         {
-          std::cout << "*** Building another BFS level.\n";
-          std::cout << "Full queue contents: ";
-          for(int i = 0; i < activeQSize(); i++)
-          {
-            std::cout << activeQ[i] << ' ';
-          }
-          std::cout << '\n';
           for(size_type workSet = 0; workSet < activeQSize(); workSet += nthreads)
           {
             //get pointer to thread-local scratch space, which has size maxDeg
             //the node to process
             nnz_lno_t process = activeQ[workSet + tid];
-            std::cout << "  Working on node " << process << '\n';
             offset_t rowStart = rowmap(process);
             offset_t rowEnd = rowmap(process + 1);
             //build a list of all non-visited neighbors
@@ -315,7 +307,6 @@ struct RCM
               nnz_lno_t col = colinds(j);
               if(visit(col) == NOT_VISITED && col != process)
               {
-                std::cout << "    Node has neighbor " << col << '\n';
                 scratch[neiCount] = col;
                 neiCount++;
               }
@@ -346,6 +337,7 @@ struct RCM
             //mark the end of the active neighbor list, if it is not full
             if(neiCount < maxDeg)
               scratch[neiCount] = Kokkos::ArithTraits<nnz_lno_t>::max();
+            mem.team_barrier();
             //(serial) update nextQ and label currently processing nodes
             Kokkos::single(Kokkos::PerTeam(mem),
             KOKKOS_LAMBDA()
@@ -365,30 +357,17 @@ struct RCM
                   if(visit(nei) == NOT_VISITED)
                   {
                     //enqueue nei
-                    std::cout << "    Adding " << nei << " to queue for next level.\n";
                     visit(nei) = QUEUED;
                     nextQ[nextQSize()] = nei;
                     nextQSize()++;
                   }
-                  else
-                  {
-                    std::cout << "    NOT adding " << nei << " to queue for next level because it was already added.\n";
-                  }
                 }
                 //assign final label to thread's current vertex
-                std::cout << "  RCM label for " << threadProcess << " = " << visitCounter() << '\n';
                 visit(threadProcess) = visitCounter();
                 visitCounter()++;
               }
             });
           }
-          std::cout << "Done with nodes in active queue, switching buffers.\n";
-          std::cout << "Current nextQ contents: ";
-          for(int i =0 ; i < nextQSize(); i++)
-          {
-            std::cout << nextQ[i] << ' ';
-          }
-          std::cout << '\n';
           //swap queue buffers and tail pointers
           {
             auto temp = activeQ;
@@ -408,7 +387,6 @@ struct RCM
               {
                 if(visit(search) == NOT_VISITED)
                 {
-                  std::cout << "WARNING: graph not connected, but resuming BFS from node " << search << '\n';
                   activeQ[0] = search;
                   activeQSize() = 1;
                   visit(search) = QUEUED;

@@ -101,7 +101,7 @@ int run_gauss_seidel_1(
   kh.set_team_work_size(16);
   kh.set_dynamic_scheduling(true);
   if(gs_algorithm == GS_CLUSTER)
-    kh.create_gs_handle(32);
+    kh.create_gs_handle(8);
   else
     kh.create_gs_handle(gs_algorithm);
 
@@ -490,10 +490,10 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
 
 #define EXECUTE_TEST(SCALAR, ORDINAL, OFFSET, DEVICE) \
 TEST_F( TestCategory, sparse ## _ ## gauss_seidel ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(20000, 20000 * 60, 500, 100); \
+  test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(10000, 10000 * 30, 200, 100); \
 } \
 TEST_F( TestCategory, sparse ## _ ## rcm ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(20, 20, 20); \
+  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 1000, 70); \
 }
 
 

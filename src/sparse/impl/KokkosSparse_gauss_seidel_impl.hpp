@@ -52,6 +52,7 @@
 #include "KokkosSparse_rcm_impl.hpp"
 #include "KokkosKernels_Utils.hpp"
 #include "KokkosKernels_BitUtils.hpp"
+#include <set>
 #ifndef _KOKKOSGSIMP_HPP
 #define _KOKKOSGSIMP_HPP
 
@@ -876,6 +877,16 @@ public:
     //rcmOrder maps (bijectively) from original rows to RCM-ordered rows
     //rcmPerm is the inverse mapping
     perm_view_t rcmOrder = rcm.rcm();
+    //DEBUGGING: make sure rcmOrder is a valid permutation array (contains every value exactly once)
+    std::set<nnz_lno_t> checking;
+    for(int i = 0; i < num_rows; i++)
+    {
+      checking.insert(rcmOrder(i));
+    }
+    if(checking.size() != num_rows)
+    {
+      std::cout << "RCM on " << num_rows << "-row, " << xadj(num_rows) << "-entry matrix failed (invalid permutation returned)\n";
+    }
     //rcmPerm[i] = the original label of RCM vertex i
     //rcmOrder[i] = the RCM label of original vertex i
     perm_view_t rcmPerm("RCM permutation array", num_rows);
@@ -1046,6 +1057,7 @@ public:
     //num_rows % clusterSize were used in the 
     numColors = clusterBaseColor;
     kh.destroy_graph_coloring_handle();
+    exit(0);
     return vertexColors;
   }
 
