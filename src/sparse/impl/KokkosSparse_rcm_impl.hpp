@@ -244,106 +244,116 @@ struct RCM
     //need to know maximum degree to allocate scratch space for threads
     auto maxDeg = find_max_degree();
     //place these two magic values are at the top of nnz_lno_t's range
-    const nnz_lno_t NOT_VISITED = Kokkos::ArithTraits<nnz_lno_t>::max();
+    const nnz_lno_t LNO_MAX = Kokkos::ArithTraits<nnz_lno_t>::max();
+    const nnz_lno_t NOT_VISITED = LNO_MAX;
     const nnz_lno_t QUEUED = NOT_VISITED - 1;
     //view for storing the visit timestamps
     perm_view_t visit("BFS visited nodes", numRows);
     Kokkos::parallel_for(range_policy_t(0, numRows),
       KOKKOS_LAMBDA(size_type i) {visit(i) = NOT_VISITED;});
     //visitCounter atomically counts timestamps
-    single_view_t visitCounter("BFS visit counter (atomic)");
+    single_view_t visitCounter("BFS visit counter");
     //the visit queue
-    //process the elements in [qStart, qEnd) in parallel during each sweep
-    //the queue doesn't need to be circular since each node is visited exactly once
-    perm_view_t q("BFS queue", numRows);
-    single_view_t qStart("BFS frontier start index (last in queue)");
-    single_view_t qEnd("BFS frontier end index (next in queue)");
-    //make a temporary policy just to figure out how many threads AUTO makes
-    team_policy_t policy(1, Kokkos::AUTO());
-    perm_view_t scratchSpace("Scratch, used by each thread", policy.team_size() * maxDeg);
-    //Kokkos::parallel_for(team_policy_t(1, Kokkos::AUTO()).set_scratch_size(0, Kokkos::PerTeam(tempPolicy.team_size() * maxDeg * sizeof(nnz_lno_t))),
-    Kokkos::parallel_for(policy,
-      KOKKOS_LAMBDA(team_member_t mem)
+    //one of q1,q2 is active at a time and holds the nodes to process in next BFS level
+    //elements which are LNO_MAX are just placeholders (nothing to process)
+    perm_view_t q1("BFS queue (buf 1)", numRows);
+    perm_view_t q2("BFS queue (buf 2)", numRows);
+    single_view_t activeQSize("BFS active level queue size");
+    single_view_t nextQSize("BFS next level queue size");
+    //TODO: choose a reasonable value for CUDA
+    size_type nthreads = MyExecSpace::concurrency();
+    #ifdef KOKKOS_ENABLE_CUDA
+    if(std::is_same<MyExecSpace, Kokkos::Cuda>::value)
+    {
+      nthreads = 256;
+    }
+    #endif
+    //TODO: place this in shared. Check for allocation failure, fall back to global?
+    perm_view_t scratchSpace("Scratch buffer shared by threads", nthreads * maxDeg);
+    std::cout << "Running RCM with a team of " << nthreads << " threads.\n";
+    Kokkos::parallel_for(team_policy_t(1, nthreads),
+    KOKKOS_LAMBDA(const team_member_t& mem)
+    {
+      //swap these buffers after each level
+      nnz_lno_t* teamScratch = scratchSpace.data();
+      //all threads work until every node has been labeled (queue empty)
+      Kokkos::parallel_for(Kokkos::TeamThreadRange(mem, nthreads),
+      KOKKOS_LAMBDA(size_type tid)
       {
-        //initialize the frontier as just the starting node
+        nnz_lno_t* activeQ = q1.data();
+        nnz_lno_t* nextQ = q2.data();
+        nnz_lno_t* scratch = teamScratch + tid * maxDeg;
         Kokkos::single(Kokkos::PerTeam(mem),
-          KOKKOS_LAMBDA()
-          {
-            visitCounter() = 0;
-            visit(start) = QUEUED;
-            q(0) = start;
-            qStart() = 0;
-            qEnd() = 1;
-          });
-        auto tid = mem.team_rank();
-        nnz_lno_t* teamScratch = scratchSpace.data();
-        nnz_lno_t* scratch = &teamScratch[tid * maxDeg];
-        //all threads work until every node has been labeled
-        while(qStart() != qEnd())
+        KOKKOS_LAMBDA()
         {
-          //loop over the frontier, giving each thread one node to process
-          size_type workStart = qStart();
-          size_type workEnd = qEnd();
-          mem.team_barrier();
-          if(tid == 0)
-            qStart() = qEnd();
-          mem.team_barrier();
-          //inside this loop, qEnd will be advanced as neighbors are enqueued for next iteration
-          for(size_type teamIndex = workStart; teamIndex < workEnd; teamIndex += mem.team_size())
+          activeQ[0] = start;
+          activeQSize() = 1;
+          nextQSize() = 0;
+        });
+        //do until every node has been visited and labeled
+        while(visitCounter() < numRows)
+        {
+          std::cout << "*** Building another BFS level.\n";
+          std::cout << "Full queue contents: ";
+          for(int i = 0; i < activeQSize(); i++)
           {
-            if(teamIndex + tid < workEnd)
+            std::cout << activeQ[i] << ' ';
+          }
+          std::cout << '\n';
+          for(size_type workSet = 0; workSet < activeQSize(); workSet += nthreads)
+          {
+            //get pointer to thread-local scratch space, which has size maxDeg
+            //the node to process
+            nnz_lno_t process = activeQ[workSet + tid];
+            std::cout << "  Working on node " << process << '\n';
+            offset_t rowStart = rowmap(process);
+            offset_t rowEnd = rowmap(process + 1);
+            //build a list of all non-visited neighbors
+            nnz_lno_t neiCount = 0;
+            for(offset_t j = rowStart; j < rowEnd; j++)
             {
-              //the node to process
-              nnz_lno_t process = q(teamIndex + tid);
-              offset_t rowStart = rowmap(process);
-              offset_t rowEnd = rowmap(process + 1);
-              //build a list of all non-visited neighbors
-              nnz_lno_t neiCount = 0;
-              for(offset_t j = rowStart; j < rowEnd; j++)
+              nnz_lno_t col = colinds(j);
+              if(visit(col) == NOT_VISITED && col != process)
               {
-                nnz_lno_t col = colinds(j);
-                if(visit(col) == NOT_VISITED && col != process)
-                {
-                  scratch[neiCount++] = col;
-                }
+                std::cout << "    Node has neighbor " << col << '\n';
+                scratch[neiCount] = col;
+                neiCount++;
               }
-              //insertion sort the neighbors in ascending order of degree
-              for(nnz_lno_t j = 1; j < neiCount; j++)
-              {
-                //move scratch[j] left into the correct position
-                offset_t jdeg = rowmap(scratch[j] + 1) - rowmap(scratch[j]);
-                nnz_lno_t k;
-                for(k = j - 1; k >= 0; k--)
-                {
-                  offset_t kdeg = rowmap(scratch[k] + 1) - rowmap(scratch[k]);
-                  if(jdeg >= kdeg)
-                  {
-                    //scratch[j] belongs at position k + 1, stop
-                    k++;
-                    break;
-                  }
-                }
-                nnz_lno_t jcol = scratch[j];
-                for(nnz_lno_t shifting = j - 1; shifting >= k; shifting--)
-                {
-                  scratch[shifting + 1] = scratch[shifting];
-                }
-                scratch[k] = jcol;
-              }
-              //mark the end of the active neighbor list, if it is not full
-              if(neiCount < maxDeg)
-                scratch[neiCount] = Kokkos::ArithTraits<nnz_lno_t>::max();
             }
-            //thread 0 performs the actual queue and label operations in serial for all threads (so no atomics needed)
-            //this should be a small amount of work compared to finding neighbors in order of degree
-            mem.team_barrier();
-            if(tid == 0)
+            //insertion sort the neighbors in ascending order of degree
+            for(nnz_lno_t j = 1; j < neiCount; j++)
             {
-              for(size_type thread = 0; thread < (size_type) mem.team_size(); thread++)
+              //move scratch[j] left into the correct position
+              offset_t jdeg = rowmap(scratch[j] + 1) - rowmap(scratch[j]);
+              nnz_lno_t k;
+              for(k = j - 1; k >= 0; k--)
               {
-                if(teamIndex + thread >= workEnd)
+                offset_t kdeg = rowmap(scratch[k] + 1) - rowmap(scratch[k]);
+                if(jdeg >= kdeg)
+                {
+                  //scratch[j] belongs at position k + 1, stop
+                  k++;
                   break;
-                nnz_lno_t* threadScratch = &teamScratch[thread * maxDeg];
+                }
+              }
+              nnz_lno_t jcol = scratch[j];
+              for(nnz_lno_t shifting = j - 1; shifting >= k; shifting--)
+              {
+                scratch[shifting + 1] = scratch[shifting];
+              }
+              scratch[k] = jcol;
+            }
+            //mark the end of the active neighbor list, if it is not full
+            if(neiCount < maxDeg)
+              scratch[neiCount] = Kokkos::ArithTraits<nnz_lno_t>::max();
+            //(serial) update nextQ and label currently processing nodes
+            Kokkos::single(Kokkos::PerTeam(mem),
+            KOKKOS_LAMBDA()
+            {
+              for(size_type thread = 0; thread < nthreads; thread++)
+              {
+                nnz_lno_t threadProcess = activeQ[workSet + thread];
+                nnz_lno_t* threadScratch = teamScratch + thread * maxDeg;
                 for(nnz_lno_t neiIndex = 0; neiIndex < maxDeg; neiIndex++)
                 {
                   if(threadScratch[neiIndex] == Kokkos::ArithTraits<nnz_lno_t>::max())
@@ -355,40 +365,61 @@ struct RCM
                   if(visit(nei) == NOT_VISITED)
                   {
                     //enqueue nei
+                    std::cout << "    Adding " << nei << " to queue for next level.\n";
                     visit(nei) = QUEUED;
-                    q(qEnd()) = nei;
-                    qEnd()++;
+                    nextQ[nextQSize()] = nei;
+                    nextQSize()++;
+                  }
+                  else
+                  {
+                    std::cout << "    NOT adding " << nei << " to queue for next level because it was already added.\n";
                   }
                 }
                 //assign final label to thread's current vertex
-                visit(q(teamIndex + thread)) = visitCounter();
+                std::cout << "  RCM label for " << threadProcess << " = " << visitCounter() << '\n';
+                visit(threadProcess) = visitCounter();
                 visitCounter()++;
               }
-              //have to handle the case where graph is not connected
-              //know this happens if these 3 conditions are all true:
-              //  a) no vertices were enqueued this iteration
-              //  b) the loop over vertices to process will terminate after this iteration
-              //  c) not all vertices have been labeled
-              if(qStart() == qEnd() && teamIndex + mem.team_size() >= workEnd && visitCounter() != (nnz_lno_t) numRows)
+            });
+          }
+          std::cout << "Done with nodes in active queue, switching buffers.\n";
+          std::cout << "Current nextQ contents: ";
+          for(int i =0 ; i < nextQSize(); i++)
+          {
+            std::cout << nextQ[i] << ' ';
+          }
+          std::cout << '\n';
+          //swap queue buffers and tail pointers
+          {
+            auto temp = activeQ;
+            activeQ = nextQ;
+            nextQ = temp;
+          }
+          Kokkos::single(Kokkos::PerTeam(mem),
+          KOKKOS_LAMBDA()
+          {
+            activeQSize() = nextQSize();
+            nextQSize() = 0;
+            if(visitCounter() < numRows && activeQSize() == 0)
+            {
+              //Some nodes are unreachable (graph not connected)
+              //Find an unvisited node to resume BFS
+              for(nnz_lno_t search = numRows - 1; search >= 0; search--)
               {
-                //queue empty but not all vertices labeled
-                //add the first NOT_VISITED node to the queue
-                for(size_type search = 0; search < numRows; search++)
+                if(visit(search) == NOT_VISITED)
                 {
-                  if(visit(search) == NOT_VISITED)
-                  {
-                    q(qEnd()) = search;
-                    visit(search) = QUEUED;
-                    qEnd()++;
-                    break;
-                  }
+                  std::cout << "WARNING: graph not connected, but resuming BFS from node " << search << '\n';
+                  activeQ[0] = search;
+                  activeQSize() = 1;
+                  visit(search) = QUEUED;
+                  break;
                 }
               }
             }
-            mem.team_barrier();
-          }
+          });
         }
       });
+    });
     return visit;
   }
 
@@ -450,7 +481,7 @@ struct RCM
   perm_view_t rcm()
   {
     //find a peripheral node
-    //TODO: make mode configurable, but still the default
+    //TODO: make mode configurable, but keep MIN_DEGREE the default
     nnz_lno_t periph = find_peripheral(MIN_DEGREE);
     //run Cuthill-McKee BFS from periph
     perm_view_t visit = parallel_rcm_bfs(periph);

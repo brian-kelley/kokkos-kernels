@@ -253,19 +253,9 @@ void test_gauss_seidel(lno_t numRows, size_type nnz, lno_t bandwidth, lno_t row_
   //device::execution_space::finalize();
 }
 
-static uint32_t mrs = 4;
-
-uint32_t myrand()
-{
-  mrs ^= mrs << 13;
-  mrs ^= mrs >> 17;
-  mrs ^= mrs << 5;
-  return mrs;
-}
-
 //Generate a symmetric, diagonally dominant matrix for testing RCM
 template<typename crsMat_t, typename scalar_t, typename lno_t, typename device, typename size_type>
-crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
+crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth, bool isGraphConnected)
 {
   typedef typename crsMat_t::StaticCrsGraphType graph_t;
   typedef typename graph_t::row_map_type::non_const_type rowmap_view;
@@ -289,53 +279,67 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth)
     }
   };
   //add diagonal and another band
-  addBand(25);
+  addBand(0);
   //add random edges
   for(lno_t i = 0; i < randNNZ; i++)
   {
-    int row = myrand() % numRows;
-    int col = myrand() % numRows;
+    int row = rand() % numRows;
+    int col = rand() % numRows;
     dense[row + col * numRows] = true;
     dense[col + row * numRows] = true;
   }
-  //Add a minimum set of edges to make graph connected
-  std::set<lno_t> connected;
-  for(lno_t i = 0; i < numRows; i++)
+  if(isGraphConnected)
   {
-    if(dense[i])
-      connected.insert(i);
-  }
-  while((lno_t) connected.size() < numRows)
-  {
-    lno_t toConnect = 0;
-    for(; toConnect < numRows; toConnect++)
-    {
-      if(connected.find(toConnect) == connected.end())
-      {
-        break;
-      }
-    }
-    size_t index = connected.size() - 1;
-    if(connected.size() >= 4 && myrand() % 2)
-      index -= 4;
-    lno_t inGraph;
-    for(auto c : connected)
-    {
-      if(index == 0)
-      {
-        inGraph = c;
-        break;
-      }
-      index--;
-    }
-    dense[toConnect + inGraph * numRows] = true;
-    dense[inGraph + toConnect * numRows] = true;
+    //Add a minimum set of edges to make graph connected
+    std::set<lno_t> connected;
     for(lno_t i = 0; i < numRows; i++)
     {
-      if(dense[toConnect + i * numRows])
+      if(dense[i])
         connected.insert(i);
     }
+    while((lno_t) connected.size() < numRows)
+    {
+      lno_t toConnect = 0;
+      for(; toConnect < numRows; toConnect++)
+      {
+        if(connected.find(toConnect) == connected.end())
+        {
+          break;
+        }
+      }
+      size_t index = connected.size() - 1 - rand() % connected.size();
+      lno_t inGraph;
+      for(auto c : connected)
+      {
+        if(index == 0)
+        {
+          inGraph = c;
+          break;
+        }
+        index--;
+      }
+      dense[toConnect + inGraph * numRows] = true;
+      dense[inGraph + toConnect * numRows] = true;
+      for(lno_t i = 0; i < numRows; i++)
+      {
+        if(dense[toConnect + i * numRows])
+          connected.insert(i);
+      }
+    }
   }
+  std::cout << "Graph for testing RCM:\n";
+  for(int i = 0; i < numRows; i++)
+  {
+    for(int j = 0; j < numRows; j++)
+    {
+      if(dense[i * numRows + j])
+        std::cout << '*';
+      else
+        std::cout << ' ';
+    }
+    std::cout << '\n';
+  }
+  std::cout << '\n';
   size_t nnz = std::count_if(dense.begin(), dense.end(), [](bool v) {return v;});
   rowmap_view Arowmap("asdf", numRows + 1);
   colinds_view Acolinds("asdf", nnz);
@@ -368,8 +372,7 @@ template <typename scalar_t, typename lno_t, typename offset_t, typename device>
 void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
 {
   using namespace Test;
-  mrs = 245;
-  numRows = 8;
+  srand(245);
   typedef typename KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, offset_t> crsMat_t;
   typedef typename crsMat_t::StaticCrsGraphType graph_t;
   typedef typename graph_t::row_map_type::non_const_type lno_view_t;
@@ -380,7 +383,8 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
       <offset_t, lno_t, scalar_t,
       typename device::execution_space, typename device::memory_space,typename device::memory_space> KernelHandle;
 
-  crsMat_t A = genSymmetricMatrix<crsMat_t, scalar_t, lno_t, device, offset_t>(numRows, nnz, bandwidth);
+  std::cout << "building RCM test matrix with " << numRows << " rows.\n";
+  crsMat_t A = genSymmetricMatrix<crsMat_t, scalar_t, lno_t, device, offset_t>(numRows, nnz, bandwidth, false);
 
   lno_view_t Arowmap("asdf", numRows + 1);
   nnz = A.graph.row_map(numRows);
@@ -410,17 +414,6 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
     {
       std::cout << Aentries(j) << ' ';
     }
-    std::cout << '\n';
-  }
-  std::cout << '\n';
-  std::cout << "Matrix for RCM testing, full (" << numRows << " rows, " << nnz << " entries):\n\n";
-  for(lno_t i = 0; i < numRows; i++)
-  {
-    std::vector<char> line(numRows, ' ');
-    for(offset_t j = Arowmap(i); j < Arowmap(i + 1); j++)
-      line[Aentries(j)] = '*';
-    for(lno_t j = 0; j < numRows; j++)
-      std::cout << line[j];
     std::cout << '\n';
   }
   std::cout << '\n';
@@ -497,10 +490,10 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
 
 #define EXECUTE_TEST(SCALAR, ORDINAL, OFFSET, DEVICE) \
 TEST_F( TestCategory, sparse ## _ ## gauss_seidel ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(10000, 10000 * 30, 200, 10); \
+  test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(20000, 20000 * 60, 500, 100); \
 } \
 TEST_F( TestCategory, sparse ## _ ## rcm ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 100, 100); \
+  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(20, 20, 20); \
 }
 
 
