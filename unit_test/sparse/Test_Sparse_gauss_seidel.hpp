@@ -210,6 +210,10 @@ void test_gauss_seidel(lno_t numRows, size_type nnz, lno_t bandwidth, lno_t row_
   for (int ii = 0; ii < 1; ++ii){
 #endif
     GSAlgorithm gs_algorithm = gs_algorithms[ii];
+    if(gs_algorithm == GS_CLUSTER)
+    {
+      //need to symmetrize the graph (do this by adding it to its transpose)
+    }
     scalar_view_t x_vector ("x vector", nv);
     const scalar_t alpha = 1.0;
     KokkosBlas::axpby(alpha, solution_x, -alpha, x_vector);
@@ -384,7 +388,7 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
       typename device::execution_space, typename device::memory_space,typename device::memory_space> KernelHandle;
 
   std::cout << "building RCM test matrix with " << numRows << " rows.\n";
-  crsMat_t A = genSymmetricMatrix<crsMat_t, scalar_t, lno_t, device, offset_t>(numRows, nnz, bandwidth, false);
+  crsMat_t A = genSymmetricMatrix<crsMat_t, scalar_t, lno_t, device, offset_t>(numRows, nnz, bandwidth, true);
 
   lno_view_t Arowmap("asdf", numRows + 1);
   nnz = A.graph.row_map(numRows);
@@ -490,7 +494,7 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
 
 #define EXECUTE_TEST(SCALAR, ORDINAL, OFFSET, DEVICE) \
 TEST_F( TestCategory, sparse ## _ ## gauss_seidel ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(10000, 10000 * 30, 200, 100); \
+  test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(68587, 1849000, 3000, 8); \
 } \
 TEST_F( TestCategory, sparse ## _ ## rcm ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
   test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 1000, 70); \
