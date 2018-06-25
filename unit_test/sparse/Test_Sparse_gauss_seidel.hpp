@@ -408,7 +408,7 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
   KernelHandle kh;
   kh.create_gs_handle(GS_DEFAULT);
 
-  typedef KokkosSparse::Impl::RCM<KernelHandle, decltype(Arowmap), decltype(Aentries), decltype(Aentries)> rcm_t;
+  typedef KokkosSparse::Impl::RCM<KernelHandle, decltype(Arowmap), decltype(Aentries)> rcm_t;
   rcm_t rcm(&kh, numRows, Arowmap, Aentries);
   std::cout << "Matrix for RCM testing (raw CRS)\n";
   for(lno_t i = 0; i < numRows; i++)

@@ -873,7 +873,7 @@ public:
     typedef typename HandleType::GraphColoringHandleType::color_view_t color_view_t;
     //compute the RCM ordering of the graph
     typedef Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryManaged> perm_view_t;
-    RCM<HandleType, const_lno_row_view_t, const_lno_nnz_view_t, perm_view_t> rcm(this->handle, num_rows, xadj, adj);
+    RCM<HandleType, const_lno_row_view_t, const_lno_nnz_view_t> rcm(this->handle, num_rows, xadj, adj);
     //rcmOrder maps (bijectively) from original rows to RCM-ordered rows
     //rcmPerm is the inverse mapping
     perm_view_t rcmOrder = rcm.rcm();
