@@ -87,9 +87,9 @@ struct RCM
   typedef typename HandleType::nnz_lno_persistent_work_view_t nnz_lno_persistent_work_view_t;
   typedef typename HandleType::nnz_lno_persistent_work_host_view_t nnz_lno_persistent_work_host_view_t; //Host view type
 
-  typedef Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryManaged> perm_view_t;
-  typedef Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryManaged> result_view_t;
-  typedef Kokkos::View<nnz_lno_t, MyTempMemorySpace, Kokkos::MemoryManaged> single_view_t;
+  typedef Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryTraits<0>> perm_view_t;
+  typedef Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryTraits<0>> result_view_t;
+  typedef Kokkos::View<nnz_lno_t, MyTempMemorySpace, Kokkos::MemoryTraits<0>> single_view_t;
 
   typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
 
@@ -280,15 +280,15 @@ struct RCM
       nthreads = 256;
     }
     #endif
-    Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryManaged> workQueue("BFS queue (double buffered)", 2, numRows);
-    perm_view_t updateThreads("Thread IDs adding nodes to queue", numRows);
+    Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryTraits<0>> workQueue("BFS queue (double buffered)", 2, numRows);
+    Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryTraits<0>> updateThreads("Thread IDs adding nodes to queue", numRows);
     perm_view_t updateThreadCounts("Number of nodes to queue on each thread", nthreads);
     single_view_t updateDirty("Whether queue update pass must run");
     single_view_t activeQSize("BFS active level queue size");
     single_view_t nextQSize("BFS next level queue size");
     //TODO: place this in shared. Check for allocation failure, fall back to global?
     std::cout << "Allocating " << nthreads * maxDeg << " total elements of scratch to share among " << nthreads << ".\n";
-    Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryManaged> scratch("Scratch buffer shared by threads", nthreads, maxDeg);
+    Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryTraits<0u>> scratch("Scratch buffer shared by threads", nthreads, maxDeg);
     std::cout << "Launching outer team policy with " << nthreads << " threads per team.\n";
     Kokkos::parallel_for(team_policy_t(1, nthreads),
     KOKKOS_LAMBDA(const team_member_t mem)
@@ -306,9 +306,10 @@ struct RCM
       }
       Kokkos::memory_fence();
       //do until every node has been visited and labeled
-      while(visitCounter() < numRows)
+      while(Kokkos::volatile_load(&visitCounter()) < numRows)
       {
         mem.team_barrier();
+        /*
         if(tid == 0)
         {
           std::cout << ">> At top of main loop, queue: ";
@@ -318,7 +319,8 @@ struct RCM
           }
           std::cout << std::endl;
         }
-        auto qSize = Kokkos::safe_load(&activeQSize());
+        */
+        auto qSize = Kokkos::volatile_load(&activeQSize());
         for(size_type workSet = 0; workSet < qSize; workSet += nthreads)
         {
           mem.team_barrier();
@@ -407,25 +409,30 @@ struct RCM
             updateThreads(i) = LNO_MAX;
           }
           //must do at least one pass of tracking update threads
+          /*
           Kokkos::single(Kokkos::PerTeam(mem),
           KOKKOS_LAMBDA()
           {
+          */
             updateDirty() = 1;
-          });
-          mem.team_barrier();
+          //});
           Kokkos::memory_fence();
-          while(Kokkos::safe_load(&updateDirty()))
+          mem.team_barrier();
+          std::cout << "Thread " << tid << " reads updateDirty as " << Kokkos::volatile_load(&updateDirty()) << " (should be 1).\n";
+          while(Kokkos::volatile_load(&updateDirty()))
           {
             if(tid == 0)
             {
               std::cout << "In loop determining updateThreads.\n";
             }
             mem.team_barrier();
+            /*
             Kokkos::single(Kokkos::PerTeam(mem),
             KOKKOS_LAMBDA()
             {
+            */
               updateDirty() = 0;
-            });
+            //});
             Kokkos::memory_fence();
             mem.team_barrier();
             //go through rows in thread-local scratch
@@ -433,21 +440,20 @@ struct RCM
             for(size_type i = 0; i < neiCount; i++)
             {
               std::cout << "Thread " << tid << " updating value for " << scratch(tid, i) << " in updateThreads.\n";
-              nnz_lno_t prevThread = &updateThreads(scratch(tid, i));
+              nnz_lno_t prevThread = Kokkos::volatile_load(&updateThreads(scratch(tid, i)));
               if(prevThread > tid)
               {
+                updateThreads(scratch(tid, i)) = tid;
+                Kokkos::atomic_increment(&updateDirty());
+                /*
                 //if some other thread hasn't already changed the updateThreads element, replace it with tid
                 //if the cmp-xchg fails, some other thread is also updating that entry so more updates will be required.
                 //but ideally it will succeed most of the time
                 if(!Kokkos::atomic_compare_exchange_strong<nnz_lno_t>(&updateThreads(scratch(tid, i)), prevThread, tid))
                 {
-                  std::cout << "Need another trip through determining updateThreads (shouldn't happen in serial!)\n";
-                  Kokkos::atomic_increment(&updateDirty());
+                  //std::cout << "Need another trip through determining updateThreads (shouldn't happen in serial!)\n";
                 }
-                else
-                {
-                  std::cout << "  Value was updated from " << prevThread << " to " << tid << '\n';
-                }
+                */
               }
             }
           }
@@ -457,7 +463,7 @@ struct RCM
           size_type numToQueue = 0;
           for(size_type i = 0; i < neiCount; i++)
           {
-            if(Kokkos::safe_load(&updateThreads(scratch(tid, i))) == tid)
+            if(Kokkos::volatile_load(&updateThreads(scratch(tid, i))) == tid)
             {
               numToQueue++;
             }
@@ -470,7 +476,7 @@ struct RCM
               std::cout << "Thread " << tid << " has " << numToQueue << " neighbors to add to queue: ";
               for(int j = 0; j < neiCount; j++)
               {
-                if(Kokkos::safe_load(&updateThreads(scratch(tid, j))) == tid)
+                if(updateThreads(scratch(tid, j)) == tid)
                   std::cout << scratch(tid, j) << ' ';
               }
               std::cout << std::endl;
@@ -482,7 +488,7 @@ struct RCM
           size_type queueUpdateOffset = 0;
           for(size_type i = 0; i < tid; i++)
           {
-            queueUpdateOffset += Kokkos::safe_load(&updateThreadCounts(i));
+            queueUpdateOffset += Kokkos::volatile_load(&updateThreadCounts(i));
           }
           //write out all queue updates in parallel (only for threads that worked this iteration)
           for(int asdf = 0; asdf < nthreads; asdf++)
@@ -491,12 +497,12 @@ struct RCM
             {
               if(busy)
               {
-                std::cout << "Thread " << tid << " is updating queue (at offset " << nextQSize() + queueUpdateOffset << ")" << std::endl;
+                //std::cout << "Thread " << tid << " is updating queue (at offset " << nextQSize() + queueUpdateOffset << ")" << std::endl;
                 size_type nextQueueIter = 0;
                 for(size_type i = 0; i < neiCount; i++)
                 {
                   nnz_lno_t toQueue = scratch(tid, i);
-                  if(updateThreads(toQueue) == tid)
+                  if(Kokkos::volatile_load(&updateThreads(toQueue)) == tid)
                   {
                     std::cout << "  Adding " << toQueue << " at index " << nextQSize() + queueUpdateOffset + nextQueueIter << std::endl;
                     visit(toQueue) = QUEUED;
@@ -510,7 +516,7 @@ struct RCM
                 }
                 //apply correct label to process
                 std::cout << "Thread " << tid << " is labeling " << process << " with " << visitCounter() + tid << std::endl;
-                visit(process) = visitCounter() + tid;
+                visit(process) = Kokkos::volatile_load(&visitCounter()) + tid;
               }
             }
             mem.team_barrier();
@@ -519,26 +525,26 @@ struct RCM
           Kokkos::single(Kokkos::PerTeam(mem),
           KOKKOS_LAMBDA()
           {
-            std::cout << "One thread is updating visit counter from " << visitCounter() << " to ";
-            if(workSet + nthreads > activeQSize())
-              visitCounter() += activeQSize() - workSet;
+            std::cout << "One thread is updating visit counter from " << Kokkos::volatile_load(&visitCounter()) << " to ";
+            if(workSet + nthreads > qSize)
+              Kokkos::atomic_add<nnz_lno_t>(&visitCounter(), qSize - workSet);
             else
-              visitCounter() += nthreads;
-            std::cout << visitCounter() << std::endl;
+              Kokkos::atomic_add<nnz_lno_t>(&visitCounter(), nthreads);
+            std::cout << Kokkos::volatile_load(&visitCounter()) << std::endl;
             //update queue size by the number of nodes added this iteration
             size_type totalQueueAdded = 0;
             for(size_type i = 0; i < nthreads; i++)
             {
-              totalQueueAdded += updateThreadCounts(i);
+              totalQueueAdded += Kokkos::volatile_load(&updateThreadCounts(i));
             }
-            nextQSize() += totalQueueAdded;
+            Kokkos::atomic_add<nnz_lno_t>(&nextQSize(), totalQueueAdded);
           });
           if(tid == 0)
           {
             std::cout << "Hello from bottom of main loop (thread 0)\n";
           }
-          mem.team_barrier();
           Kokkos::memory_fence();
+          mem.team_barrier();
         }
         if(tid == 0)
           std::cout << "Done processing queue, flipping queue buffers." << std::endl;
@@ -551,8 +557,8 @@ struct RCM
         Kokkos::single(Kokkos::PerTeam(mem),
         KOKKOS_LAMBDA()
         {
-          std::cout << "Queue for next iteration has " << nextQSize() << " nodes." << std::endl;
-          activeQSize() = nextQSize();
+          std::cout << "Queue for next iteration has " << Kokkos::volatile_load(&nextQSize()) << " nodes." << std::endl;
+          activeQSize() = Kokkos::volatile_load(&nextQSize());
           nextQSize() = 0;
           if(visitCounter() < numRows && activeQSize() == 0)
           {
