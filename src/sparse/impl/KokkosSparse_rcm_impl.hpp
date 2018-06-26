@@ -113,80 +113,6 @@ struct RCM
   lno_row_view_t rowmap;
   lno_nnz_view_t colinds;
 
-  /*
-  //compute a breadth-first search from start node
-  //returns a view containing the visit timestamps for each node (starting at 2)
-  //timestamp = 0 means not visited yet
-  //timestamp = 1 means node is queued for visit in next iteration
-  //at return, visit[start] = 2, visit[i] = visit time of node i
-  //this implementation is parallel but nondeterministic
-  non_const_lno_nnz_view_t parallel_bfs(nnz_lno_t start)
-  {
-    const nnz_lno_t NOT_VISITED = 0;
-    const nnz_lno_t QUEUED = 1;
-    const nnz_lno_t START = 2;
-    //view for storing the visit timestamps
-    non_const_lno_nnz_view_t visit("BFS visited nodes", numRows);
-    //visitCounter atomically counts timestamps
-    single_view_t visitCounter("BFS visit counter (atomic)");
-    //the visit queue
-    //will process the elements in [qStart, qEnd) in parallel during each sweep
-    //the queue doesn't need to be circular since each node is visited exactly once
-    perm_view_t q("BFS queue", numRows);
-    single_view_t qStart("BFS frontier start index (last in queue)");
-    single_view_t qEnd("BFS frontier end index (next in queue)");
-    Kokkos::parallel_for(team_policy_t(1, Kokkos::AUTO()),
-      KOKKOS_LAMBDA(team_member_t mem)
-      {
-        //initialize the frontier as just the starting node
-        Kokkos::single(Kokkos::PerThread(mem),
-          KOKKOS_LAMBDA()
-          {
-            visitCounter() = START;
-            visit(start) = QUEUED;
-            q(0) = start;
-            qStart() = 0;
-            qEnd() = 1;
-          });
-        auto tid = mem.team_rank();
-        //all threads work until every node has been labeled
-        while(qStart() != qEnd())
-        {
-          //loop over the frontier, giving each thread one node to process
-          size_type workStart = qStart();
-          size_type workEnd = qEnd();
-          mem.team_barrier();
-          qStart() = qEnd();
-          for(size_type teamIndex = workStart; teamIndex < workEnd; teamIndex += mem.team_size())
-          {
-            if(teamIndex + tid < workEnd)
-            {
-              size_type i = teamIndex + tid;
-              //the node to process
-              nnz_lno_t process = q(i);
-              size_t rowStart = rowmap(process);
-              size_t rowEnd = rowmap(process + 1);
-              //loop over neighbors, enqueing all which are NOT_VISITED
-              for(size_t j = rowStart; j < rowEnd; j++)
-              {
-                nnz_lno_t col = colinds(j);
-                if(Kokkos::atomic_compare_exchange_strong<nnz_lno_t>(&visit(col), NOT_VISITED, QUEUED))
-                {
-                  //compare-exchange passed, so append col to queue (for next iteration)
-                  q(Kokkos::atomic_fetch_add(&qEnd(), 1)) = col;
-                }
-              }
-              //label current node with the next timestamp
-              visit(process) = Kokkos::atomic_fetch_add(&visitCounter(), 1);
-            }
-          }
-          mem.team_barrier();
-        }
-      });
-    return visit;
-  }
-  */
-
   //simple parallel reduction to find max degree in graph
   nnz_lno_t find_max_degree()
   {
@@ -274,6 +200,8 @@ struct RCM
     //one of q1,q2 is active at a time and holds the nodes to process in next BFS level
     //elements which are LNO_MAX are just placeholders (nothing to process)
     size_type nthreads = MyExecSpace::concurrency();
+    if(nthreads > 64)
+      nthreads = 64;
     #ifdef KOKKOS_ENABLE_CUDA
     if(std::is_same<MyExecSpace, Kokkos::Cuda>::value)
     {
@@ -287,40 +215,28 @@ struct RCM
     single_view_t activeQSize("BFS active level queue size");
     single_view_t nextQSize("BFS next level queue size");
     //TODO: place this in shared. Check for allocation failure, fall back to global?
-    std::cout << "Allocating " << nthreads * maxDeg << " total elements of scratch to share among " << nthreads << ".\n";
+    //std::cout << "Allocating " << nthreads * maxDeg << " total elements of scratch to share among " << nthreads << ".\n";
     Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryTraits<0u>> scratch("Scratch buffer shared by threads", nthreads, maxDeg);
-    std::cout << "Launching outer team policy with " << nthreads << " threads per team.\n";
+    //std::cout << "Launching outer team policy with " << nthreads << " threads per team.\n";
     Kokkos::parallel_for(team_policy_t(1, nthreads),
     KOKKOS_LAMBDA(const team_member_t mem)
     {
       nnz_lno_t tid = mem.team_rank();
-      //all threads work until every node has been labeled (queue empty)
-      //
       int active = 0;
       int next = 1;
-      if(tid == 0)
+      Kokkos::single(Kokkos::PerTeam(mem),
+      KOKKOS_LAMBDA()
       {
         workQueue(active, 0) = start;
         activeQSize() = 1;
         nextQSize() = 0;
-      }
-      Kokkos::memory_fence();
+      });
+      mem.team_barrier();
       //do until every node has been visited and labeled
-      while(Kokkos::volatile_load(&visitCounter()) < numRows)
+      while(visitCounter() < numRows)
       {
         mem.team_barrier();
-        /*
-        if(tid == 0)
-        {
-          std::cout << ">> At top of main loop, queue: ";
-          for(int i = 0; i < activeQSize(); i++)
-          {
-            std::cout << workQueue(active, i) << ' ';
-          }
-          std::cout << std::endl;
-        }
-        */
-        auto qSize = Kokkos::volatile_load(&activeQSize());
+        auto qSize = activeQSize();
         for(size_type workSet = 0; workSet < qSize; workSet += nthreads)
         {
           mem.team_barrier();
@@ -328,6 +244,7 @@ struct RCM
           nnz_lno_t process = LNO_MAX;
           //is thread tid visiting a node this iteration?
           bool busy = workSet + tid < qSize;
+          /*
           for(int i = 0; i < nthreads; i++)
           {
             if(tid == i)
@@ -339,17 +256,12 @@ struct RCM
             }
             mem.team_barrier();
           }
+          */
           if(busy)
           {
             //get pointer to thread-local scratch space, which has size maxDeg
             //the node to process
             process = workQueue(active, workSet + tid);
-            for(int i = 0; i < nthreads; i++)
-            {
-              if(tid == i)
-                std::cout << "Hello from thread " << tid << ", processing " << process << std::endl;
-              mem.team_barrier();
-            }
             offset_t rowStart = rowmap(process);
             offset_t rowEnd = rowmap(process + 1);
             //build a list of all non-visited neighbors
@@ -359,15 +271,10 @@ struct RCM
               if(visit(col) == NOT_VISITED && col != process)
               {
                 scratch(tid, neiCount) = col;
+                updateThreads(col) = LNO_MAX;
                 neiCount++;
               }
             }
-            /*
-            std::cout << "Thread " << tid << " has " << neiCount << " neighbors to add to queue (pre-sorting): ";
-            for(int i = 0; i < neiCount; i++)
-              std::cout << scratch[i] << ' ';
-            std::cout << '\n';
-            */
             //insertion sort the neighbors in ascending order of degree
             for(nnz_lno_t j = 1; j < neiCount; j++)
             {
@@ -392,162 +299,100 @@ struct RCM
               scratch(tid, k) = jcol;
             }
           }
-          for(int j = 0; j < nthreads; j++)
-          {
-            if(tid == j)
-            {
-              std::cout << "Thread " << tid << " has " << neiCount << " neighbors to add to queue (post-sorting): ";
-              for(int i = 0; i < neiCount; i++)
-                std::cout << scratch(tid, i) << ' ';
-              std::cout << std::endl;
-            }
-            mem.team_barrier();
-          }
-          //fill updateThreads with LNO_MAX (all threads participate in this)
-          for(size_type i = tid * numRows / nthreads; i < (tid + 1) * numRows / nthreads; i++)
-          {
-            updateThreads(i) = LNO_MAX;
-          }
-          //must do at least one pass of tracking update threads
           /*
+          for(int i = 0; i < 3; i++)
+          {
+            mem.team_barrier();
+            std::cout << i;
+            mem.team_barrier();
+            if(tid == 0)
+              std::cout << '\n';
+          }
+          */
+          //must do at least one pass of tracking update threads
           Kokkos::single(Kokkos::PerTeam(mem),
           KOKKOS_LAMBDA()
           {
-          */
             updateDirty() = 1;
-          //});
-          Kokkos::memory_fence();
+          });
           mem.team_barrier();
-          std::cout << "Thread " << tid << " reads updateDirty as " << Kokkos::volatile_load(&updateDirty()) << " (should be 1).\n";
-          while(Kokkos::volatile_load(&updateDirty()))
+          while(updateDirty())
           {
-            if(tid == 0)
-            {
-              std::cout << "In loop determining updateThreads.\n";
-            }
             mem.team_barrier();
-            /*
             Kokkos::single(Kokkos::PerTeam(mem),
             KOKKOS_LAMBDA()
             {
-            */
               updateDirty() = 0;
-            //});
-            Kokkos::memory_fence();
+            });
             mem.team_barrier();
             //go through rows in thread-local scratch
             //replace updateThreads(row) with tid, if tid is lower
             for(size_type i = 0; i < neiCount; i++)
             {
-              std::cout << "Thread " << tid << " updating value for " << scratch(tid, i) << " in updateThreads.\n";
-              nnz_lno_t prevThread = Kokkos::volatile_load(&updateThreads(scratch(tid, i)));
+              nnz_lno_t prevThread = updateThreads(scratch(tid, i));
               if(prevThread > tid)
               {
-                updateThreads(scratch(tid, i)) = tid;
-                Kokkos::atomic_increment(&updateDirty());
-                /*
-                //if some other thread hasn't already changed the updateThreads element, replace it with tid
-                //if the cmp-xchg fails, some other thread is also updating that entry so more updates will be required.
-                //but ideally it will succeed most of the time
-                if(!Kokkos::atomic_compare_exchange_strong<nnz_lno_t>(&updateThreads(scratch(tid, i)), prevThread, tid))
+                //swap in tid atomically. If this fails there is a conflict and
+                //will need to go through loop again
+                if(prevThread != Kokkos::atomic_exchange<nnz_lno_t>(&updateThreads(scratch(tid, i)), tid))
                 {
-                  //std::cout << "Need another trip through determining updateThreads (shouldn't happen in serial!)\n";
+                  Kokkos::atomic_increment(&updateDirty());
                 }
-                */
               }
             }
+            mem.team_barrier();
           }
-          Kokkos::memory_fence();
-          mem.team_barrier();
           //each thread counts the number of entries it will actually add to nextQ
           size_type numToQueue = 0;
           for(size_type i = 0; i < neiCount; i++)
           {
-            if(Kokkos::volatile_load(&updateThreads(scratch(tid, i))) == tid)
+            if(updateThreads(scratch(tid, i)) == tid)
             {
               numToQueue++;
             }
           }
           updateThreadCounts(tid) = numToQueue;
-          for(int i = 0; i < nthreads; i++)
-          {
-            if(tid == i && busy)
-            {
-              std::cout << "Thread " << tid << " has " << numToQueue << " neighbors to add to queue: ";
-              for(int j = 0; j < neiCount; j++)
-              {
-                if(updateThreads(scratch(tid, j)) == tid)
-                  std::cout << scratch(tid, j) << ' ';
-              }
-              std::cout << std::endl;
-            }
-            mem.team_barrier();
-          }
-          Kokkos::memory_fence();
           mem.team_barrier();
           size_type queueUpdateOffset = 0;
           for(size_type i = 0; i < tid; i++)
           {
-            queueUpdateOffset += Kokkos::volatile_load(&updateThreadCounts(i));
+            queueUpdateOffset += updateThreadCounts(i);
           }
           //write out all queue updates in parallel (only for threads that worked this iteration)
-          for(int asdf = 0; asdf < nthreads; asdf++)
+          if(busy)
           {
-            if(tid == asdf)
+            size_type nextQueueIter = 0;
+            for(size_type i = 0; i < neiCount; i++)
             {
-              if(busy)
+              nnz_lno_t toQueue = scratch(tid, i);
+              if(updateThreads(toQueue) == tid)
               {
-                //std::cout << "Thread " << tid << " is updating queue (at offset " << nextQSize() + queueUpdateOffset << ")" << std::endl;
-                size_type nextQueueIter = 0;
-                for(size_type i = 0; i < neiCount; i++)
-                {
-                  nnz_lno_t toQueue = scratch(tid, i);
-                  if(Kokkos::volatile_load(&updateThreads(toQueue)) == tid)
-                  {
-                    std::cout << "  Adding " << toQueue << " at index " << nextQSize() + queueUpdateOffset + nextQueueIter << std::endl;
-                    visit(toQueue) = QUEUED;
-                    workQueue(next, nextQSize() + queueUpdateOffset + nextQueueIter) = toQueue;
-                    nextQueueIter++;
-                  }
-                  else
-                  {
-                    std::cout << "  NOT adding " << toQueue << " to queue because updateThreads(" << toQueue << ") = " << updateThreads(toQueue) << '\n';
-                  }
-                }
-                //apply correct label to process
-                std::cout << "Thread " << tid << " is labeling " << process << " with " << visitCounter() + tid << std::endl;
-                visit(process) = Kokkos::volatile_load(&visitCounter()) + tid;
+                visit(toQueue) = QUEUED;
+                workQueue(next, nextQSize() + queueUpdateOffset + nextQueueIter) = toQueue;
+                nextQueueIter++;
               }
             }
-            mem.team_barrier();
+            //apply correct label to process
+            visit(process) = visitCounter() + tid;
           }
           mem.team_barrier();
           Kokkos::single(Kokkos::PerTeam(mem),
           KOKKOS_LAMBDA()
           {
-            std::cout << "One thread is updating visit counter from " << Kokkos::volatile_load(&visitCounter()) << " to ";
             if(workSet + nthreads > qSize)
-              Kokkos::atomic_add<nnz_lno_t>(&visitCounter(), qSize - workSet);
+              visitCounter() += qSize - workSet;
             else
-              Kokkos::atomic_add<nnz_lno_t>(&visitCounter(), nthreads);
-            std::cout << Kokkos::volatile_load(&visitCounter()) << std::endl;
+              visitCounter() += nthreads;
             //update queue size by the number of nodes added this iteration
             size_type totalQueueAdded = 0;
             for(size_type i = 0; i < nthreads; i++)
             {
-              totalQueueAdded += Kokkos::volatile_load(&updateThreadCounts(i));
+              totalQueueAdded += updateThreadCounts(i);
             }
-            Kokkos::atomic_add<nnz_lno_t>(&nextQSize(), totalQueueAdded);
+            nextQSize() += totalQueueAdded;
           });
-          if(tid == 0)
-          {
-            std::cout << "Hello from bottom of main loop (thread 0)\n";
-          }
-          Kokkos::memory_fence();
           mem.team_barrier();
         }
-        if(tid == 0)
-          std::cout << "Done processing queue, flipping queue buffers." << std::endl;
         //(thread-local) swap queue buffers
         {
           active = next;
@@ -557,8 +402,7 @@ struct RCM
         Kokkos::single(Kokkos::PerTeam(mem),
         KOKKOS_LAMBDA()
         {
-          std::cout << "Queue for next iteration has " << Kokkos::volatile_load(&nextQSize()) << " nodes." << std::endl;
-          activeQSize() = Kokkos::volatile_load(&nextQSize());
+          activeQSize() = nextQSize();
           nextQSize() = 0;
           if(visitCounter() < numRows && activeQSize() == 0)
           {
@@ -577,7 +421,6 @@ struct RCM
             }
           }
         });
-        Kokkos::memory_fence();
         mem.team_barrier();
       }
     });
