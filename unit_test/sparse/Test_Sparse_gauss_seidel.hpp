@@ -47,6 +47,7 @@
 #include <Kokkos_Core.hpp>
 #include "KokkosKernels_Handle.hpp"
 #include "KokkosKernels_IOUtils.hpp"
+#include "KokkosKernels_SparseUtils.hpp"
 //#include <Kokkos_Sparse_CrsMatrix.hpp>
 #include <KokkosSparse_spmv.hpp>
 #include <KokkosBlas1_dot.hpp>
@@ -179,14 +180,35 @@ void test_gauss_seidel(lno_t numRows, size_type nnz, lno_t bandwidth, lno_t row_
   using namespace Test;
   srand(245);
   typedef typename KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type> crsMat_t;
-  //typedef typename crsMat_t::StaticCrsGraphType graph_t;
-  //typedef typename graph_t::row_map_type lno_view_t;
-  //typedef typename graph_t::entries_type lno_nnz_view_t;
-  //typedef typename graph_t::entries_type::non_const_type   color_view_t;
+  typedef typename crsMat_t::StaticCrsGraphType graph_t;
+  typedef typename graph_t::row_map_type::non_const_type lno_view_t;
+  typedef typename lno_view_t::non_const_value_type offset_t;
+  typedef typename graph_t::entries_type::non_const_type lno_nnz_view_t;
   typedef typename crsMat_t::values_type::non_const_type scalar_view_t;
+  typedef typename device::execution_space execution_space;
+  typedef typename device::memory_space memory_space;
 
   lno_t numCols = numRows;
-  crsMat_t input_mat = KokkosKernels::Impl::kk_generate_diagonally_dominant_sparse_matrix<crsMat_t>(numRows,numCols,nnz,row_size_variance, bandwidth);
+  crsMat_t A = KokkosKernels::Impl::kk_generate_diagonally_dominant_sparse_matrix<crsMat_t>(numRows,numCols,nnz,row_size_variance, bandwidth);
+  //symmetrize the matrix
+  typedef KokkosKernelsHandle
+      <offset_t, lno_t, scalar_t,
+      execution_space, memory_space, memory_space> KernelHandle;
+  lno_view_t at_rowmap("A^T rowmap", numRows + 1);
+  lno_nnz_view_t at_entries("A^T entries", A.graph.entries.dimension_0());
+  KokkosKernels::Impl::kk_transpose_graph<decltype(A.graph.row_map), decltype(A.graph.entries), lno_view_t, lno_nnz_view_t, lno_view_t, execution_space>
+  (numRows, numRows, A.graph.row_map, A.graph.entries, at_rowmap, at_entries);
+  lno_view_t c_rowmap("C rowmap", numRows + 1);
+  KernelHandle kh;
+  kh.create_spadd_handle(false);
+  KokkosSparse::Experimental::spadd_symbolic <KernelHandle, decltype(A.graph.row_map), decltype(A.graph.entries), lno_view_t, lno_nnz_view_t, lno_view_t, lno_nnz_view_t>
+  (&kh, A.graph.row_map, A.graph.entries, at_rowmap, at_entries, c_rowmap);
+  auto cnz = kh.get_spadd_handle()->get_max_result_nnz();
+  lno_nnz_view_t c_entries("C entries", cnz);
+  scalar_view_t c_values("C values", cnz);
+  KokkosSparse::Experimental::spadd_numeric<KernelHandle, decltype(A.graph.row_map), decltype(A.graph.entries), scalar_t, decltype(A.values), lno_view_t, lno_nnz_view_t, scalar_t, scalar_view_t, lno_view_t, lno_nnz_view_t, scalar_view_t>
+  (&kh, A.graph.row_map, A.graph.entries, A.values, 1, at_rowmap, at_entries, A.values, 1, c_rowmap, c_entries, c_values);
+  crsMat_t input_mat("C", numRows, numRows, cnz, c_values, c_rowmap, c_entries);
 
   lno_t nv = input_mat.numRows();
 

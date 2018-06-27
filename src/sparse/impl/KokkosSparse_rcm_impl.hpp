@@ -273,7 +273,23 @@ struct RCM
   //and neighbors are visited in ascending order of degree
   result_view_t parallel_rcm_bfs(nnz_lno_t start)
   {
-    //std::cout << "In rcm().\n";
+  /*
+    std::cout << "In rcm().\n";
+    std::cout << "# Entries per row (check for weird values):\n";
+    for(nnz_lno_t i = 0; i < numRows; i++)
+    {
+      std::cout << rowmap(i + 1) - rowmap(i) << ' ';
+    }
+    std::cout << '\n';
+    std::cout << "Checking matrix validity...\n";
+    for(offset_t i = 0; i < rowmap(numRows); i++)
+    {
+      if(colinds(i) < 0 || colinds(i) >= numRows)
+      {
+        std::cout << "Entry " << i << " (" << colinds(i) << ") is invalid.\n";
+      }
+    }
+    */
     //std::cout << "Working on matrix with " << numRows << " rows and " << rowmap(numRows) << " entries.\n";
     //need to know maximum degree to allocate scratch space for threads
     auto maxDeg = find_max_degree();
