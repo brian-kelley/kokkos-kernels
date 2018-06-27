@@ -168,6 +168,106 @@ struct RCM
     return (double) totalBand / rowptrs(numRows);
   }
 
+  template<typename size_type, typename KeyType, typename ValueType, typename IndexType>
+  KOKKOS_INLINE_FUNCTION void
+  radixSortKeysAndValues(KeyType* keys, KeyType* keysAux, ValueType* values, ValueType* valuesAux, IndexType n)
+  {
+    if(n <= 1)
+      return;
+    //sort 4 bits at a time
+    KeyType mask = 0xF;
+    bool inAux = false;
+    //maskPos counts the low bit index of mask (0, 4, 8, ...)
+    IndexType maskPos = 0;
+    IndexType sortBits = 0;
+    KeyType minKey = keys[0];
+    KeyType maxKey = keys[0];
+    for(size_type i = 0; i < n; i++)
+    {
+      if(keys[i] < minKey)
+        minKey = keys[i];
+      if(keys[i] > maxKey)
+        maxKey = keys[i];
+    }
+    //subtract a bias of minKey so that key range starts at 0
+    for(size_type i = 0; i < n; i++)
+    {
+      keys[i] -= minKey;
+    }
+    KeyType upperBound = maxKey - minKey;
+    while(upperBound)
+    {
+      upperBound >>= 1;
+      sortBits++;
+    }
+    for(size_type s = 0; s < (sortBits + 3) / 4; s++)
+    {
+      //Count the number of elements in each bucket
+      IndexType count[16] = {0};
+      IndexType offset[17] = {0};
+      if(!inAux)
+      {
+        for(IndexType i = 0; i < n; i++)
+        {
+          count[(keys[i] & mask) >> maskPos]++;
+        }
+      }
+      else
+      {
+        for(IndexType i = 0; i < n; i++)
+        {
+          count[(keysAux[i] & mask) >> maskPos]++;
+        }
+      }
+      //get offset as the prefix sum for count
+      for(IndexType i = 0; i < 16; i++)
+      {
+        offset[i + 1] = offset[i] + count[i];
+      }
+      //now for each element in [lo, hi), move it to its offset in the other buffer
+      //this branch should be ok because whichBuf is the same on all threads
+      if(!inAux)
+      {
+        //copy from *Over to *Aux
+        for(IndexType i = 0; i < n; i++)
+        {
+          IndexType bucket = (keys[i] & mask) >> maskPos;
+          keysAux[offset[bucket + 1] - count[bucket]] = keys[i];
+          valuesAux[offset[bucket + 1] - count[bucket]] = values[i];
+          count[bucket]--;
+        }
+      }
+      else
+      {
+        //copy from *Aux to *Over
+        for(IndexType i = 0; i < n; i++)
+        {
+          IndexType bucket = (keysAux[i] & mask) >> maskPos;
+          keys[offset[bucket + 1] - count[bucket]] = keysAux[i];
+          values[offset[bucket + 1] - count[bucket]] = valuesAux[i];
+          count[bucket]--;
+        }
+      }
+      inAux = !inAux;
+      mask = mask << 4;
+      maskPos += 4;
+    }
+    if(inAux)
+    {
+      //need to deep copy from aux arrays to main
+      for(IndexType i = 0; i < n; i++)
+      {
+        keys[i] = keysAux[i];
+        values[i] = valuesAux[i];
+      }
+    }
+    //remove the bias
+    for(size_type i = 0; i < n; i++)
+    {
+      keys[i] += minKey;
+    }
+  }
+
   //breadth-first search, producing a Cuthill-McKee ordering
   //nodes are labeled in the exact order they would be in a serial BFS,
   //and neighbors are visited in ascending order of degree
@@ -210,18 +310,25 @@ struct RCM
     #endif
     Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryTraits<0>> workQueue("BFS queue (double buffered)", 2, numRows);
     Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryTraits<0>> updateThreads("Thread IDs adding nodes to queue", numRows);
+    Kokkos::parallel_for(range_policy_t(0, numRows),
+      KOKKOS_LAMBDA(size_type i) {updateThreads(i) = LNO_MAX;});
     perm_view_t updateThreadCounts("Number of nodes to queue on each thread", nthreads);
     single_view_t updateDirty("Whether queue update pass must run");
     single_view_t activeQSize("BFS active level queue size");
     single_view_t nextQSize("BFS next level queue size");
     //TODO: place this in shared. Check for allocation failure, fall back to global?
     //std::cout << "Allocating " << nthreads * maxDeg << " total elements of scratch to share among " << nthreads << ".\n";
-    Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryTraits<0u>> scratch("Scratch buffer shared by threads", nthreads, maxDeg);
+    Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryTraits<0u>> scratch("Scratch buffer shared by threads", nthreads, maxDeg * 4);
     //std::cout << "Launching outer team policy with " << nthreads << " threads per team.\n";
     Kokkos::parallel_for(team_policy_t(1, nthreads),
     KOKKOS_LAMBDA(const team_member_t mem)
     {
       nnz_lno_t tid = mem.team_rank();
+      auto neighborList = Kokkos::subview(scratch, tid, Kokkos::make_pair(0, maxDeg));
+      auto neighborListAux = Kokkos::subview(scratch, tid, Kokkos::make_pair(maxDeg, maxDeg * 2));
+      auto degreeList = Kokkos::subview(scratch, tid, Kokkos::make_pair(maxDeg * 2, maxDeg * 3));
+      auto degreeListAux = Kokkos::subview(scratch, tid, Kokkos::make_pair(maxDeg * 3, maxDeg * 4));
+      nnz_lno_t nextQSizeLocal = 0;
       int active = 0;
       int next = 1;
       Kokkos::single(Kokkos::PerTeam(mem),
@@ -240,23 +347,11 @@ struct RCM
         for(size_type workSet = 0; workSet < qSize; workSet += nthreads)
         {
           mem.team_barrier();
+          nextQSizeLocal = nextQSize();
           nnz_lno_t neiCount = 0;
           nnz_lno_t process = LNO_MAX;
           //is thread tid visiting a node this iteration?
           bool busy = workSet + tid < qSize;
-          /*
-          for(int i = 0; i < nthreads; i++)
-          {
-            if(tid == i)
-            {
-              if(busy)
-                std::cout << "Hello from thread " << tid << ", processing work-item at index " << workSet + tid << std::endl;
-              else
-                std::cout << "Hello from thread " << tid << ", will idle during this iteration." << std::endl;
-            }
-            mem.team_barrier();
-          }
-          */
           if(busy)
           {
             //get pointer to thread-local scratch space, which has size maxDeg
@@ -270,45 +365,14 @@ struct RCM
               nnz_lno_t col = colinds(j);
               if(visit(col) == NOT_VISITED && col != process)
               {
-                scratch(tid, neiCount) = col;
-                updateThreads(col) = LNO_MAX;
+                neighborList(neiCount) = col;
+                degreeList(neiCount) = rowEnd - rowStart;
                 neiCount++;
               }
             }
-            //insertion sort the neighbors in ascending order of degree
-            for(nnz_lno_t j = 1; j < neiCount; j++)
-            {
-              //move scratch[j] left into the correct position
-              nnz_lno_t jcol = scratch(tid, j);
-              offset_t jdeg = rowmap(jcol + 1) - rowmap(jcol);
-              nnz_lno_t k = j - 1;
-              for(; k > 0; k--)
-              {
-                offset_t kdeg = rowmap(scratch(tid, k) + 1) - rowmap(scratch(tid, k));
-                if(kdeg <= jdeg)
-                {
-                  //jcol belongs at position k + 1
-                  k++;
-                  break;
-                }
-              }
-              for(nnz_lno_t shifting = j - 1; shifting >= k; shifting--)
-              {
-                scratch(tid, shifting + 1) = scratch(tid, shifting);
-              }
-              scratch(tid, k) = jcol;
-            }
+            //this sort will sort neighborList according to degree
+            radixSortKeysAndValues<size_type, nnz_lno_t, nnz_lno_t, size_type>(degreeList.data(), degreeListAux.data(), neighborList.data(), neighborListAux.data(), neiCount);
           }
-          /*
-          for(int i = 0; i < 3; i++)
-          {
-            mem.team_barrier();
-            std::cout << i;
-            mem.team_barrier();
-            if(tid == 0)
-              std::cout << '\n';
-          }
-          */
           //must do at least one pass of tracking update threads
           Kokkos::single(Kokkos::PerTeam(mem),
           KOKKOS_LAMBDA()
@@ -329,12 +393,12 @@ struct RCM
             //replace updateThreads(row) with tid, if tid is lower
             for(size_type i = 0; i < neiCount; i++)
             {
-              nnz_lno_t prevThread = updateThreads(scratch(tid, i));
+              nnz_lno_t prevThread = updateThreads(neighborList(i));
               if(prevThread > tid)
               {
                 //swap in tid atomically. If this fails there is a conflict and
                 //will need to go through loop again
-                if(prevThread != Kokkos::atomic_exchange<nnz_lno_t>(&updateThreads(scratch(tid, i)), tid))
+                if(prevThread != Kokkos::atomic_exchange<nnz_lno_t>(&updateThreads(neighborList(i)), tid))
                 {
                   Kokkos::atomic_increment(&updateDirty());
                 }
@@ -346,7 +410,7 @@ struct RCM
           size_type numToQueue = 0;
           for(size_type i = 0; i < neiCount; i++)
           {
-            if(updateThreads(scratch(tid, i)) == tid)
+            if(updateThreads(neighborList(i)) == tid)
             {
               numToQueue++;
             }
@@ -364,11 +428,11 @@ struct RCM
             size_type nextQueueIter = 0;
             for(size_type i = 0; i < neiCount; i++)
             {
-              nnz_lno_t toQueue = scratch(tid, i);
+              nnz_lno_t toQueue = neighborList(i);
               if(updateThreads(toQueue) == tid)
               {
                 visit(toQueue) = QUEUED;
-                workQueue(next, nextQSize() + queueUpdateOffset + nextQueueIter) = toQueue;
+                workQueue(next, nextQSizeLocal + queueUpdateOffset + nextQueueIter) = toQueue;
                 nextQueueIter++;
               }
             }
@@ -391,7 +455,6 @@ struct RCM
             }
             nextQSize() += totalQueueAdded;
           });
-          mem.team_barrier();
         }
         //(thread-local) swap queue buffers
         {

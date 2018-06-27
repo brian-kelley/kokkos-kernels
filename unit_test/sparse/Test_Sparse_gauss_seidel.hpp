@@ -331,6 +331,7 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth, bool 
       }
     }
   }
+  /*
   std::cout << "Graph for testing RCM:\n";
   for(int i = 0; i < numRows; i++)
   {
@@ -344,6 +345,7 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth, bool 
     std::cout << '\n';
   }
   std::cout << '\n';
+  */
   size_t nnz = std::count_if(dense.begin(), dense.end(), [](bool v) {return v;});
   rowmap_view Arowmap("asdf", numRows + 1);
   colinds_view Acolinds("asdf", nnz);
@@ -367,7 +369,7 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth, bool 
   }
   Arowmap(numRows) = total;
   std::cout << "Actual NNZ in matrix: " << total << '\n';
-  std::cout << "But, allocated space for : " << Avalues.dimension_0() << '\n';
+  //std::cout << "But, allocated space for : " << Avalues.dimension_0() << '\n';
   graph_t Agraph(Acolinds, Arowmap);
   return crsMat_t("RCM test matrix", numRows, Avalues, Agraph);
 }
@@ -387,7 +389,7 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
       <offset_t, lno_t, scalar_t,
       typename device::execution_space, typename device::memory_space,typename device::memory_space> KernelHandle;
 
-  std::cout << "building RCM test matrix with " << numRows << " rows.\n";
+  //std::cout << "building RCM test matrix with " << numRows << " rows.\n";
   crsMat_t A = genSymmetricMatrix<crsMat_t, scalar_t, lno_t, device, offset_t>(numRows, nnz, bandwidth, true);
 
   lno_view_t Arowmap("asdf", numRows + 1);
@@ -395,8 +397,8 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
   lno_nnz_view_t Aentries("asdf", nnz);
   lno_nnz_view_t Avalues("asdf", nnz);
   Kokkos::deep_copy(Arowmap, A.graph.row_map);
-  std::cout << "Aentries dim: " << Aentries.dimension_0() << '\n';
-  std::cout << "A.graph.entries dim: " << A.graph.entries.dimension_0() << '\n';
+  //std::cout << "Aentries dim: " << Aentries.dimension_0() << '\n';
+  //std::cout << "A.graph.entries dim: " << A.graph.entries.dimension_0() << '\n';
   for(offset_t i = 0; i < nnz; i++)
   {
     Aentries(i) = A.graph.entries(i);
@@ -410,6 +412,7 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
 
   typedef KokkosSparse::Impl::RCM<KernelHandle, decltype(Arowmap), decltype(Aentries)> rcm_t;
   rcm_t rcm(&kh, numRows, Arowmap, Aentries);
+  /*&
   std::cout << "Matrix for RCM testing (raw CRS)\n";
   for(lno_t i = 0; i < numRows; i++)
   {
@@ -421,26 +424,31 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
     std::cout << '\n';
   }
   std::cout << '\n';
+  */
   //rcmOrder(i) = the timestamp of node i
   auto rcmOrder = rcm.rcm();
   //perm(i) = the node with timestamp i
+  /*
   std::cout << "RCM row list that was returned:\n";
   for(size_type i = 0; i < rcmOrder.dimension_0(); i++)
   {
     std::cout << rcmOrder(i) << ' ';
   }
   std::cout << '\n';
+  */
   lno_nnz_view_t perm("RCM permutation", numRows);
   for(lno_t i = 0; i < numRows; i++)
   {
     perm(rcmOrder(i)) = i;
   }
+  /*
   std::cout << "Permutation array:\n";
   for(size_type i = 0; i < perm.dimension_0(); i++)
   {
     std::cout << perm(i) << ' ';
   }
   std::cout << '\n';
+  */
   //make sure that perm is in fact a permuation matrix (contains each row exactly once)
   std::set<lno_t> rowSet;
   for(lno_t i = 0; i < numRows; i++)
@@ -478,6 +486,7 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
     }
   }
   //Print sparsity pattern of B
+  /*
   std::cout << "A (RCM-reordered):\n\n";
   for(lno_t i = 0; i < numRows; i++)
   {
@@ -489,6 +498,7 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
     std::cout << '\n';
   }
   std::cout << '\n';
+  */
   std::cout << "Change in average bandwidth: " << rcm.find_average_bandwidth(Arowmap, Aentries) << " -> " << rcm.find_average_bandwidth(Browmap, Bentries) << '\n';
 }
 
@@ -497,7 +507,7 @@ TEST_F( TestCategory, sparse ## _ ## gauss_seidel ## _ ## SCALAR ## _ ## ORDINAL
   test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(68587, 1849000, 3000, 8); \
 } \
 TEST_F( TestCategory, sparse ## _ ## rcm ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 1000, 70); \
+  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(2000, 80000, 300); \
 }
 
 
