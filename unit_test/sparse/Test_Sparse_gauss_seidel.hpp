@@ -526,7 +526,7 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
 
 #define EXECUTE_TEST(SCALAR, ORDINAL, OFFSET, DEVICE) \
 TEST_F( TestCategory, sparse ## _ ## gauss_seidel ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(68587, 1849000, 3000, 8); \
+  test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(68587, 1849000, 3000, 20); \
 } \
 TEST_F( TestCategory, sparse ## _ ## rcm ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
   test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(2000, 80000, 300); \
