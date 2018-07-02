@@ -615,12 +615,20 @@ public:
     }
     else
     {
-      colors = initialize_symbolic_cluster(xadj, adj, numColors);
+      typedef Kokkos::View<row_lno_t*, MyTempMemorySpace> rowmap_t;
+      typedef Kokkos::View<nnz_lno_t*, MyTempMemorySpace> colind_t;
+      typedef Kokkos::View<const row_lno_t*, MyTempMemorySpace> const_rowmap_t;
+      typedef Kokkos::View<const nnz_lno_t*, MyTempMemorySpace> const_colind_t;
+      rowmap_t tmp_xadj;
+      colind_t tmp_adj;
+      KokkosKernels::Impl::symmetrize_graph_symbolic_hashmap
+        <const_rowmap_t, const_colind_t, rowmap_t, colind_t, MyExecSpace>
+        (num_rows, xadj, adj, tmp_xadj, tmp_adj);
+      colors = initialize_symbolic_cluster<rowmap_t, colind_t>(tmp_xadj, tmp_adj, numColors);
     }
 #if KOKKOSSPARSE_IMPL_RUNSEQUENTIAL
     numColors = num_rows;
     KokkosKernels::Impl::print_1Dview(colors);
-    std::cout << "numCol:" << numColors << " numRows:" << num_rows << " cols:" << num_cols << " nnz:" << adj.extent(0) <<  std::endl;
     typename HandleType::GraphColoringHandleType::color_view_t::HostMirror  h_colors = Kokkos::create_mirror_view (colors);
     for(int i = 0; i < num_rows; ++i){
 	h_colors(i) = i + 1;
@@ -863,7 +871,8 @@ public:
 #endif
   }
 
-  typename HandleType::GraphColoringHandleType::color_view_t initialize_symbolic_cluster(const_lno_row_view_t& xadj, const_lno_nnz_view_t& adj, color_t& numColors)
+  template<typename rowmap_t, typename colinds_t>
+  typename HandleType::GraphColoringHandleType::color_view_t initialize_symbolic_cluster(rowmap_t xadj, colinds_t adj, color_t& numColors)
   {
 #define BMK_TIME
 #ifdef BMK_TIME
@@ -873,11 +882,12 @@ public:
     typedef typename HandleType::GraphColoringHandleType::color_view_t color_view_t;
     //compute the RCM ordering of the graph
     typedef Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryManaged> perm_view_t;
-    RCM<HandleType, const_lno_row_view_t, const_lno_nnz_view_t> rcm(this->handle, num_rows, xadj, adj);
+    RCM<HandleType, rowmap_t, colinds_t> rcm(this->handle, num_rows, xadj, adj);
     //rcmOrder maps (bijectively) from original rows to RCM-ordered rows
     //rcmPerm is the inverse mapping
     perm_view_t rcmOrder = rcm.rcm();
     //DEBUGGING: make sure rcmOrder is a valid permutation array (contains every value exactly once)
+    /*
     std::set<nnz_lno_t> checking;
     for(int i = 0; i < num_rows; i++)
     {
@@ -887,6 +897,7 @@ public:
     {
       std::cout << "RCM on " << num_rows << "-row, " << xadj(num_rows) << "-entry matrix failed (invalid permutation returned)\n";
     }
+    */
     //rcmPerm[i] = the original label of RCM vertex i
     //rcmOrder[i] = the RCM label of original vertex i
     perm_view_t rcmPerm("RCM permutation array", num_rows);
@@ -1007,6 +1018,7 @@ public:
           }
         }
       });
+    //(serial): check validity of cluster graph
 #ifdef BMK_TIME
     std::cout << "Cluster graph construction: " << timer.seconds() << '\n';
     timer.reset();
@@ -1057,7 +1069,6 @@ public:
     //num_rows % clusterSize were used in the 
     numColors = clusterBaseColor;
     kh.destroy_graph_coloring_handle();
-    exit(0);
     return vertexColors;
   }
 
