@@ -1018,7 +1018,24 @@ public:
           }
         }
       });
-    //(serial): check validity of cluster graph
+    //(serial, DEBUGGING): check validity of cluster graph
+    for(int i = 0; i < num_rows; i++)
+    {
+      auto n = clusterRowmap(i + 1) - clusterRowmap(i);
+      if(n > 100000)
+      {
+        std::cout << "Invalid rowmap: row " << i << " has " << n << " entries\n";
+        exit(1);
+      }
+      for(size_type j = clusterRowmap(i); j < clusterRowmap(i + 1); j++)
+      {
+        if(clusterEntries(j) < 0 || clusterEntries(j) >= num_rows)
+        {
+          std::cout << "Invalid entries: entry " << j << " is col " << clusterEntries(j) << '\n';
+          exit(1);
+        }
+      }
+    }
 #ifdef BMK_TIME
     std::cout << "Cluster graph construction: " << timer.seconds() << '\n';
     timer.reset();
