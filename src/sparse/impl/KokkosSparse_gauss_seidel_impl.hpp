@@ -1083,9 +1083,9 @@ public:
     timer.reset();
 #endif
     //Find the actual number of colors used to label vertices
-    //num_rows % clusterSize were used in the 
     numColors = clusterBaseColor;
     kh.destroy_graph_coloring_handle();
+    //TESTING
     return vertexColors;
   }
 

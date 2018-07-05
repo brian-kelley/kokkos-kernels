@@ -342,7 +342,6 @@ struct RCM
               workQueue(qHead) = search;
               qHead++;
               visit(search) = QUEUED;
-              std::cout << "WARNING: graph not connected. Resuming BFS from node " << search << std::endl;
               break;
             }
           }
@@ -357,10 +356,8 @@ struct RCM
   //also return the total number of levels
   nnz_lno_t parallel_bfs(nnz_lno_t start, nnz_view_t& xadj, nnz_view_t& adj, nnz_lno_t& maxDeg, size_type nthreads)
   {
-    std::cout << "Running BFS on graph with " << numRows << " rows and " << rowmap(numRows) << " entries.\n";
     //need to know maximum degree to allocate scratch space for threads
     maxDeg = find_max_degree();
-    std::cout << "Max degree of graph is " << maxDeg << '\n';
     //place these two magic values are at the top of nnz_lno_t's range
     const nnz_lno_t LNO_MAX = Kokkos::ArithTraits<nnz_lno_t>::max();
     const nnz_lno_t NOT_VISITED = LNO_MAX;
@@ -374,8 +371,6 @@ struct RCM
     //elements which are LNO_MAX are just placeholders (nothing to process)
     Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryTraits<0>> workQueue("BFS queue (double buffered)", 2, numRows);
     nnz_view_t threadNeighborCounts("Number of nodes to queue on each thread", nthreads);
-    single_view_t activeQSize("BFS active level queue size");
-    single_view_t nextQSize("BFS next level queue size");
     single_view_t numLevels("# of BFS levels");
     Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryTraits<0u>> scratch("Scratch buffer shared by threads", nthreads, maxDeg);
     Kokkos::parallel_for(team_policy_t(1, nthreads),
@@ -383,8 +378,6 @@ struct RCM
     {
       nnz_lno_t tid = mem.team_rank();
       auto neighborList = Kokkos::subview(scratch, tid, Kokkos::ALL());
-      //a thread-local copy of nextQSize
-      nnz_lno_t nextQSizeLocal = 0;
       //active and next indicate which buffer in workQueue holds the nodes in current/next frontiers, respectively
       //active, next and visitCounter are thread-local, but always kept consistent across threads
       int active = 0;
@@ -395,32 +388,24 @@ struct RCM
       {
         workQueue(active, 0) = start;
         visit(start) = QUEUED;
-        activeQSize() = 1;
-        nextQSize() = 0;
       });
+      nnz_lno_t activeQSize = 1;
+      nnz_lno_t nextQSize = 0;
       //KK create_reverse_map() expects incoming values to start at 1
       nnz_lno_t level = 1;
       //do this until all nodes have been visited and added to a level
       while(visitCounter < numRows)
       {
         mem.team_barrier();
-        auto qSize = activeQSize();
-        std::cout << "Level " << level << ": " << " processing queue: ";
-        for(int i = 0; i < qSize; i++)
-        {
-          std::cout << workQueue(active, i) << ' ';
-        }
-        std::cout << '\n';
         //each thread works on a contiguous block of nodes in queue (for locality)
         //compute in size_t to avoid possible 32-bit overflow
-        size_type workStart = (size_t) tid * qSize / nthreads;
-        size_type workEnd = (size_t) (tid + 1) * qSize / nthreads;
+        size_type workStart = (size_t) tid * activeQSize / nthreads;
+        size_type workEnd = (size_t) (tid + 1) * activeQSize / nthreads;
         //the maximum work batch size (among all threads)
         //the following loop contains barriers so all threads must iterate same # of times
-        size_type maxBatch = (qSize + nthreads - 1) / nthreads;
+        size_type maxBatch = (activeQSize + nthreads - 1) / nthreads;
         for(size_type loop = 0; loop < maxBatch; loop++)
         {
-          nextQSizeLocal = nextQSize();
           //this thread may not actually have anything to work on (if nthreads doesn't divide qSize)
           bool busy = loop < workEnd - workStart;
           nnz_lno_t neiCount = 0;
@@ -428,7 +413,6 @@ struct RCM
           if(busy)
           {
             process = workQueue(active, workStart + loop);
-            std::cout << "  Thread " << tid << " processing " << process << '\n';
             offset_t rowStart = rowmap(process);
             offset_t rowEnd = rowmap(process + 1);
             //build a list of all non-visited neighbors
@@ -446,12 +430,12 @@ struct RCM
           }
           threadNeighborCounts(tid) = neiCount;
           mem.team_barrier();
-          //write out all queue updates in parallel
           size_type queueUpdateOffset = 0;
           for(size_type i = 0; i < tid; i++)
           {
             queueUpdateOffset += threadNeighborCounts(i);
           }
+          //write out all updates to next queue in parallel
           if(busy)
           {
             size_type nextQueueIter = 0;
@@ -459,23 +443,18 @@ struct RCM
             {
               nnz_lno_t toQueue = neighborList(i);
               visit(toQueue) = QUEUED;
-              workQueue(next, nextQSizeLocal + queueUpdateOffset + nextQueueIter) = toQueue;
+              workQueue(next, nextQSize + queueUpdateOffset + nextQueueIter) = toQueue;
               nextQueueIter++;
             }
             //assign level to to process
             visit(process) = level;
           }
-          Kokkos::single(Kokkos::PerTeam(mem),
-          KOKKOS_LAMBDA()
+          size_type totalAdded = 0;
+          for(nnz_lno_t i = 0; i < nthreads; i++)
           {
-            size_type totalAdded = 0;
-            for(nnz_lno_t i = 0; i < nthreads; i++)
-            {
-              totalAdded += threadNeighborCounts(i);
-            }
-            nextQSize() += totalAdded;
-          });
-          //this barrier protects visit and nextQSize for next iteration
+            totalAdded += threadNeighborCounts(i);
+          }
+          nextQSize += totalAdded;
           mem.team_barrier();
         }
         //swap queue buffers
@@ -483,15 +462,13 @@ struct RCM
         next = 1 - next;
         //all threads have a consistent value of qSize here.
         //update visitCounter in preparation for next frontier
-        visitCounter += qSize;
-        mem.team_barrier();
-        Kokkos::single(Kokkos::PerTeam(mem),
-        KOKKOS_LAMBDA()
+        visitCounter += activeQSize;
+        activeQSize = nextQSize;
+        nextQSize = 0;
+        if(visitCounter < numRows && activeQSize == 0)
         {
-          //know exactly how many vertices were labeled in the last frontier
-          activeQSize() = nextQSize();
-          nextQSize() = 0;
-          if(visitCounter < numRows && activeQSize() == 0)
+          Kokkos::single(Kokkos::PerTeam(mem),
+          KOKKOS_LAMBDA()
           {
             //Some nodes are unreachable from start (graph not connected)
             //Find an unvisited node to resume BFS
@@ -500,14 +477,13 @@ struct RCM
               if(visit(search) == NOT_VISITED)
               {
                 workQueue(active, 0) = search;
-                activeQSize() = 1;
                 visit(search) = QUEUED;
-                std::cout << "WARNING: graph not connected. Resuming BFS from node " << search << std::endl;
                 break;
               }
             }
-          }
-        });
+          });
+          activeQSize = 1;
+        }
         level++;
       }
       Kokkos::single(Kokkos::PerTeam(mem),
@@ -516,13 +492,6 @@ struct RCM
         numLevels() = level - 1;
       });
     });
-    std::cout << "Done with BFS.\n";
-    std::cout << "Raw level data: ";
-    for(int i = 0; i < numRows; i++)
-    {
-      std::cout << visit(i) << ' ';
-    }
-    std::cout << '\n';
     //now that level structure has been computed, construct xadj/adj
     KokkosKernels::Impl::create_reverse_map<nnz_view_t, nnz_view_t, MyExecSpace>
       (numRows, numLevels(), visit, xadj, adj);
@@ -553,18 +522,6 @@ struct RCM
       if(thisLevelSize > lmax)
         lmax = thisLevelSize;
     }, Kokkos::Max<nnz_lno_t>(maxLevelSize));
-    std::cout << "Level structure of graph:\n";
-    for(int i = 0; i < numLevels; i++)
-    {
-      std::cout << "Level " << i << ": ";
-      for(nnz_lno_t j = xadj(i); j < xadj(i + 1); j++)
-      {
-        std::cout << adj(j) << ' ';
-      }
-      std::cout << '\n';
-    }
-    std::cout << '\n';
-    std::cout << "Note: Max level size in graph is " << maxLevelSize << '\n';
     //visit (to be returned) contains the RCM numberings of each row
     nnz_view_t visit("RCM labels", numRows);
     //Populate visit wth LNO_MAX so that the "min-labeled neighbor"
@@ -578,7 +535,6 @@ struct RCM
     Kokkos::View<offset_t*, MyTempMemorySpace, Kokkos::MemoryTraits<0u>> scores("RCM scores for sorting", maxLevelSize);
     Kokkos::View<offset_t*, MyTempMemorySpace, Kokkos::MemoryTraits<0u>> scoresAux("RCM scores for sorting (radix sort aux)", maxLevelSize);
     Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryTraits<0u>> adjAux("RCM scores for sorting (radix sort aux)", maxLevelSize);
-    std::cout << "Starting to label vertices...\n";
     Kokkos::parallel_for(team_policy_t(1, nthreads),
     KOKKOS_LAMBDA(const team_member_t mem)
     {
@@ -609,18 +565,11 @@ struct RCM
           scores(i) = ((offset_t) minNeighbor * (maxDegree + 1)) + (rowmap(process + 1) - rowmap(process));
         }
         mem.team_barrier();
-        //Sort adj elements in current level according to score
         Kokkos::single(Kokkos::PerTeam(mem),
         KOKKOS_LAMBDA()
         {
           radixSortKeysAndValues<size_type, offset_t, nnz_lno_t, nnz_lno_t, team_member_t>
             (scores.data(), scoresAux.data(), adj.data() + levelOffset, adjAux.data(), levelSize, mem);
-          std::cout << "Scores, after sorting: ";
-          for(int i = 0; i < levelSize; i++)
-          {
-            std::cout << scores(i) << ' ';
-          }
-          std::cout << '\n';
         });
         mem.team_barrier();
         //label all vertices (which are now in label order within their level)
@@ -629,10 +578,8 @@ struct RCM
           nnz_lno_t process = adj(levelOffset + i);
           //visit counter increases with levels, so flip the range for the "reverse" in RCM
           visit(process) = visitCounter + i;
-          std::cout << "  Labeling " << process << " with " << visitCounter + i << '\n';
         }
         visitCounter += levelSize;
-        mem.team_barrier();
       }
     });
     //reverse the visit order (for the 'R' in RCM)
