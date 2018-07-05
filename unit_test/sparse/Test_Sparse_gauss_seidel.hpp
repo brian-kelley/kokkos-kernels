@@ -353,7 +353,6 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth, bool 
       }
     }
   }
-  /*
   std::cout << "Graph for testing RCM:\n";
   for(int i = 0; i < numRows; i++)
   {
@@ -367,7 +366,6 @@ crsMat_t genSymmetricMatrix(lno_t numRows, lno_t randNNZ, lno_t bandwidth, bool 
     std::cout << '\n';
   }
   std::cout << '\n';
-  */
   size_t nnz = std::count_if(dense.begin(), dense.end(), [](bool v) {return v;});
   rowmap_view Arowmap("asdf", numRows + 1);
   colinds_view Acolinds("asdf", nnz);
@@ -508,7 +506,6 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
     }
   }
   //Print sparsity pattern of B
-  /*
   std::cout << "A (RCM-reordered):\n\n";
   for(lno_t i = 0; i < numRows; i++)
   {
@@ -520,7 +517,6 @@ void test_rcm(lno_t numRows, offset_t nnz, offset_t bandwidth)
     std::cout << '\n';
   }
   std::cout << '\n';
-  */
   std::cout << "Change in average bandwidth: " << rcm.find_average_bandwidth(Arowmap, Aentries) << " -> " << rcm.find_average_bandwidth(Browmap, Bentries) << '\n';
 }
 
@@ -529,7 +525,7 @@ TEST_F( TestCategory, sparse ## _ ## gauss_seidel ## _ ## SCALAR ## _ ## ORDINAL
   test_gauss_seidel<SCALAR,ORDINAL,OFFSET,DEVICE>(68587, 1849000, 3000, 20); \
 } \
 TEST_F( TestCategory, sparse ## _ ## rcm ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(2000, 80000, 300); \
+  test_rcm<SCALAR,ORDINAL,OFFSET,DEVICE>(100, 100, 100); \
 }
 
 
