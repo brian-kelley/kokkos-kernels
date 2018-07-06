@@ -625,6 +625,7 @@ public:
         <const_rowmap_t, const_colind_t, rowmap_t, colind_t, MyExecSpace>
         (num_rows, xadj, adj, tmp_xadj, tmp_adj);
       colors = initialize_symbolic_cluster<rowmap_t, colind_t>(tmp_xadj, tmp_adj, numColors);
+      std::cout << "Expected (max) degree of parallelism in GS apply: " << (double) num_rows / numColors << std::endl;
     }
 #if KOKKOSSPARSE_IMPL_RUNSEQUENTIAL
     numColors = num_rows;
@@ -650,6 +651,12 @@ public:
         (num_rows, numColors, colors, color_xadj, color_adj);
     MyExecSpace::fence();
 
+    std::cout << "Vertices per color (parallelism): ";
+    for(int i = 0; i < numColors; i++)
+    {
+      std::cout << (color_xadj(i + 1) - color_xadj(i)) << ' ';
+    }
+    std::cout << '\n';
 
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
     std::cout << "CREATE_REVERSE_MAP:" << timer.seconds() << std::endl;
@@ -885,9 +892,10 @@ public:
     RCM<HandleType, rowmap_t, colinds_t> rcm(this->handle, num_rows, xadj, adj);
     //rcmOrder maps (bijectively) from original rows to RCM-ordered rows
     //rcmPerm is the inverse mapping
+    std::cout << "Computing RCM permutation...";
     perm_view_t rcmOrder = rcm.rcm();
+    std::cout << "Done.\n";
     //DEBUGGING: make sure rcmOrder is a valid permutation array (contains every value exactly once)
-    /*
     std::set<nnz_lno_t> checking;
     for(int i = 0; i < num_rows; i++)
     {
@@ -897,7 +905,6 @@ public:
     {
       std::cout << "RCM on " << num_rows << "-row, " << xadj(num_rows) << "-entry matrix failed (invalid permutation returned)\n";
     }
-    */
     //rcmPerm[i] = the original label of RCM vertex i
     //rcmOrder[i] = the RCM label of original vertex i
     perm_view_t rcmPerm("RCM permutation array", num_rows);
@@ -910,13 +917,24 @@ public:
     std::cout << "\nRCM:" << timer.seconds() << '\n';
     timer.reset();
 #endif
-    size_type clusterSize = gsHandler->get_cluster_size();
-    size_type numClusters = (num_rows + clusterSize - 1) / clusterSize;
+    //clusterSizeParam is the suggested cluster size from user
+    //clusters will be as close as possible to this size, but will be given equal numbers of nodes
+    auto clusterSizeParam = gsHandler->get_cluster_size();
+    size_type numClusters = (num_rows + clusterSizeParam - 1) / clusterSizeParam;
+    std::cout << "Graph will have " << numClusters << " clusters.\n";
     //build the cluster graph using the (implicitly permuted) RCM order of the matrix (xadj, adj)
     //first, count the entries per row
     const size_type bitsPerST = 8 * sizeof(size_type);
-    const size_type wordsPerRow = (numClusters + bitsPerST - 1)  / bitsPerST;
-    const size_type nthreads = MyExecSpace::concurrency();
+    const size_type wordsPerRow = (numClusters + bitsPerST - 1) / bitsPerST;
+    size_type nthreads = MyExecSpace::concurrency();
+    if(nthreads > 64)
+      nthreads = 64;
+    #ifdef KOKKOS_ENABLE_CUDA
+    if(std::is_same<MyExecSpace, Kokkos::Cuda>::value)
+    {
+      nthreads = 256;
+    }
+    #endif
     const size_type one = 1;
     Kokkos::View<size_type*, MyTempMemorySpace, Kokkos::MemoryManaged> denseClusterRow("Scratch for dense cluster graph rows", wordsPerRow * nthreads);
     Kokkos::View<size_type*, MyTempMemorySpace, Kokkos::MemoryManaged> clusterRowmap("Row ptrs for cluster graph", numClusters + 1);
@@ -934,10 +952,8 @@ public:
             size_type* denseRow = &denseClusterRow(tid * wordsPerRow);
             for(size_type j = 0; j < wordsPerRow; j++)
               denseRow[j] = 0;
-            nnz_lno_t clusterBegin = c * clusterSize;
-            nnz_lno_t clusterEnd = clusterBegin + clusterSize;
-            if(clusterEnd > num_rows)
-              clusterEnd = num_rows;
+            nnz_lno_t clusterBegin = (size_t) (c * num_rows) / numClusters;
+            nnz_lno_t clusterEnd = (size_t) ((c + 1) * num_rows) / numClusters;
             for(nnz_lno_t rcmRow = clusterBegin; rcmRow < clusterEnd; rcmRow++)
             {
               nnz_lno_t origRow = rcmPerm(rcmRow);
@@ -946,7 +962,7 @@ public:
               {
                 nnz_lno_t nei = adj(neiIndex);
                 nnz_lno_t rcmNei = rcmOrder(nei);
-                nnz_lno_t clusterNei = rcmNei / clusterSize;
+                nnz_lno_t clusterNei = (size_t) (rcmNei * numClusters) / num_rows;
                 //record the entry in dense row
                 //this should be fast since bitsPerST is a power of 2
                 denseRow[clusterNei / bitsPerST] |= (one << (clusterNei % bitsPerST));
@@ -968,6 +984,7 @@ public:
     KokkosKernels::Impl::exclusive_parallel_prefix_sum<non_const_lno_row_view_t, MyExecSpace>(numClusters + 1, clusterRowmap);
     auto clusterNNZ = Kokkos::subview(clusterRowmap, numClusters);
     auto h_clusterNNZ = Kokkos::create_mirror_view(clusterNNZ);
+    std::cout << "Cluster graph has " << h_clusterNNZ() << " entries (" << (double) h_clusterNNZ() / numClusters << " nnz/row)\n";
     Kokkos::deep_copy(h_clusterNNZ, clusterNNZ );
     //can now allocate the entries of cluster graph
     Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryManaged> clusterEntries("GS cluster ", h_clusterNNZ());
@@ -984,10 +1001,8 @@ public:
             size_type* denseRow = &denseClusterRow(tid * wordsPerRow);
             for(size_type j = 0; j < wordsPerRow; j++)
               denseRow[j] = 0;
-            nnz_lno_t clusterBegin = c * clusterSize;
-            nnz_lno_t clusterEnd = clusterBegin + clusterSize;
-            if(clusterEnd > num_rows)
-              clusterEnd = num_rows;
+            nnz_lno_t clusterBegin = (size_t) (c * num_rows) / numClusters;
+            nnz_lno_t clusterEnd = (size_t) ((c + 1) * num_rows) / numClusters;
             for(nnz_lno_t rcmRow = clusterBegin; rcmRow < clusterEnd; rcmRow++)
             {
               nnz_lno_t origRow = rcmPerm(rcmRow);
@@ -996,7 +1011,7 @@ public:
               {
                 nnz_lno_t nei = adj(neiIndex);
                 nnz_lno_t rcmNei = rcmOrder(nei);
-                nnz_lno_t clusterNei = rcmNei / clusterSize;
+                nnz_lno_t clusterNei = (size_t) (rcmNei * numClusters) / num_rows;
                 //record the entry in dense row
                 //this should be fast since bitsPerST is a power of 2
                 denseRow[clusterNei / bitsPerST] |= (one << (clusterNei % bitsPerST));
@@ -1019,6 +1034,7 @@ public:
         }
       });
     //(serial, DEBUGGING): check validity of cluster graph
+    /*
     for(int i = 0; i < num_rows; i++)
     {
       auto n = clusterRowmap(i + 1) - clusterRowmap(i);
@@ -1036,6 +1052,7 @@ public:
         }
       }
     }
+    */
 #ifdef BMK_TIME
     std::cout << "Cluster graph construction: " << timer.seconds() << '\n';
     timer.reset();
@@ -1058,6 +1075,27 @@ public:
     color_view_t vertexColors("Colors from RCM clusters", num_rows);
     for(color_t currentColor = 1; currentColor <= numClusterColors; currentColor++)
     {
+      //Keep track of the largest cluster with color currentColor
+      //Generally will just be clusterSize but for very large clusters can be smaller
+      size_type maxClusterOfColor = 0;
+      for(size_type i = 0; i < numClusters; i++)
+      {
+        if(clusterColors(i) == currentColor)
+        {
+          nnz_lno_t clusterBegin = (size_t) (i * num_rows) / numClusters;
+          nnz_lno_t clusterEnd = (size_t) ((i + 1) * num_rows) / numClusters;
+          nnz_lno_t clusterSize = clusterEnd - clusterBegin;
+          for(size_type j = clusterBegin; j < clusterEnd; j++)
+          {
+            nnz_lno_t origRow = rcmPerm(j);
+            vertexColors(origRow) = clusterBaseColor + (j - clusterBegin);
+          }
+          if(clusterSize > maxClusterOfColor)
+            maxClusterOfColor = clusterSize;
+        }
+      }
+      clusterBaseColor += maxClusterOfColor;
+    /*
       Kokkos::parallel_for(my_exec_space(0, numClusters),
         KOKKOS_LAMBDA(size_type i)
         {
@@ -1070,20 +1108,29 @@ public:
               nnz_lno_t rcmRow = i * clusterSize + j;
               if(rcmRow < num_rows)
               {
-                nnz_lno_t origRow = rcmOrder(rcmRow);
+                nnz_lno_t origRow = rcmPerm(rcmRow);
                 vertexColors(origRow) = clusterBaseColor + j;
               }
             }
           }
         });
       clusterBaseColor += clusterSize;
+        */
     }
+    numColors = clusterBaseColor - 1;
+    /*
+    numColors = 0;
+    Kokkos::parallel_reduce(my_exec_space(0, num_rows),
+      KOKKOS_LAMBDA(size_type i, color_t& lmax)
+      {
+        if(vertexColors(i) > lmax)
+          lmax = vertexColors(i);
+      }, Kokkos::Max<color_t>(numColors));
+    */
 #ifdef BMK_TIME
     std::cout << "Final vertex labeling: " << timer.seconds() << '\n';
     timer.reset();
 #endif
-    //Find the actual number of colors used to label vertices
-    numColors = clusterBaseColor;
     kh.destroy_graph_coloring_handle();
     //TESTING
     return vertexColors;
