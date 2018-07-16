@@ -984,7 +984,7 @@ public:
     KokkosKernels::Impl::exclusive_parallel_prefix_sum<non_const_lno_row_view_t, MyExecSpace>(numClusters + 1, clusterRowmap);
     auto clusterNNZ = Kokkos::subview(clusterRowmap, numClusters);
     auto h_clusterNNZ = Kokkos::create_mirror_view(clusterNNZ);
-    std::cout << "Cluster graph has " << h_clusterNNZ() << " entries (" << (double) h_clusterNNZ() / numClusters << " nnz/row)\n";
+    std::cout << "Cluster graph has " << h_clusterNNZ() << " entries (" << (double) h_clusterNNZ() / numClusters << " nnz/row)" << std::endl;
     Kokkos::deep_copy(h_clusterNNZ, clusterNNZ );
     //can now allocate the entries of cluster graph
     Kokkos::View<nnz_lno_t*, MyTempMemorySpace, Kokkos::MemoryManaged> clusterEntries("GS cluster ", h_clusterNNZ());
@@ -1033,12 +1033,22 @@ public:
           }
         }
       });
+    std::cout << "Full cluster graph:\n";
+    for(int i = 0; i < numClusters; i++)
+    {
+      std::cout << "Cluster " << i << " neighbors: ";
+      for(int j = clusterRowmap(i); j < clusterRowmap(i + 1); j++)
+      {
+        std::cout << clusterEntries(j) << ' ';
+      }
+      std::cout << std::endl;
+    }
     //(serial, DEBUGGING): check validity of cluster graph
     /*
     for(int i = 0; i < num_rows; i++)
     {
       auto n = clusterRowmap(i + 1) - clusterRowmap(i);
-      if(n > 100000)
+      if(n < 0 || n >= num_rows)
       {
         std::cout << "Invalid rowmap: row " << i << " has " << n << " entries\n";
         exit(1);
@@ -1060,7 +1070,7 @@ public:
     //now that cluster graph is computed, color it
     HandleType kh;
     kh.create_graph_coloring_handle();
-    KokkosGraph::Experimental::graph_color_symbolic(&kh, numClusters, numClusters, clusterRowmap, clusterEntries, true); 
+    KokkosGraph::Experimental::graph_color_symbolic(&kh, numClusters, numClusters, clusterRowmap, clusterEntries, false); 
     //retrieve colors
     auto coloringHandle = kh.get_graph_coloring_handle();
     auto clusterColors = coloringHandle->get_vertex_colors();
