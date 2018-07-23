@@ -52,6 +52,7 @@
 #include "KokkosSparse_rcm_impl.hpp"
 #include "KokkosKernels_Utils.hpp"
 #include "KokkosKernels_BitUtils.hpp"
+#include <dirent.h>
 #include <set>
 #ifndef _KOKKOSGSIMP_HPP
 #define _KOKKOSGSIMP_HPP
@@ -585,6 +586,7 @@ public:
     typename HandleType::GraphColoringHandleType::color_view_t colors;
     if(gsHandler->get_algorithm_type() != GS_CLUSTER)
     {
+      std::cout << "NOT using GS_CLUSTER." << std::endl;
       if (!is_symmetric){
 
         if (gchandle->get_coloring_algo_type() == KokkosGraph::COLORING_EB){
@@ -615,6 +617,7 @@ public:
     }
     else
     {
+      std::cout << "AM using GS_CLUSTER." << std::endl;
       typedef Kokkos::View<row_lno_t*, MyTempMemorySpace> rowmap_t;
       typedef Kokkos::View<nnz_lno_t*, MyTempMemorySpace> colind_t;
       typedef Kokkos::View<const row_lno_t*, MyTempMemorySpace> const_rowmap_t;
@@ -632,7 +635,7 @@ public:
     KokkosKernels::Impl::print_1Dview(colors);
     typename HandleType::GraphColoringHandleType::color_view_t::HostMirror  h_colors = Kokkos::create_mirror_view (colors);
     for(int i = 0; i < num_rows; ++i){
-	h_colors(i) = i + 1;
+      h_colors(i) = i + 1;
     }
     Kokkos::deep_copy(colors, h_colors);
 #endif
@@ -937,11 +940,13 @@ public:
     #endif
     const size_type one = 1;
     Kokkos::View<size_type*, MyTempMemorySpace, Kokkos::MemoryManaged> denseClusterRow("Scratch for dense cluster graph rows", wordsPerRow * nthreads);
-    Kokkos::View<size_type*, MyTempMemorySpace, Kokkos::MemoryManaged> clusterRowmap("Row ptrs for cluster graph", numClusters + 1);
+    Kokkos::View<row_lno_t*, MyTempMemorySpace, Kokkos::MemoryManaged> clusterRowmap("Row ptrs for cluster graph", numClusters + 1);
     //TODO: use a team policy and shared memory here
     Kokkos::parallel_for(my_exec_space(0, nthreads),
       KOKKOS_LAMBDA(size_type tid)
       {
+        if(tid == 0)
+          clusterRowmap(numClusters) = 0;
         for(size_type i = 0; i < numClusters; i += nthreads)
         {
           size_type c = tid + i;
@@ -981,7 +986,16 @@ public:
         }
       });
     //Prefix sum cluster entry counts to get clusterRowmap
-    KokkosKernels::Impl::exclusive_parallel_prefix_sum<non_const_lno_row_view_t, MyExecSpace>(numClusters + 1, clusterRowmap);
+    parallel_scan (my_exec_space(0, numClusters + 1),
+    KOKKOS_LAMBDA (const size_type i, size_type& upd, const bool& final)
+    {
+      const size_type val_i = clusterRowmap(i); 
+      if(final)
+      {
+        clusterRowmap(i) = upd;
+      }
+      upd += val_i;
+    });
     auto clusterNNZ = Kokkos::subview(clusterRowmap, numClusters);
     auto h_clusterNNZ = Kokkos::create_mirror_view(clusterNNZ);
     std::cout << "Cluster graph has " << h_clusterNNZ() << " entries (" << (double) h_clusterNNZ() / numClusters << " nnz/row)" << std::endl;
@@ -1033,50 +1047,60 @@ public:
           }
         }
       });
-    std::cout << "Full cluster graph:\n";
-    for(int i = 0; i < numClusters; i++)
-    {
-      std::cout << "Cluster " << i << " neighbors: ";
-      for(int j = clusterRowmap(i); j < clusterRowmap(i + 1); j++)
-      {
-        std::cout << clusterEntries(j) << ' ';
-      }
-      std::cout << std::endl;
-    }
-    //(serial, DEBUGGING): check validity of cluster graph
-    /*
-    for(int i = 0; i < num_rows; i++)
-    {
-      auto n = clusterRowmap(i + 1) - clusterRowmap(i);
-      if(n < 0 || n >= num_rows)
-      {
-        std::cout << "Invalid rowmap: row " << i << " has " << n << " entries\n";
-        exit(1);
-      }
-      for(size_type j = clusterRowmap(i); j < clusterRowmap(i + 1); j++)
-      {
-        if(clusterEntries(j) < 0 || clusterEntries(j) >= num_rows)
-        {
-          std::cout << "Invalid entries: entry " << j << " is col " << clusterEntries(j) << '\n';
-          exit(1);
-        }
-      }
-    }
-    */
 #ifdef BMK_TIME
     std::cout << "Cluster graph construction: " << timer.seconds() << '\n';
     timer.reset();
 #endif
+/*
+    std::cout << "Full cluster graph:\n";
+    for(size_type i = 0; i < numClusters; i++)
+    {
+      std::cout << "Cluster " << i << " neighbors: ";
+      for(size_type j = clusterRowmap(i); j < clusterRowmap(i + 1); j++)
+      {
+        std::cout << clusterEntries(j) << ' ';
+      }
+      std::cout << '\n';
+    }
+    std::cout << '\n';
+    */
+//DEBUGGING COLORING: write out graph to file, if that file hasn't already been created
+/*
+    bool writeGraph = true;
+    std::string graphFile = "debugGraph.bin";
+    {
+      DIR* d = opendir(".");
+      while(auto entry = readdir(d))
+      {
+        if(strcmp(graphFile.c_str(), entry->d_name) == 0)
+        {
+          //graphFile already exists
+          writeGraph = false;
+          break;
+        }
+      }
+      closedir(d);
+    }
+    if(writeGraph)
+    {
+      std::cout << "Writing graph to " << graphFile << " for debugging.\n";
+      double* dummyScalar = (double*) malloc(clusterEntries.dimension_0() * sizeof(double));
+      KokkosKernels::Impl::write_graph_bin<nnz_lno_t, row_lno_t, double>
+        (numClusters, clusterRowmap(numClusters), clusterRowmap.data(), clusterEntries.data(), dummyScalar, graphFile.c_str());
+      free(dummyScalar);
+    }
+    */
     //now that cluster graph is computed, color it
     HandleType kh;
-    kh.create_graph_coloring_handle();
+    kh.create_graph_coloring_handle(KokkosGraph::COLORING_SERIAL);
+    //std::cout << "Calling graph color kernel on cluster graph..." << std::endl;
     KokkosGraph::Experimental::graph_color_symbolic(&kh, numClusters, numClusters, clusterRowmap, clusterEntries, false); 
     //retrieve colors
     auto coloringHandle = kh.get_graph_coloring_handle();
     auto clusterColors = coloringHandle->get_vertex_colors();
     color_t numClusterColors = coloringHandle->get_num_colors();
 #ifdef BMK_TIME
-    std::cout << "Cluster graph coloring: " << timer.seconds() << '\n';
+    std::cout << "Cluster graph coloring with " << numClusterColors << " colors: " << timer.seconds() << '\n';
     timer.reset();
 #endif
     //for each cluster color, assign "colors" to the original vertices belonging to cluster
