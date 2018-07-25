@@ -245,4 +245,8 @@ IF (Kokkos_ENABLE_Pthread)
 ENDIF ()
 
 
- 
+  TRIBITS_COPY_FILES_TO_BINARY_DIR(KokkosKernels_BMK_CrashReplicateCopy
+      SOURCE_FILES debugGraph.txt
+      DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}
+  )
+
