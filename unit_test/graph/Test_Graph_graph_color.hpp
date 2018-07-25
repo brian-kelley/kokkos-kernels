@@ -238,11 +238,18 @@ void test_gc_crash(std::string graphPath)
   KernelHandle kh;
   kh.create_graph_coloring_handle();
   std::cout << "Calling graph color kernel on cluster test graph..." << std::endl;
-  KokkosGraph::Experimental::graph_color_symbolic(&kh, nrows, nrows, xadj, adj, false); 
+  KokkosGraph::Experimental::graph_color_symbolic(&kh, nrows, nrows, xadj, adj, true); 
   auto coloringHandle = kh.get_graph_coloring_handle();
   auto clusterColors = coloringHandle->get_vertex_colors();
   auto numClusterColors = coloringHandle->get_num_colors();
   std::cout << "Success, used " << numClusterColors << " colors." << std::endl;
+  std::cout << "Colors of each vertex:";
+  for(lno_t i = 0; i < nrows; i++)
+  {
+    if(i % 20 == 0)
+      std::cout << '\n';
+    std::cout << clusterColors(i) << ' ';
+  }
 }
 
 #define EXECUTE_TEST(SCALAR, ORDINAL, OFFSET, DEVICE) \
