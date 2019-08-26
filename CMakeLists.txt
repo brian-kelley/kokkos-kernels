@@ -6,9 +6,20 @@ ELSE()
   SET(KOKKOS_HAS_TRILINOS OFF CACHE BOOL "")
 ENDIF()
 
+GET_DIRECTORY_PROPERTY(KOKKOSKERNELS_HAS_PARENT PARENT_DIRECTORY)
 
-IF(NOT KOKKOS_HAS_TRILINOS)
-  CMAKE_MINIMUM_REQUIRED(VERSION 3.8 FATAL_ERROR)
+
+IF(NOT KOKKOSKERNELS_HAS_TRILINOS)
+  cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
+  IF (Spack_WORKAROUND) 
+    #if we are explicitly using Spack for development,
+    #nuke the Spack compiler
+    SET(SPACK_CXX $ENV{SPACK_CXX})
+    IF(SPACK_CXX)
+      SET(CMAKE_CXX_COMPILER ${SPACK_CXX} CACHE STRING "the C++ compiler" FORCE)
+      SET(ENV{CXX} ${SPACK_CXX})
+    ENDIF()
+  ENDif()
   IF(NOT DEFINED ${PROJECT_NAME})
     PROJECT(KokkosKernels CXX)
   ENDIF()
@@ -43,6 +54,19 @@ KOKKOSKERNELS_PACKAGE()
 # If building in debug mode, define the HAVE_KOKKOSKERNELS_DEBUG macro.
 KOKKOS_ADD_DEBUG_OPTION()
 
+<<<<<<< HEAD
+=======
+#
+# Set up subpackage-specific configuration options
+#
+IF(NOT KOKKOSKERNELS_HAS_TRILINOS AND NOT KOKKOSKERNELS_HAS_PARENT)
+ FIND_PACKAGE(Kokkos REQUIRED)
+ MESSAGE("Kokkos_ENABLE_CUDA     ${Kokkos_ENABLE_CUDA}")
+ MESSAGE("Kokkos_ENABLE_OpenMP   ${Kokkos_ENABLE_OpenMP}")
+ MESSAGE("Kokkos_ENABLE_PTHREAD  ${Kokkos_ENABLE_PTHREAD}")
+ MESSAGE("Kokkos_ENABLE_SERIAL   ${Kokkos_ENABLE_SERIAL}")
+ENDIF()
+>>>>>>> cmake updates: #120 and #433
 
 #
 # "Optimization level" for KokkosKernels computational kernels.  The
@@ -51,7 +75,7 @@ KOKKOS_ADD_DEBUG_OPTION()
 # better performance overall, and more uniform performance for corner
 # cases.  Values of current interest (24 Apr 2014) are 0, 1, and 2.
 #
-KOKKOS_ADD_OPTION_AND_DEFINE( KokkosLinAlg_Opt_Level
+KOKKOS_ADD_OPTION_AND_DEFINE(KokkosKernels_LINALG_OPT_LEVEL
   KOKKOSLINALG_OPT_LEVEL
   "Optimization level for KokkosKernels computational kernels: a nonnegative integer.  Higher levels result in better performance that is more uniform for corner cases, but increase build time and library size.  The default value is 1, which should give performance within ten percent of optimal on most platforms, for most problems."
   "1"
@@ -62,7 +86,7 @@ KOKKOS_ADD_OPTION_AND_DEFINE( KokkosLinAlg_Opt_Level
 # Enable experimental features of KokkosKernels if set at configure
 # time. Default is no.
 KOKKOS_ADD_OPTION_AND_DEFINE(
-  ${PACKAGE_NAME}_ENABLE_Experimental
+  ${PACKAGE_NAME}_ENABLE_EXPERIMENTAL
   HAVE_KOKKOSKERNELS_EXPERIMENTAL
   "Enable building and installation of experimental KokkosKernels features."
   NO )
@@ -165,14 +189,14 @@ ENDIF()
 # ==================================================================
 
 KOKKOS_ADD_OPTION_AND_DEFINE(
-  ${PACKAGE_NAME}_ETI_Only
+  ${PACKAGE_NAME}_ETI_ONLY
   KOKKOSKERNELS_ETI_ONLY
   "Whether to restrict availability of kernels to ETI types only. This is off by default, i.e. any type combination can be instantiated. Turning this on guarantees that kernels are never build inside of object files which simply call KokkosKernels functions."
   OFF
   )
 
 KOKKOS_ADD_OPTION_AND_DEFINE(
-  ${PACKAGE_NAME}_Test_ETI_Only
+  ${PACKAGE_NAME}_TEST_ETI_ONLY
   KOKKOSKERNELS_TEST_ETI_ONLY
   "Whether to restrict testing to ETI types."
   ON
@@ -423,6 +447,7 @@ ENDIF()
 # CMake Summary
 # ==================================================================
 
+INCLUDE(cmake/kokkos_requirements.cmake)
 
 MESSAGE("")
 MESSAGE("=======================")
@@ -441,6 +466,17 @@ MESSAGE("")
 # Process subdirectories
 # ==================================================================
 
+<<<<<<< HEAD
+=======
+IF (KOKKOSKERNELS_HAS_TRILINOS)
+  SET(TRILINOS_INCDIR ${CMAKE_INSTALL_PREFIX}/${${PROJECT_NAME}_INSTALL_INCLUDE_DIR})
+  SET(KOKKOSKERNELS_HEADER_DIR ${TRILINOS_INCDIR})
+ELSEIF(KOKKOSKERNELS_HAS_PARENT)
+  SET(KOKKOSKERNELS_HEADER_DIR "include/kokkos-kernels")
+ELSE()
+  SET(KOKKOSKERNELS_HEADER_DIR "include")
+ENDIF()
+>>>>>>> cmake updates: #120 and #433
 
 ADD_SUBDIRECTORY(src)
 
