@@ -54,8 +54,6 @@ KOKKOSKERNELS_PACKAGE()
 # If building in debug mode, define the HAVE_KOKKOSKERNELS_DEBUG macro.
 KOKKOS_ADD_DEBUG_OPTION()
 
-<<<<<<< HEAD
-=======
 #
 # Set up subpackage-specific configuration options
 #
@@ -66,7 +64,6 @@ IF(NOT KOKKOSKERNELS_HAS_TRILINOS AND NOT KOKKOSKERNELS_HAS_PARENT)
  MESSAGE("Kokkos_ENABLE_PTHREAD  ${Kokkos_ENABLE_PTHREAD}")
  MESSAGE("Kokkos_ENABLE_SERIAL   ${Kokkos_ENABLE_SERIAL}")
 ENDIF()
->>>>>>> cmake updates: #120 and #433
 
 #
 # "Optimization level" for KokkosKernels computational kernels.  The
@@ -95,6 +92,7 @@ KOKKOS_ADD_OPTION_AND_DEFINE(
 # KokkosKernels may enable fewer execution spaces than
 # Kokkos enables.  This can reduce build and test times.
 
+<<<<<<< HEAD
 ASSERT_DEFINED (Kokkos_ENABLE_Cuda)
 SET(${PACKAGE_NAME}_INST_EXECSPACE_CUDA_DEFAULT ${Kokkos_ENABLE_Cuda})
 ASSERT_DEFINED (Kokkos_ENABLE_OpenMP)
@@ -103,6 +101,16 @@ ASSERT_DEFINED (Kokkos_ENABLE_Pthread)
 SET(${PACKAGE_NAME}_INST_EXECSPACE_THREADS_DEFAULT ${Kokkos_ENABLE_Pthread})
 ASSERT_DEFINED (Kokkos_ENABLE_Serial)
 SET(${PACKAGE_NAME}_INST_EXECSPACE_SERIAL_DEFAULT ${Kokkos_ENABLE_Serial})
+=======
+ASSERT_DEFINED (Kokkos_ENABLE_CUDA)
+ASSERT_DEFINED (Kokkos_ENABLE_OPENMP)
+ASSERT_DEFINED (Kokkos_ENABLE_PTHREAD)
+ASSERT_DEFINED (Kokkos_ENABLE_SERIAL)
+SET(${PACKAGE_NAME}_INST_EXECSPACE_CUDA_DEFAULT ${Kokkos_ENABLE_CUDA})
+SET(${PACKAGE_NAME}_INST_EXECSPACE_OPENMP_DEFAULT ${Kokkos_ENABLE_OPENMP})
+SET(${PACKAGE_NAME}_INST_EXECSPACE_THREADS_DEFAULT ${Kokkos_ENABLE_PTHREAD})
+SET(${PACKAGE_NAME}_INST_EXECSPACE_SERIAL_DEFAULT ${Kokkos_ENABLE_SERIAL})
+>>>>>>> trilinos promotion fixes
 
 IF(${Kokkos_ENABLE_Cuda})
 KOKKOS_ADD_OPTION_AND_DEFINE(
@@ -137,20 +145,32 @@ KOKKOS_ADD_OPTION_AND_DEFINE(
 
 ENDIF()
 
+<<<<<<< HEAD
 IF(${Kokkos_ENABLE_Serial} OR ${Kokkos_ENABLE_Pthread} OR ${Kokkos_ENABLE_OpenMP})
 KOKKOS_ADD_OPTION_AND_DEFINE(
   ${PACKAGE_NAME}_INST_MEMSPACE_HOSTSPACE
   KOKKOSKERNELS_INST_MEMSPACE_HOSTSPACE
   "Whether to pre instantiate kernels for the memory space Kokkos::HostSpace.  This option is KokkosKernels_INST_EXECSPACE_HOSTSPACE=(${Kokkos_ENABLE_OpenMP} OR ${Kokkos_ENABLE_Pthread} OR ${Kokkos_ENABLE_Serial}) by default.  Disabling this when one of the Host execution spaces is enabled may increase build times."
+=======
+IF(Kokkos_ENABLE_SERIAL OR Kokkos_ENABLE_PTHREAD OR Kokkos_ENABLE_OPENMP)
+KOKKOS_ADD_OPTION_AND_DEFINE(
+  ${PACKAGE_NAME}_INST_MEMSPACE_HOSTSPACE
+  KOKKOSKERNELS_INST_MEMSPACE_HOSTSPACE
+  "Whether to pre instantiate kernels for the memory space Kokkos::HostSpace.  This option is KokkosKernels_INST_EXECSPACE_HOSTSPACE=(${Kokkos_ENABLE_OPENMP} OR ${Kokkos_ENABLE_PTHREAD} OR ${Kokkos_ENABLE_SERIAL}) by default.  Disabling this when one of the Host execution spaces is enabled may increase build times."
+>>>>>>> trilinos promotion fixes
   ON
   )
 ENDIF()
 
+<<<<<<< HEAD
 IF(${Kokkos_ENABLE_OpenMP})
+=======
+IF(Kokkos_ENABLE_OPENMP)
+>>>>>>> trilinos promotion fixes
 KOKKOS_ADD_OPTION_AND_DEFINE(
   ${PACKAGE_NAME}_INST_EXECSPACE_OPENMP
   KOKKOSKERNELS_INST_EXECSPACE_OPENMP
-  "Whether to pre instantiate kernels for the execution space Kokkos::OpenMP.  This option is KokkosKernels_INST_EXECSPACE_OPENMP=${Kokkos_ENABLE_OpenMP} by default.  Disabling this when Kokkos_ENABLE_OpenMP is enabled may increase build times."
+  "Whether to pre instantiate kernels for the execution space Kokkos::OpenMP.  This option is KokkosKernels_INST_EXECSPACE_OPENMP=${Kokkos_ENABLE_OPENMP} by default.  Disabling this when Kokkos_ENABLE_OPENMP is enabled may increase build times."
   ${${PACKAGE_NAME}_INST_EXECSPACE_OPENMP_DEFAULT}
   )
   IF(${${PACKAGE_NAME}_INST_EXECSPACE_OPENMP} AND ${${PACKAGE_NAME}_INST_MEMSPACE_HOSTSPACE})
