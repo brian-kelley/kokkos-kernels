@@ -134,28 +134,16 @@ KOKKOS_ADD_OPTION_AND_DEFINE(
 
 ENDIF()
 
-<<<<<<< HEAD
-IF(${Kokkos_ENABLE_Serial} OR ${Kokkos_ENABLE_Pthread} OR ${Kokkos_ENABLE_OpenMP})
-KOKKOS_ADD_OPTION_AND_DEFINE(
-  ${PACKAGE_NAME}_INST_MEMSPACE_HOSTSPACE
-  KOKKOSKERNELS_INST_MEMSPACE_HOSTSPACE
-  "Whether to pre instantiate kernels for the memory space Kokkos::HostSpace.  This option is KokkosKernels_INST_EXECSPACE_HOSTSPACE=(${Kokkos_ENABLE_OpenMP} OR ${Kokkos_ENABLE_Pthread} OR ${Kokkos_ENABLE_Serial}) by default.  Disabling this when one of the Host execution spaces is enabled may increase build times."
-=======
 IF(Kokkos_ENABLE_SERIAL OR Kokkos_ENABLE_PTHREAD OR Kokkos_ENABLE_OPENMP)
 KOKKOS_ADD_OPTION_AND_DEFINE(
   ${PACKAGE_NAME}_INST_MEMSPACE_HOSTSPACE
   KOKKOSKERNELS_INST_MEMSPACE_HOSTSPACE
   "Whether to pre instantiate kernels for the memory space Kokkos::HostSpace.  This option is KokkosKernels_INST_EXECSPACE_HOSTSPACE=(${Kokkos_ENABLE_OPENMP} OR ${Kokkos_ENABLE_PTHREAD} OR ${Kokkos_ENABLE_SERIAL}) by default.  Disabling this when one of the Host execution spaces is enabled may increase build times."
->>>>>>> trilinos promotion fixes
   ON
   )
 ENDIF()
 
-<<<<<<< HEAD
-IF(${Kokkos_ENABLE_OpenMP})
-=======
 IF(Kokkos_ENABLE_OPENMP)
->>>>>>> trilinos promotion fixes
 KOKKOS_ADD_OPTION_AND_DEFINE(
   ${PACKAGE_NAME}_INST_EXECSPACE_OPENMP
   KOKKOSKERNELS_INST_EXECSPACE_OPENMP
@@ -475,8 +463,6 @@ MESSAGE("")
 # Process subdirectories
 # ==================================================================
 
-<<<<<<< HEAD
-=======
 IF (KOKKOSKERNELS_HAS_TRILINOS)
   SET(TRILINOS_INCDIR ${CMAKE_INSTALL_PREFIX}/${${PROJECT_NAME}_INSTALL_INCLUDE_DIR})
   SET(KOKKOSKERNELS_HEADER_DIR ${TRILINOS_INCDIR})
@@ -485,7 +471,6 @@ ELSEIF(KOKKOSKERNELS_HAS_PARENT)
 ELSE()
   SET(KOKKOSKERNELS_HEADER_DIR "include")
 ENDIF()
->>>>>>> cmake updates: #120 and #433
 
 ADD_SUBDIRECTORY(src)
 
