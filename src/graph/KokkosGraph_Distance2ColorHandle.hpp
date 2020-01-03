@@ -63,6 +63,7 @@ enum GraphColoringAlgorithmDistance2
     COLORING_D2,                     // Distance-2 Graph Coloring
     COLORING_D2_VB,                  // Distance-2 Graph Coloring Vertex Based
     COLORING_D2_VB_BIT,              // Distance-2 Graph Coloring Vertex Based BIT
+    COLORING_D2_VB_SYM,              // Distance-2 Graph Coloring Vertex Based, fast version for symmetric graph
     COLORING_D2_VB_BIT_EF,           // Distance-2 Graph Coloring Vertex Based BIT + Edge Filtering
 };
 

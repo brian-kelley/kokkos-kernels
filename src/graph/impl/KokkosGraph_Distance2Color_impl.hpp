@@ -111,12 +111,16 @@ class GraphColorDistance2
     using non_const_clno_nnz_view_t        = typename clno_nnz_view_t_::non_const_type;
     using nnz_lno_temp_work_view_t         = typename HandleType::nnz_lno_temp_work_view_type;
     using single_dim_index_view_type       = typename Kokkos::View<nnz_lno_type, row_lno_view_device_type>;
+    using ordinal_2d_view_t                = typename Kokkos::View<nnz_lno_type**, Kokkos::LayoutLeft, row_lno_view_device_type>;
     using range_policy_type                = Kokkos::RangePolicy<my_exec_space>;
     using team_policy_type                 = Kokkos::TeamPolicy<my_exec_space>;
     using team_member_type                 = typename team_policy_type::member_type;
     using non_const_1d_bool_view_t         = Kokkos::View<bool*>;
     using non_const_1d_size_type_view_type = typename HandleType::non_const_1d_size_type_view_type;
     using bit_64_forbidden_type            = long long int;
+    using bitset_t                         = Kokkos::Bitset<row_lno_view_device_type>;
+    //Symmetric algorithm uses 32-bit words, so that bitwise atomics are supported on all Kokkos devices
+    using forbidden_view                   = Kokkos::View<uint32_t*, row_lno_view_device_type>;
 
     // For HashmapAccumulator (EXPERIMENTAL)
     using pool_memory_space_t = typename KokkosKernels::Impl::UniformMemoryPool<MyTempMemorySpace, nnz_lno_type>;
@@ -256,6 +260,271 @@ class GraphColorDistance2
 
         // init conflictlist sequentially.
         Kokkos::parallel_for("InitList", range_policy_type(0, this->nv), functorInitList<nnz_lno_temp_work_view_t>(current_vertexList));
+
+        // Next iteratons's conflictList
+        nnz_lno_temp_work_view_t next_iteration_recolorList;
+
+        // Size the next iteration conflictList
+        single_dim_index_view_type next_iteration_recolorListLength;
+
+        // Vertices to recolor.  Will swap with vertexList
+        next_iteration_recolorList = nnz_lno_temp_work_view_t(Kokkos::ViewAllocateWithoutInitializing("recolorList"), this->nv);
+        next_iteration_recolorListLength = single_dim_index_view_type("recolorListLength");
+
+        nnz_lno_type numUncolored             = this->nv;
+        nnz_lno_type numUncoloredPreviousIter = this->nv + 1;
+        nnz_lno_type current_vertexListLength = this->nv;
+
+        double              time;
+        double              total_time = 0.0;
+        Kokkos::Impl::Timer timer;
+
+        int iter = 0;
+        for(; (iter < _max_num_iterations) && (numUncolored > 0); iter++)
+        {
+            timer.reset();
+
+            // Save the # of uncolored from the previous iteration
+            numUncoloredPreviousIter = numUncolored;
+
+            // ------------------------------------------
+            // Do greedy color
+            // ------------------------------------------
+            if(using_edge_filtering)
+            {
+                // Temp copy of the adj array (mutable)
+                // - This is required for edge-filtering passes to avoid
+                //   side effects since edge filtering modifies the adj array.
+                nnz_lno_temp_work_view_t adj_copy;
+                adj_copy = nnz_lno_temp_work_view_t(Kokkos::ViewAllocateWithoutInitializing("adj copy"), this->ne);
+                Kokkos::deep_copy(adj_copy, this->adj);
+
+                non_const_clno_nnz_view_t t_adj_copy;
+                t_adj_copy = non_const_clno_nnz_view_t(Kokkos::ViewAllocateWithoutInitializing("t_adj copy"), this->ne);
+                Kokkos::deep_copy(t_adj_copy, this->t_adj);
+
+                // Debugging
+                // prettyPrint1DView(t_adj_copy, "t_adj_copy", 100);
+                // prettyPrint1DView(t_adj, "t_adj", 100);
+
+                this->colorGreedyEF(
+                  this->xadj, adj_copy, this->t_xadj, t_adj_copy, colors_out, current_vertexList, current_vertexListLength);
+            }
+            else
+            {
+                this->colorGreedy(
+                  this->xadj, this->adj, this->t_xadj, this->t_adj, colors_out, current_vertexList, current_vertexListLength);
+            }
+
+            my_exec_space().fence();
+
+            if(this->_ticToc)
+            {
+                time = timer.seconds();
+                total_time += time;
+                std::cout << "\tIteration: " << iter << std::endl
+                          << "\t  - Time speculative greedy phase : " << time << std::endl
+                          << "\t  - Num Uncolored (greedy-color)  : " << numUncolored << std::endl;
+
+                gc_handle->add_to_overall_coloring_time_phase1(time);
+
+                timer.reset();
+            }
+
+            // ------------------------------------------
+            // Find conflicts
+            // ------------------------------------------
+            bool swap_work_arrays = true;      // NOTE: swap_work_arrays can go away in this example -- was only ever
+                                               //       set false in the PPS code in the original D1 coloring...
+
+            // NOTE: not using colorset algorithm in this so we don't include colorset data
+            numUncolored = this->findConflicts(swap_work_arrays,
+                                               this->xadj,
+                                               this->adj,
+                                               this->t_xadj,
+                                               this->t_adj,
+                                               colors_out,
+                                               current_vertexList,
+                                               current_vertexListLength,
+                                               next_iteration_recolorList,
+                                               next_iteration_recolorListLength);
+
+            my_exec_space().fence();
+
+            if(_ticToc)
+            {
+                time = timer.seconds();
+                total_time += time;
+                std::cout << "\t  - Time conflict detection       : " << time << std::endl;
+                std::cout << "\t  - Num Uncolored (conflicts)     : " << numUncolored << std::endl;
+                gc_handle->add_to_overall_coloring_time_phase2(time);
+                timer.reset();
+            }
+
+            // Swap the work arrays (for conflictlist)
+            if(swap_work_arrays)
+            {
+                // Swap Work Arrays
+                if(iter + 1 < this->_max_num_iterations)
+                {
+                    nnz_lno_temp_work_view_t temp = current_vertexList;
+                    current_vertexList            = next_iteration_recolorList;
+                    next_iteration_recolorList    = temp;
+
+                    current_vertexListLength         = numUncolored;
+                    next_iteration_recolorListLength = single_dim_index_view_type("recolorListLength");
+                }
+            }
+
+            // Bail out if we didn't make any progress since we're probably stuck and it's better to just clean up in serial.
+            if(numUncolored == numUncoloredPreviousIter)
+                break;
+
+        }      // end for iterations && numUncolored > 0...
+
+        // ------------------------------------------
+        // clean up in serial (resolveConflictsSerial)
+        // ------------------------------------------
+        if(numUncolored > 0)
+        {
+            this->resolveConflictsSerial(this->nv,
+                                         this->xadj,
+                                         this->adj,
+                                         this->t_xadj,
+                                         this->t_adj,
+                                         colors_out,
+                                         current_vertexList,
+                                         current_vertexListLength);
+        }
+
+        my_exec_space().fence();
+
+        if(_ticToc)
+        {
+            time = timer.seconds();
+            total_time += time;
+            std::cout << "\tTime serial conflict resolution   : " << time << std::endl;
+            gc_handle->add_to_overall_coloring_time_phase3(time);
+        }
+
+        // Save the number of phases and vertex colors to the graph coloring handle
+        this->gc_handle->set_vertex_colors(colors_out);
+        this->gc_handle->set_num_phases((double)iter);
+
+    }      // color_graph_d2 (end)
+
+    //batch is the number of 32-bit values per column representing forbidden colors.
+    //It can be 2, 4 or 8 depending on the average graph degree,
+    //which predicts how many colors will be needed. Any value will be correct for any graph,
+    //this is just about performance.
+    template<int batch>
+    struct symmetricColorFunctor
+    {
+      KOKKOS_INLINE_FUNCTION void operator()(const nnz_lno_t i, nnz_lno_t& lnumRecolor, bool finalPass) const
+      {
+        //Define some special color values:
+        //unprocessed means the actual coloring still needs to be attempted
+        //uncolorable means all colors in current batch are forbidden
+        //conflicted  means the maximum attempts to color were exceeded, so wait until next iter
+        constexpr color_type UNPROCESSED = 0;
+        constexpr color_type UNCOLORABLE = ~UNPROCESSED;
+        constexpr color_type CONFLICTED = UNCOLORABLE - 1;
+        nnz_lno_t v = worklist(i, w);
+        if(colors(v) == UNPROCESSED)
+        {
+          //Compute the forbidden array
+          size_type rowBegin = rowmap(v);
+          size_type rowEnd = rowmap(v + 1);
+          int colorOffset = -1;
+          for(int offset = 0; offset < batch; offset++)
+          {
+            unsigned f = 0;
+            for(size_type j = rowBegin; j < rowEnd; j++)
+              f |= forbidden(batch * colinds(j) + offset);
+            if(!(~f))
+            {
+              colorOffset = 32 * offset + KokkosKernels::Impl::least_set_bit(~f);
+              break;
+            }
+          }
+          if(colorOffset == -1)
+          {
+            colors(v) = UNCOLORABLE;
+            return;
+          }
+          //Otherwise, attempt to color with colorBase + colorOffset
+          //Loop over neighbors, atomically setting corresponding forbidden bit in each.
+          //If this succeeds for every bit, then the vertex is successfully colored.
+          int colorWord = colorOffset / 32;
+          unsigned colorMask = 1U << (colorOffset % 32);
+          size_type j;
+          for(size_type j = rowBegin; j < rowEnd; j++)
+          {
+            //Use atomic fetch-or to set the forbidden bit in the neighbors.
+            //Check that colorMask bit is not set in the fetched value.
+            unsigned fetched = Kokkos::atomic_fetch_or(&forbidden(batch * colinds(j) + colorWord), colorMask);
+            if(fetched & colorMask)
+            {
+              //The bit was already set, so the color is actually forbidden.
+              //Will clear the bits already set below.
+              
+            }
+          }
+          if(j == rowEnd)
+          {
+            //Successfully set all dist-1 neighbor forbidden bits, so can color without any conflicts.
+            colors(v) = colorBase + colorOffset;
+          }
+          else
+          {
+            //Coloring was aborted, so go back and clear the forbidden bits that were set.
+            for(size_type k = rowBegin; k <= j; k++)
+              Kokkos::atomic_fetch_and(&forbidden(batch * colinds(k) + colorWord), ~colorMask);
+            colors(v) = CONFLICTED;
+          }
+        }
+        //Now v has been processed.
+        //If it has status CONFLICTED, add it to the next worklist
+        //(so coloring is attempted again in current batch).
+        //Not doing anything with UNCOLORABLE vertices, those have to wait until next batch.
+        if(colors(v) == CONFLICTED)
+        {
+          //This is the scan part: lnumRecolor gives the index to insert into next worklist.
+          if(finalPass)
+            worklist(lnumRecolor, 1 - w) = v;
+          lnumRecolor++;
+        }
+      }
+      ordinal_2d_view_t worklist;
+      int w;  //0 or 1 (index of active worklist). Index of next worklist is 1-w.
+      const_lno_row_view_type rowmap;
+      const_lno_nnz_view_t colinds;
+      forbidden_view forbidden;
+      color_view_type colors;
+      color_type colorBase; //Color corresponding to offset 0 in the current batch.
+    };
+
+    virtual void compute_symmetric_distance2_color()
+    {
+        color_view_type colors_out("Graph Colors", this->nv);
+
+        // Data:
+        // gc_handle = graph coloring handle
+        // nr        = num_rows = num_cols (scalar)
+        // xadj      = row_map   (view 1 dimension - [num_verts+1] - entries index into adj )
+        // adj       = entries   (view 1 dimension - [num_edges]   - adjacency list )
+        if(this->_ticToc)
+        {
+            std::cout << "\tcolor_symmetric_graph_d2 params:\n"
+                      << "\t\t#vertices : " << this->nv << '\n'
+                      << "\t\t#edges: " << this->ne << '\n';
+        }
+
+        // Double buffering the work list, so that the functor can read out of one while it populates the other.
+        ordinal_2d_view_t worklist("Work list", this->nv, 2);
+
+        // init conflictlist sequentially.
+        Kokkos::parallel_for("InitList", range_policy_type(0, this->nv), functorInitList(Kokkos::subview(worklist, Kokkos::ALL(), 0)));
 
         // Next iteratons's conflictList
         nnz_lno_temp_work_view_t next_iteration_recolorList;
