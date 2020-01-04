@@ -124,7 +124,7 @@ void graph_compute_distance2_color(KernelHandle *handle,
 
             // Save out the number of phases and vertex colors
             gch_d2->set_vertex_colors(colors_out);
-            gch_d2->set_num_phases((double)num_phases);
+            gch_d2->set_num_phases(num_phases);
         }
         break;
 

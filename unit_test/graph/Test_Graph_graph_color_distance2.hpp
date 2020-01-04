@@ -178,71 +178,27 @@ test_coloring_d2(lno_type numRows, size_type nnz, lno_type bandwidth, lno_type r
                                 typename device::memory_space>
       KernelHandle;
 
-    KernelHandle cp;
-
-    std::string algName = "SPGEMM_KK_MEMSPEED";
-    cp.create_spgemm_handle(KokkosSparse::StringToSPGEMMAlgorithm(algName));
-    typename graph_type::row_map_type::non_const_type cRowptrs("cRowptrs", numRows + 1);
-
-    // Call symbolic multiplication of graph with itself (no transposes, and A and B are the same)
-    KokkosSparse::Experimental::spgemm_symbolic(&cp,
-                                                numRows,
-                                                numRows,
-                                                numRows,
-                                                input_mat.graph.row_map,
-                                                input_mat.graph.entries,
-                                                false,
-                                                input_mat.graph.row_map,
-                                                input_mat.graph.entries,
-                                                false,
-                                                cRowptrs);
-    // Get num nz in C
-    auto Cnnz = cp.get_spgemm_handle()->get_c_nnz();
-
-    // Must create placeholder value views for A and C (values are meaningless)
-    // Said above that the scalar view type is the same as the colinds view type
-    scalar_view_type aFakeValues("A/B placeholder values (meaningless)", input_mat.graph.entries.size());
-
-    // Allocate C entries array, and placeholder values
-    typename graph_type::entries_type::non_const_type cColinds("C colinds", Cnnz);
-    scalar_view_type                                  cFakeValues("C placeholder values (meaningless)", Cnnz);
-
-    // Run the numeric kernel
-    KokkosSparse::Experimental::spgemm_numeric(&cp,
-                                               numRows,
-                                               numRows,
-                                               numRows,
-                                               input_mat.graph.row_map,
-                                               input_mat.graph.entries,
-                                               aFakeValues,
-                                               false,
-                                               input_mat.graph.row_map,
-                                               input_mat.graph.entries,
-                                               aFakeValues,
-                                               false,
-                                               cRowptrs,
-                                               cColinds,
-                                               cFakeValues);
-    // done with spgemm
-    cp.destroy_spgemm_handle();
-
+    //input_mat was built to be square and then symmetrized, so COLORING_D2_VB_SYM is safe to use
+    //TODO BMK: for more interesting test cases for the other algorithms, try
+    //non-symmetric graphs, and especially cases where rowgraph != colgraph^T.
     GraphColoringAlgorithmDistance2 coloring_algorithms[] = {
-      COLORING_D2_MATRIX_SQUARED, COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF};
+      COLORING_D2_MATRIX_SQUARED, COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF, COLORING_D2_VB_SYM};
 
-    int num_algorithms = 6;
+    int num_algorithms = 7;
+
+    Kokkos::Impl::Timer timer;
 
     for(int ii = 0; ii < num_algorithms; ++ii)
     {
-
+        timer.reset();
         GraphColoringAlgorithmDistance2 coloring_algorithm = coloring_algorithms[ ii ];
         color_view_type                 vector_colors;
         size_t                          num_colors;
 
-        Kokkos::Impl::Timer timer1;
-        crsMat_type         output_mat;
         int res = run_graphcolor_d2<crsMat_type, device>(input_mat, coloring_algorithm, num_colors, vector_colors);
 
         EXPECT_TRUE((res == 0));
+        std::cout << "D2 algorithm " << ii << " took " << timer.seconds() << " s\n";
     }
 }
 

@@ -287,6 +287,7 @@ class GraphColorDistance2Handle
             case COLORING_D2_VB:
             case COLORING_D2_VB_BIT:
             case COLORING_D2_VB_BIT_EF:
+            case COLORING_D2_VB_SYM:
                 this->tictoc                   = false;
                 this->vb_edge_filtering        = false;
                 this->vb_chunk_size            = 8;
@@ -336,7 +337,7 @@ class GraphColorDistance2Handle
     void set_verbose(const bool verbose_) { this->verbose = verbose_; }
     void set_coloring_time(const double& coloring_time_) { this->coloring_time = coloring_time_; }
     void set_max_number_of_iterations(const int& max_phases) { this->max_number_of_iterations = max_phases; }
-    void set_num_phases(const double& num_phases_) { this->num_phases = num_phases_; }
+    void set_num_phases(const int& num_phases_) { this->num_phases = num_phases_; }
 
     void add_to_overall_coloring_time(const double& coloring_time_) { this->overall_coloring_time += coloring_time_; }
     void add_to_overall_coloring_time_phase1(const double& coloring_time_)
