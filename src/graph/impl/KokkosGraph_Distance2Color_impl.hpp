@@ -112,7 +112,6 @@ class GraphColorDistance2
     using non_const_clno_nnz_view_t        = typename clno_nnz_view_t_::non_const_type;
     using nnz_lno_temp_work_view_t         = typename HandleType::nnz_lno_temp_work_view_type;
     using single_dim_index_view_type       = typename Kokkos::View<nnz_lno_type, row_lno_view_device_type>;
-    using ordinal_2d_view_t                = typename Kokkos::View<nnz_lno_type**, Kokkos::LayoutLeft, row_lno_view_device_type>;
     using range_policy_type                = Kokkos::RangePolicy<my_exec_space>;
     using team_policy_type                 = Kokkos::TeamPolicy<my_exec_space>;
     using team_member_type                 = typename team_policy_type::member_type;
@@ -414,6 +413,14 @@ class GraphColorDistance2
 
     }      // color_graph_d2 (end)
 
+    /*
+      TODO:
+      -Write a symmetric serial algorithm, where conflict resolution isn't needed
+      -Add "symmetric" flag to handle constructor
+        -Default should be true, since so far the non-symmetric case has no users
+         and is not tested. Aggregation always uses the symmetric case .
+      -
+    */
     // Semi-symmetric faster version
     //  -Uses V->C = (C->V)^T (called xadj/adj) and C->V = (V->C)^T (called t_xadj/t_adj)
     //  -Important: C forbidden should be a "ratchet" function within each color batch. Once
@@ -434,9 +441,9 @@ class GraphColorDistance2
     //    -Worklist construction (scan over all V): for each v that is CONFLICTED, mark as UNPROCESSED and place in worklist
 
     template<int batch>
-    struct SemiSymColoring
+    struct SymColoring
     {
-      SemiSymColoring(
+      SymColoring(
           nnz_lno_temp_work_view_t& worklist_,
           single_dim_index_view_type worklen_,
           color_type colorBase_,
@@ -503,9 +510,9 @@ class GraphColorDistance2
     };
     
     template<int batch>
-    struct SemiSymConflict
+    struct SymConflict
     {
-      SemiSymConflict(
+      SymConflict(
           color_type& colorBase_, forbidden_view& forbidden_, color_view_type& colors_,
           const_lno_row_view_type& Crowmap_, const_lno_nnz_view_t& Ccolinds_)
         : colorBase(colorBase_), forbidden(forbidden_), colors(colors_), Crowmap(Crowmap_), Ccolinds(Ccolinds_)
@@ -550,9 +557,9 @@ class GraphColorDistance2
       const_lno_nnz_view_t    Ccolinds;
     };
 
-    struct SemiSymWorklist
+    struct SymWorklist
     {
-      SemiSymWorklist(
+      SymWorklist(
           color_view_type& colors_, nnz_lno_temp_work_view_t& worklist_, single_dim_index_view_type& worklen_, nnz_lno_type nv_)
         : colors(colors_), worklist(worklist_), worklen(worklen_), nv(nv_)
       {}
@@ -581,9 +588,9 @@ class GraphColorDistance2
       nnz_lno_type nv;
     };
 
-    struct SemiSymUpdateBatch
+    struct SymUpdateBatch
     {
-      SemiSymUpdateBatch(
+      SymUpdateBatch(
           color_view_type& colors_, nnz_lno_temp_work_view_t& worklist_, single_dim_index_view_type& worklen_, nnz_lno_type nv_)
         : colors(colors_), worklist(worklist_), worklen(worklen_), nv(nv_)
       {}
@@ -611,121 +618,9 @@ class GraphColorDistance2
       nnz_lno_type nv;
     };
 
-/*
-    //batch is the number of 32-bit values per column representing forbidden colors.
-    //It can be 2, 4 or 8 depending on the average graph degree,
-    //which predicts how many colors will be needed. Any value will be correct for any graph,
-    //this is just about performance.
-    template<int batch>
-    struct symmetricColorFunctor
-    {
-      symmetricColorFunctor(ordinal_2d_view_t worklist_, nnz_lno_temp_work_view_t worklen_, int w_, const_lno_row_view_type rowmap_,
-          const_lno_nnz_view_t colinds_, forbidden_view forbidden_, color_view_type colors_, color_type colorBase_)
-        : worklist(worklist_), worklen(worklen_), w(w_), rowmap(rowmap_), colinds(colinds_), forbidden(forbidden_), colors(colors_), colorBase(colorBase_)
-      {}
-
-      KOKKOS_INLINE_FUNCTION void operator()(const nnz_lno_type i, nnz_lno_type& lnumRecolor, bool finalPass) const
-      {
-        //Define some special color values:
-        //unprocessed means the actual coloring still needs to be attempted
-        //uncolorable means all colors in current batch are forbidden
-        //conflicted  means the maximum attempts to color were exceeded, so wait until next iter
-        constexpr color_type UNPROCESSED = 0;
-        constexpr color_type UNCOLORABLE = ~UNPROCESSED;
-        constexpr color_type CONFLICTED = UNCOLORABLE - 1;
-        nnz_lno_type v = worklist(i, w);
-        if(colors(v) == UNPROCESSED)
-        {
-          //Compute the forbidden array
-          const size_type rowBegin = rowmap(v);
-          const size_type rowEnd = rowmap(v + 1);
-          int colorWord = -1;
-          int colorWordOffset;
-          for(int offset = 0; offset < batch; offset++)
-          {
-            unsigned f = 0;
-            for(size_type j = rowBegin; j < rowEnd; j++)
-              f |= forbidden(batch * colinds(j) + offset);
-            if(~f)
-            {
-              //At least one bit in f is 0, so
-              //find the least significant bit in ~f which is 1.
-              colorWord = offset;
-              //ffs intrinsics return 1 for least significant bit
-              colorWordOffset = KokkosKernels::Impl::least_set_bit(~f) - 1;
-              break;
-            }
-          }
-          if(colorWord == -1)
-          {
-            colors(v) = UNCOLORABLE;
-            return;
-          }
-          unsigned colorMask = 1U << colorWordOffset;
-          //Otherwise, attempt to color
-          //Loop over neighbors, atomically setting corresponding forbidden bit in each.
-          //If this succeeds for every bit, then the vertex is successfully colored.
-          size_type j;
-          for(j = rowBegin; j < rowEnd; j++)
-          {
-            //Use atomic fetch-or to set the forbidden bit in the neighbors.
-            //Check that colorMask bit is not set in the fetched value.
-            unsigned fetched = Kokkos::atomic_fetch_or(&forbidden(batch * colinds(j) + colorWord), colorMask);
-            if(fetched & colorMask)
-            {
-              //The bit was already set, so the color is actually forbidden.
-              //Below, will clear the bits that were set in this loop.
-              break;
-            }
-          }
-          if(j == rowEnd)
-          {
-            //Successfully set all dist-1 neighbor forbidden bits, so can color without any conflicts.
-            colors(v) = colorBase + 32 * colorWord + colorWordOffset;
-          }
-          else
-          {
-            //Coloring was aborted, so go back and clear the forbidden bits that were set.
-            for(size_type k = rowBegin; k <= j; k++)
-              Kokkos::atomic_fetch_and(&forbidden(batch * colinds(k) + colorWord), ~colorMask);
-            colors(v) = CONFLICTED;
-          }
-        }
-        //Now v has been processed.
-        //If it has status CONFLICTED, add it to the next worklist
-        //(so coloring is attempted again in current batch).
-        //Not doing anything with UNCOLORABLE vertices, those have to wait until next batch.
-        if(colors(v) == CONFLICTED)
-        {
-          //This is the scan part: lnumRecolor gives the index to insert into next worklist.
-          if(finalPass)
-          {
-            colors(v) = UNPROCESSED;
-            worklist(lnumRecolor, 1 - w) = v;
-          }
-          lnumRecolor++;
-        }
-        if(finalPass && i == worklen(w) - 1)
-        {
-          //The very last thread in the kernel knows how many items are in the next worklist
-          //(a counting reduction, but get it for free in a scan)
-          worklen(1 - w) = lnumRecolor;
-        }
-      }
-      ordinal_2d_view_t worklist;
-      nnz_lno_temp_work_view_t worklen;
-      int w;  //0 or 1 (index of active worklist). Index of next worklist is 1-w.
-      const_lno_row_view_type rowmap;
-      const_lno_nnz_view_t colinds;
-      forbidden_view forbidden;
-      color_view_type colors;
-      color_type colorBase; //Color corresponding to offset 0 in the current batch.
-    };
-*/
-
     //Special case of distance-2 where graph xadj/adj is the transpose of t_xadj/t_adj.
     //This is true for most applications of dist-2 (esp. MueLu aggregation)
-    virtual void compute_semisym_distance2_color()
+    void compute_sym_distance2_color()
     {
       //Member data used:
       // gc_handle    = graph coloring handle
@@ -788,41 +683,41 @@ class GraphColorDistance2
           {
             case 1:
               Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  SemiSymColoring<1>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+                  SymColoring<1>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
               Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
-                  SemiSymConflict<1>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+                  SymConflict<1>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 2:
               Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  SemiSymColoring<2>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+                  SymColoring<2>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
               Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
-                  SemiSymConflict<2>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+                  SymConflict<2>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 4:
               Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  SemiSymColoring<4>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+                  SymColoring<4>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
               Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
-                  SemiSymConflict<4>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+                  SymConflict<4>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 8:
               Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  SemiSymColoring<8>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+                  SymColoring<8>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
               Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
-                  SemiSymConflict<8>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+                  SymConflict<8>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             default:
               throw std::logic_error("D2 symmetric color batch size is not a power-of-two, or is too big");
           }
           //Then build the next worklist
           Kokkos::parallel_scan("Sym D2 worklist", range_policy_type(0, this->nv),
-              SemiSymWorklist(colors_out, worklist, worklen, this->nv));
+              SymWorklist(colors_out, worklist, worklen, this->nv));
           //worklen has been updated on device
           Kokkos::deep_copy(currentWork, worklen);
           iter++;
         }
         //Will need to run with a different color base, so rebuild the work list
         Kokkos::parallel_scan("Sym D2 Worklist Rebuild", range_policy_type(0, this->nv),
-            SemiSymUpdateBatch(colors_out, worklist, worklen, this->nv));
+            SymUpdateBatch(colors_out, worklist, worklen, this->nv));
         Kokkos::deep_copy(currentWork, worklen);
         if(currentWork == 0)
         {
@@ -840,6 +735,88 @@ class GraphColorDistance2
       }
 
       // Save the number of phases and vertex colors to the graph coloring handle
+      this->gc_handle->set_vertex_colors(colors_out);
+      this->gc_handle->set_num_phases(iter);
+    }
+
+    void compute_sym_distance2_color_serial()
+    {
+      //Member data used:
+      // gc_handle    = graph coloring handle
+      // nv           = #vertices
+      // nc           = #columns
+      // xadj/adj     = graph where rows are vertices, and adjacent columns are listed
+      // t_xadj/t_adj = graph where rows are columns, and adjacent vertices are listed.
+      //                Allowed to alias xadj/adj if same.
+      if(this->_ticToc)
+      {
+        std::cout << "\tcolor_symmetric_graph_d2 params:\n"
+          << "\t\t#vertices : " << this->nv << '\n'
+          << "\t\t#edges: " << this->ne << '\n';
+      }
+      forbidden_view forbidden("Forbidden", batch * nv);
+      color_type colors_out(Kokkos::AllocateViewWithoutInitializing("Colors", this->nv));
+      auto colors = Kokkos::create_mirror_view(colors_out);
+      //Get the graph(s) in host space, if not already
+      Kokkos::View<size_type*, Kokkos::HostSpace> Vrowmap, Crowmap;
+      Kokkos::View<nnz_lno_type*, Kokkos::HostSpace> Vcolinds, Ccolinds;
+      Vrowmap = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->xadj);
+      Vcolinds = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->adj);
+      if(this->xadj == this->t_xadj)
+        Crowmap = Vrowmap;
+      else
+        Crowmap = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->t_xadj);
+      if(this->adj == this->t_adj)
+        Ccolinds = Vcolinds;
+      else
+        Ccolinds = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->t_adj);
+      //Create worklist
+      Kokkos::View<nnz_lno_t*, Kokkos::HostSpace> worklist(Kokkos::AllocateViewWithoutInitializing("Worklist"), this->nv);
+      nnz_lno_t worklen = this->nv;
+      //note: relying on forbidden and colors_out being initialized to 0
+      forbidden_view forbidden("Forbidden", batch * nv);
+      int iter = 0;
+      Kokkos::Impl::Timer timer;
+      nnz_lno_type currentWork = this->nv;
+      for(color_type colorBase = 1; currentWork > 0; colorBase += 32)
+      {
+        //Rebuilding the worklist in-place.
+        nnz_lno_type worklistOutput = 0;
+        for(nnz_lno_type i = 0; i < currentWork; i++)
+        {
+          nnz_lno_type v = i;
+          if(iter > 0)
+            v = worklist(i);
+          //Compute v's forbidden for this batch
+          unsigned forbid = 0;
+          for(size_type j = rowBegin; j < rowEnd; j++)
+          {
+            forbid |= forbidden(Vcolinds(j));
+          }
+          if(~forbid)
+          {
+            int bitOffset = KokkosKernels::Impl::least_set_bit(~forbid) - 1;
+            colors(v) = colorBase + bitOffset;
+            for(size_type j = rowBegin; j < rowEnd; j++)
+              forbidden(Vcolinds(j)) |= (1U << bitOffset);
+          }
+          else
+          {
+            //Can't color in this batch, so add to worklist
+            worklist(worklistOutput++) = v;
+          }
+        }
+        currentWork = worklistOutput;
+        //Clear forbidden bits
+        Kokkos::deep_copy(forbidden, 0U);
+        iter++;
+      }
+      if(this->_ticToc)
+      {
+        gc_handle->add_to_overall_coloring_time_phase1(timer.seconds());
+      }
+      // Save the number of phases and vertex colors to the graph coloring handle
+      Kokkos::deep_copy(colors_out, colors);
       this->gc_handle->set_vertex_colors(colors_out);
       this->gc_handle->set_num_phases(iter);
     }

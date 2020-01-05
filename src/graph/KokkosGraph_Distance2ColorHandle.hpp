@@ -178,6 +178,7 @@ class GraphColorDistance2Handle
      *                     - COLORING_D2_VB
      *                     - COLORING_D2_VB_BIT
      *                     - COLORING_D2_VB_BIT_EF
+     *                     - COLORING_D2_VB_SYM
      *
      *  @param[in] set_default_parameters Whether or not to reset the default parameters for the given algorithm.
      *                                    Default = true.
