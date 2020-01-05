@@ -414,6 +414,205 @@ class GraphColorDistance2
 
     }      // color_graph_d2 (end)
 
+    // Semi-symmetric faster version
+    //  -Uses V->C = (C->V)^T (called xadj/adj) and C->V = (V->C)^T (called t_xadj/t_adj)
+    //  -Important: C forbidden should be a "ratchet" function within each color batch. Once
+    //   a forbidden bit is set, it should never need to be cleared.
+    //    -Clearing a forbidden bit would mean that _all_ incident Vs with that color are uncolored.
+    //    -But conflict resolution is designed to uncolor all but 1 that is incident
+    //
+    //  -Needs several functors:
+    //  -Should still easily beat neighbors-of-neighbors algo, since it loops over all the Vs
+    //    (and does N-of-N loops) when resolving conflicts.
+    //    -Speculative color (for over V worklist): allowed to create conflicts,
+    //     only based on current C forbidden array. Updates C's forbidden array using atomic_or.
+    //     (for GPU, should make a TeamPolicy version)
+    //    -Conflict elimination (for over C): Recompute forbidden c incrementally,
+    //     observing actual color of each incident V (v). If v's current color is already in c's forbidden,
+    //     just set v's color to CONFLICTED.
+    //     (for GPU, should make a TeamPolicy version)
+    //    -Worklist construction (scan over all V): for each v that is CONFLICTED, mark as UNPROCESSED and place in worklist
+
+    template<int batch>
+    struct SemiSymColoring
+    {
+      SemiSymColoring(
+          nnz_lno_temp_work_view_t& worklist_,
+          single_dim_index_view_type worklen_,
+          color_type colorBase_,
+          forbidden_view forbidden_,
+          color_view_type colors_,
+          const_lno_row_view_type Vrowmap_,
+          const_lno_nnz_view_t Vcolinds_) :
+        worklist(worklist_), worklen(worklen_), colorBase(colorBase_), forbidden(forbidden_),
+        colors(colors_), Vrowmap(Vrowmap_), Vcolinds(Vcolinds_)
+      {}
+      KOKKOS_INLINE_FUNCTION void operator()(const nnz_lno_type i) const
+      {
+        constexpr color_type UNPROCESSED = 0;
+        constexpr color_type UNCOLORABLE = ~UNPROCESSED;
+        nnz_lno_type v = worklist(i);
+        //compute forbidden for v
+        unsigned forbid[batch] = {0};
+        //union the forbidden of all incident c's
+        size_type rowBegin = Vrowmap(v);
+        size_type rowEnd = Vrowmap(v + 1);
+        for(size_type j = rowBegin; j < rowEnd; j++)
+        {
+          nnz_lno_type nei = Vcolinds(j);
+          for(int b = 0; b < batch; b++)
+            forbid[b] |= forbidden(nei * batch + b);
+        }
+        //Find the first 0 bit in forbid
+        color_type color = 0;
+        int colorWord = 0;
+        int colorBit = 0;
+        for(int b = 0; b < batch; b++)
+        {
+          if(~forbid[b])
+          {
+            //least_set_bit returns 1 for the least significant bit, so subtracting 1
+            colorWord = b;
+            colorBit = KokkosKernels::Impl::least_set_bit(~forbid[b]) - 1;
+            color = 32 * b + colorBit;
+            break;
+          }
+        }
+        if(color)
+        {
+          //Color v
+          colors(v) = color;
+          //Update forbidden for all of v's neighbors
+          for(size_type j = rowBegin; j < rowEnd; j++)
+          {
+            //Update column forbidden
+            Kokkos::atomic_fetch_or(&forbidden(Vcolinds(j) * batch + colorWord), 1U << colorBit);
+          }
+        }
+        else
+          colors(v) = UNCOLORABLE;
+      }
+
+      nnz_lno_temp_work_view_t worklist;
+      single_dim_index_view_type worklen;
+      color_type colorBase;
+      forbidden_view forbidden;         //forbidden color bitset for columns
+      color_view_type colors;
+      const_lno_row_view_type Vrowmap;  //V <-> C graph (row v is the columns incident to v)
+      const_lno_nnz_view_t    Vcolinds;
+    };
+    
+    template<int batch>
+    struct SemiSymConflict
+    {
+      SemiSymConflict(
+          color_type& colorBase_, forbidden_view& forbidden_, color_view_type& colors_,
+          const_lno_row_view_type& Crowmap_, const_lno_nnz_view_t& Ccolinds_)
+        : colorBase(colorBase_), forbidden(forbidden_), colors(colors_), Crowmap(Crowmap_), Ccolinds(Ccolinds_)
+      {}
+
+      KOKKOS_INLINE_FUNCTION void operator()(const nnz_lno_type c) const
+      {
+        constexpr color_type UNPROCESSED = 0;
+        constexpr color_type UNCOLORABLE = ~UNPROCESSED;
+        constexpr color_type CONFLICTED = UNCOLORABLE - 1;
+        unsigned forbid[batch] = {0};
+        //Go over all the v neighbors, updating forbidden
+        size_type rowBegin = Crowmap(c);
+        size_type rowEnd = Crowmap(c + 1);
+        color_type batchBegin = colorBase;
+        color_type batchEnd = colorBase + 32 * batch;
+        for(size_type j = rowBegin; j < rowEnd; j++)
+        {
+          nnz_lno_type nei = Ccolinds(j);
+          color_type neiColor = colors(nei);
+          if(batchBegin <= neiColor && neiColor < batchEnd)
+          {
+            int batchWord = (neiColor - batchBegin) / 32;
+            unsigned mask = 1U << ((neiColor - batchBegin) % 32);
+            if(forbid[batchWord] & mask)
+            {
+              //v is in conflict
+              colors(nei) = CONFLICTED;
+            }
+            else
+            {
+              forbid[batchWord] |= mask;
+            }
+          }
+        }
+      }
+
+      color_type colorBase;
+      forbidden_view forbidden;         //forbidden color bitset for columns
+      color_view_type colors;
+      const_lno_row_view_type Crowmap;  //C <-> V graph (row c is the vertices incident to c)
+      const_lno_nnz_view_t    Ccolinds;
+    };
+
+    struct SemiSymWorklist
+    {
+      SemiSymWorklist(
+          color_view_type& colors_, nnz_lno_temp_work_view_t& worklist_, single_dim_index_view_type& worklen_, nnz_lno_type nv_)
+        : colors(colors_), worklist(worklist_), worklen(worklen_), nv(nv_)
+      {}
+
+      KOKKOS_INLINE_FUNCTION void operator()(const nnz_lno_type v, nnz_lno_type& lnum, bool finalPass) const
+      {
+        constexpr color_type UNPROCESSED = 0;
+        constexpr color_type UNCOLORABLE = ~UNPROCESSED;
+        constexpr color_type CONFLICTED = UNCOLORABLE - 1;
+        if(finalPass)
+          worklist(lnum) = v;
+        if(colors(v) == CONFLICTED)
+          lnum++;
+        if(finalPass && v == nv - 1)
+        {
+          //The very last thread in the kernel knows how many items are in the next worklist
+          worklen() = lnum;
+        }
+      }
+
+      color_view_type colors;
+      nnz_lno_temp_work_view_t worklist;
+      single_dim_index_view_type worklen;
+      nnz_lno_type nv;
+    };
+
+    struct SemiSymUpdateBatch
+    {
+      SemiSymUpdateBatch(
+          color_view_type& colors_, nnz_lno_temp_work_view_t& worklist_, single_dim_index_view_type& worklen_, nnz_lno_type nv_)
+        : colors(colors_), worklist(worklist_), worklen(worklen_), nv(nv_)
+      {}
+
+      KOKKOS_INLINE_FUNCTION void operator()(const nnz_lno_type v, nnz_lno_type& lnum, bool finalPass) const
+      {
+        constexpr color_type UNPROCESSED = 0;
+        constexpr color_type UNCOLORABLE = ~UNPROCESSED;
+        if(colors(v) == UNCOLORABLE)
+        {
+          if(finalPass)
+          {
+            worklist(lnum, 0) = v;
+            colors(v) = UNPROCESSED;
+          }
+          lnum++;
+        }
+        if(finalPass && v == nv - 1)
+        {
+          //The very last thread in the kernel knows the length of the new worklist.
+          worklen(0) = lnum;
+        }
+      }
+
+      color_view_type colors;
+      nnz_lno_temp_work_view_t worklist;
+      single_dim_index_view_type worklen;
+      nnz_lno_type nv;
+    };
+
+/*
     //batch is the number of 32-bit values per column representing forbidden colors.
     //It can be 2, 4 or 8 depending on the average graph degree,
     //which predicts how many colors will be needed. Any value will be correct for any graph,
@@ -523,49 +722,19 @@ class GraphColorDistance2
       color_view_type colors;
       color_type colorBase; //Color corresponding to offset 0 in the current batch.
     };
+*/
 
-    //The change batch functor makes a new worklist with all the UNCOLORABLE vertices,
-    //and changes the status of those to UNPROCESSED.
-    //Must be run over all nv vertices, since no list of UNCOLORABLE vertices is maintained.
-    //This always puts the worklist in buffer 0 (w=0).
-    struct symmetricChangeBatchFunctor
+    //Special case of distance-2 where graph xadj/adj is the transpose of t_xadj/t_adj.
+    //This is true for most applications of dist-2 (esp. MueLu aggregation)
+    virtual void compute_semisym_distance2_color()
     {
-      symmetricChangeBatchFunctor(ordinal_2d_view_t worklist_, nnz_lno_temp_work_view_t worklen_, nnz_lno_type nv_, color_view_type colors_)
-        : worklist(worklist_), worklen(worklen_), nv(nv_), colors(colors_)
-      {}
-
-      KOKKOS_INLINE_FUNCTION void operator()(const nnz_lno_type v, nnz_lno_type& lnum, bool finalPass) const
-      {
-        constexpr color_type UNPROCESSED = 0;
-        constexpr color_type UNCOLORABLE = ~UNPROCESSED;
-        if(colors(v) == UNCOLORABLE)
-        {
-          if(finalPass)
-          {
-            worklist(lnum, 0) = v;
-            colors(v) = UNPROCESSED;
-          }
-          lnum++;
-        }
-        if(finalPass && v == nv - 1)
-        {
-          //The very last thread in the kernel knows the length of the new worklist.
-          worklen(0) = lnum;
-        }
-      }
-      ordinal_2d_view_t worklist;
-      nnz_lno_temp_work_view_t worklen;
-      nnz_lno_type nv;
-      color_view_type colors;
-    };
-
-    virtual void compute_symmetric_distance2_color()
-    {
-      // Data:
-      // gc_handle = graph coloring handle
-      // nv        = num_rows = num_cols (scalar)
-      // xadj      = row_map   (view 1 dimension - [num_verts+1] - entries index into adj )
-      // adj       = entries   (view 1 dimension - [num_edges]   - adjacency list )
+      //Member data used:
+      // gc_handle    = graph coloring handle
+      // nv           = #vertices
+      // nc           = #columns
+      // xadj/adj     = graph where rows are vertices, and adjacent columns are listed
+      // t_xadj/t_adj = graph where rows are columns, and adjacent vertices are listed.
+      //                Allowed to alias xadj/adj if same.
       if(this->_ticToc)
       {
         std::cout << "\tcolor_symmetric_graph_d2 params:\n"
@@ -573,17 +742,15 @@ class GraphColorDistance2
           << "\t\t#edges: " << this->ne << '\n';
       }
 
-      // Double buffering the work list, so that the functor can read out of one while it populates the other.
-      ordinal_2d_view_t        worklist("Worklist", this->nv, 2);
-      nnz_lno_temp_work_view_t worklen("Worklist length", 2);
-      auto                     worklenHost = Kokkos::create_mirror_view(worklen);
-      worklenHost(0) = nv;
-      Kokkos::deep_copy(worklen, worklenHost);
-      auto firstWorklist = Kokkos::subview(worklist, Kokkos::ALL(), 0);
+      //Initialize worklist with every vertex
+      nnz_lno_temp_work_view_t worklist("Worklist", this->nv);
+      single_dim_index_view_type worklen("Worklist length");
+      Kokkos::deep_copy(worklen, this->nv);
+      auto worklenHost = Kokkos::create_mirror_view(worklen);
 
       // init conflictlist sequentially.
       Kokkos::parallel_for("InitList", range_policy_type(0, this->nv),
-          functorInitList<decltype(firstWorklist)>(firstWorklist));
+          functorInitList<nnz_lno_temp_work_view_t>(worklist));
 
       //Estimate the number of colors that will be needed
       //The algorithm can't use more colors than the max distance-2 degree,
@@ -615,49 +782,54 @@ class GraphColorDistance2
 
       int iter = 0;
       Kokkos::Impl::Timer timer;
+      nnz_lno_type currentWork = this->nv;
       for(color_type colorBase = 1;; colorBase += 32 * batch)
       {
-        //std::cout << "  Using colors " << colorBase << " to " << colorBase + 32 * batch << "\n";
-        //w is the 2nd dimension index for worklist, to provide double buffering.
-        //w is always 0 when starting with a new colorBase.
-        int w = 0;
-        nnz_lno_type currentWork = worklenHost(w);
         //Until the worklist is completely empty, run the functor specialization for batch size
         while(currentWork)
         {
           switch(batch)
           {
             case 1:
-              Kokkos::parallel_scan("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  symmetricColorFunctor<1>(worklist, worklen, w, this->xadj, this->adj, forbidden, colors_out, colorBase));
+              Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
+                  SemiSymColoring<1>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
+                  SemiSymConflict<1>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 2:
-              Kokkos::parallel_scan("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  symmetricColorFunctor<2>(worklist, worklen, w, this->xadj, this->adj, forbidden, colors_out, colorBase));
+              Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
+                  SemiSymColoring<2>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
+                  SemiSymConflict<2>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 4:
-              Kokkos::parallel_scan("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  symmetricColorFunctor<4>(worklist, worklen, w, this->xadj, this->adj, forbidden, colors_out, colorBase));
+              Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
+                  SemiSymColoring<4>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
+                  SemiSymConflict<4>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 8:
-              Kokkos::parallel_scan("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  symmetricColorFunctor<8>(worklist, worklen, w, this->xadj, this->adj, forbidden, colors_out, colorBase));
+              Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
+                  SemiSymColoring<8>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
+                  SemiSymConflict<8>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             default:
               throw std::logic_error("D2 symmetric color batch size is not a power-of-two, or is too big");
           }
+          //Then build the next worklist
+          Kokkos::parallel_scan("Sym D2 worklist", range_policy_type(0, this->nv),
+              SemiSymWorklist(colors_out, worklist, worklen, this->nv));
           //worklen has been updated on device
           Kokkos::deep_copy(worklenHost, worklen);
-          //swap worklist buffers
-          w = 1 - w;
-          currentWork = worklenHost(w);
+          currentWork = worklenHost();
           iter++;
         }
         //Will need to run with a different color base, so rebuild the work list
-        Kokkos::parallel_scan("Sym D2 Worklist Rebuild", range_policy_type(0, nv),
-            symmetricChangeBatchFunctor(worklist, worklen, nv, colors_out));
+        Kokkos::parallel_scan("Sym D2 Worklist Rebuild", range_policy_type(0, this->nv),
+            SemiSymUpdateBatch(colors_out, worklist, worklen, this->nv));
         Kokkos::deep_copy(worklenHost, worklen);
-        currentWork = worklenHost(0);
+        currentWork = worklenHost();
         if(currentWork == 0)
         {
           //Still have no work to do, meaning every vertex is colored

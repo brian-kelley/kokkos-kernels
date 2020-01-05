@@ -157,7 +157,7 @@ void graph_compute_distance2_color(KernelHandle *handle,
             Impl::GraphColorDistance2<typename KernelHandle::GraphColorDistance2HandleType, lno_row_view_t_, lno_nnz_view_t_, lno_col_view_t_, lno_colnnz_view_t_>
                 gc(num_rows, num_cols, row_entries.extent(0), row_map, row_entries, col_map, col_entries, gch_d2);
 
-            gc.compute_symmetric_distance2_color();
+            gc.compute_semisym_distance2_color();
 
             double coloring_time = timer.seconds();
             gch_d2->add_to_overall_coloring_time(coloring_time);
