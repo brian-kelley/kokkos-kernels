@@ -474,7 +474,7 @@ class GraphColorDistance2
             //least_set_bit returns 1 for the least significant bit, so subtracting 1
             colorWord = b;
             colorBit = KokkosKernels::Impl::least_set_bit(~forbid[b]) - 1;
-            color = 32 * b + colorBit;
+            color = colorBase + 32 * b + colorBit;
             break;
           }
         }
@@ -562,10 +562,12 @@ class GraphColorDistance2
         constexpr color_type UNPROCESSED = 0;
         constexpr color_type UNCOLORABLE = ~UNPROCESSED;
         constexpr color_type CONFLICTED = UNCOLORABLE - 1;
-        if(finalPass)
-          worklist(lnum) = v;
         if(colors(v) == CONFLICTED)
+        {
+          if(finalPass)
+            worklist(lnum) = v;
           lnum++;
+        }
         if(finalPass && v == nv - 1)
         {
           //The very last thread in the kernel knows how many items are in the next worklist
@@ -593,16 +595,13 @@ class GraphColorDistance2
         if(colors(v) == UNCOLORABLE)
         {
           if(finalPass)
-          {
-            worklist(lnum, 0) = v;
-            colors(v) = UNPROCESSED;
-          }
+            worklist(lnum) = v;
           lnum++;
         }
         if(finalPass && v == nv - 1)
         {
           //The very last thread in the kernel knows the length of the new worklist.
-          worklen(0) = lnum;
+          worklen() = lnum;
         }
       }
 
@@ -746,7 +745,6 @@ class GraphColorDistance2
       nnz_lno_temp_work_view_t worklist("Worklist", this->nv);
       single_dim_index_view_type worklen("Worklist length");
       Kokkos::deep_copy(worklen, this->nv);
-      auto worklenHost = Kokkos::create_mirror_view(worklen);
 
       // init conflictlist sequentially.
       Kokkos::parallel_for("InitList", range_policy_type(0, this->nv),
@@ -761,10 +759,8 @@ class GraphColorDistance2
       //  -the number of self-loops to v is just deg(v), and these can't cause conflicts
       //  -each node has about the same degree, so
       //   the total number of length-2 walks from v is about deg(v)^2
-      //  -some d-2 neighbors can be reached in 2 of the walks (in a diamond shape), or possibly more than 2.
-      //   In fact, for any structured square/cubic mesh, EVERY non-self d2 neighbor is accessible exactly 2 ways.
-      //  -the number of unique d-2 neighbors is usually a bit higher than the number of colors actually needed
-      int estNumColors = 0.5 * (avgDeg * (avgDeg - 1));
+      //  -the constant was determined experimentally
+      int estNumColors = 0.08 * (avgDeg * (avgDeg - 1));
       // 8 words (256 bits/colors) is the maximum allowed batch size
       int batch = 8;
       // but don't use more than the estimate
@@ -779,10 +775,10 @@ class GraphColorDistance2
       //note: relying on forbidden and colors_out being initialized to 0
       forbidden_view forbidden("Forbidden", batch * nv);
       color_view_type colors_out("Graph Colors", this->nv);
-
       int iter = 0;
       Kokkos::Impl::Timer timer;
       nnz_lno_type currentWork = this->nv;
+      batch = 1;
       for(color_type colorBase = 1;; colorBase += 32 * batch)
       {
         //Until the worklist is completely empty, run the functor specialization for batch size
@@ -821,15 +817,13 @@ class GraphColorDistance2
           Kokkos::parallel_scan("Sym D2 worklist", range_policy_type(0, this->nv),
               SemiSymWorklist(colors_out, worklist, worklen, this->nv));
           //worklen has been updated on device
-          Kokkos::deep_copy(worklenHost, worklen);
-          currentWork = worklenHost();
+          Kokkos::deep_copy(currentWork, worklen);
           iter++;
         }
         //Will need to run with a different color base, so rebuild the work list
         Kokkos::parallel_scan("Sym D2 Worklist Rebuild", range_policy_type(0, this->nv),
             SemiSymUpdateBatch(colors_out, worklist, worklen, this->nv));
-        Kokkos::deep_copy(worklenHost, worklen);
-        currentWork = worklenHost();
+        Kokkos::deep_copy(currentWork, worklen);
         if(currentWork == 0)
         {
           //Still have no work to do, meaning every vertex is colored
