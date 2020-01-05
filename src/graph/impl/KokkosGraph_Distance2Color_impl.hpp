@@ -668,7 +668,7 @@ class GraphColorDistance2
         }
       }
       //note: relying on forbidden and colors_out being initialized to 0
-      forbidden_view forbidden("Forbidden", batch * nv);
+      forbidden_view forbidden("Forbidden", batch * this->nc);
       color_view_type colors_out("Graph Colors", this->nv);
       int iter = 0;
       Kokkos::Impl::Timer timer;
@@ -754,27 +754,15 @@ class GraphColorDistance2
           << "\t\t#vertices : " << this->nv << '\n'
           << "\t\t#edges: " << this->ne << '\n';
       }
-      forbidden_view forbidden("Forbidden", batch * nv);
-      color_type colors_out(Kokkos::AllocateViewWithoutInitializing("Colors", this->nv));
+      forbidden_view forbidden("Forbidden", this->nc);
+      color_type colors_out(Kokkos::ViewAllocateWithoutInitializing("Colors", this->nv));
       auto colors = Kokkos::create_mirror_view(colors_out);
       //Get the graph(s) in host space, if not already
-      Kokkos::View<size_type*, Kokkos::HostSpace> Vrowmap, Crowmap;
-      Kokkos::View<nnz_lno_type*, Kokkos::HostSpace> Vcolinds, Ccolinds;
-      Vrowmap = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->xadj);
-      Vcolinds = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->adj);
-      if(this->xadj == this->t_xadj)
-        Crowmap = Vrowmap;
-      else
-        Crowmap = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->t_xadj);
-      if(this->adj == this->t_adj)
-        Ccolinds = Vcolinds;
-      else
-        Ccolinds = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->t_adj);
+      Kokkos::View<size_type*, Kokkos::HostSpace> Vrowmap = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->xadj);
+      Kokkos::View<nnz_lno_type*, Kokkos::HostSpace> Vcolinds = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->adj);
       //Create worklist
-      Kokkos::View<nnz_lno_t*, Kokkos::HostSpace> worklist(Kokkos::AllocateViewWithoutInitializing("Worklist"), this->nv);
-      nnz_lno_t worklen = this->nv;
-      //note: relying on forbidden and colors_out being initialized to 0
-      forbidden_view forbidden("Forbidden", batch * nv);
+      Kokkos::View<nnz_lno_type*, Kokkos::HostSpace> worklist(Kokkos::ViewAllocateWithoutInitializing("Worklist"), this->nv);
+      nnz_lno_type worklen = this->nv;
       int iter = 0;
       Kokkos::Impl::Timer timer;
       nnz_lno_type currentWork = this->nv;
@@ -789,6 +777,8 @@ class GraphColorDistance2
             v = worklist(i);
           //Compute v's forbidden for this batch
           unsigned forbid = 0;
+          size_type rowBegin = Vrowmap(v);
+          size_type rowEnd= Vrowmap(v + 1);
           for(size_type j = rowBegin; j < rowEnd; j++)
           {
             forbid |= forbidden(Vcolinds(j));
