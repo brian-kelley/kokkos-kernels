@@ -725,11 +725,11 @@ class GraphColorDistance2
           << "\t\t#edges: " << this->ne << '\n';
       }
       forbidden_view forbidden("Forbidden", this->nc);
-      color_type colors_out(Kokkos::ViewAllocateWithoutInitializing("Colors", this->nv));
+      color_view_type colors_out(Kokkos::ViewAllocateWithoutInitializing("Colors"), this->nv);
       auto colors = Kokkos::create_mirror_view(colors_out);
       //Get the graph(s) in host space, if not already
-      Kokkos::View<size_type*, Kokkos::HostSpace> Vrowmap = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->xadj);
-      Kokkos::View<nnz_lno_type*, Kokkos::HostSpace> Vcolinds = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->adj);
+      Kokkos::View<const size_type*, Kokkos::HostSpace> Vrowmap = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->xadj);
+      Kokkos::View<const nnz_lno_type*, Kokkos::HostSpace> Vcolinds = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->adj);
       //Create worklist
       Kokkos::View<nnz_lno_type*, Kokkos::HostSpace> worklist(Kokkos::ViewAllocateWithoutInitializing("Worklist"), this->nv);
       nnz_lno_type worklen = this->nv;

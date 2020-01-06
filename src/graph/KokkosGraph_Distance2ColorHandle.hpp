@@ -106,7 +106,6 @@ class GraphColorDistance2Handle
     // Parameters
     GraphColoringAlgorithmDistance2 coloring_algorithm_type;      // Which algorithm type to use.
 
-    bool symmetric;    // expecting symmetric input? (xadj/adj graph is transpose of t_xadj/t_adj?)
     bool verbose;      // verbosity flag
     bool tictoc;       // print time at every step
 
@@ -139,7 +138,6 @@ class GraphColorDistance2Handle
      */
     GraphColorDistance2Handle()
         : coloring_algorithm_type(COLORING_D2_DEFAULT)
-        , symmetric(true)
         , verbose(false)
         , tictoc(false)
         , vb_edge_filtering(false)

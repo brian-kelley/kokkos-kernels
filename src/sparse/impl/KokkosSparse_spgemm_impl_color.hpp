@@ -41,6 +41,11 @@
 //@HEADER
 */
 
+#ifndef _KOKKOSSPGEMMIMPL_HPP
+#define  _KOKKOSSPGEMMIMPL_HPP
+
+#include "KokkosGraph_Distance2Color.hpp"
+
 namespace KokkosSparse{
 
 namespace Impl{
@@ -646,3 +651,6 @@ void
 
 }
 }
+
+#endif
+

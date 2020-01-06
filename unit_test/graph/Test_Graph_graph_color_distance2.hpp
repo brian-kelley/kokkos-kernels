@@ -197,7 +197,6 @@ test_coloring_d2(lno_type numRows, size_type nnz, lno_type bandwidth, lno_type r
         int res = run_graphcolor_d2<crsMat_type, device>(input_mat, coloring_algorithm, num_colors, vector_colors);
 
         EXPECT_TRUE((res == 0));
-        std::cout << "D2 algorithm " << ii << " took " << timer.seconds() << " s\n";
     }
 }
 

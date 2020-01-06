@@ -52,7 +52,6 @@
 #include "KokkosKernels_Utils.hpp"
 
 
-
 namespace KokkosGraph {
 
 namespace Experimental {
