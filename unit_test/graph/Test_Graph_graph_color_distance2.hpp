@@ -178,11 +178,10 @@ test_coloring_d2(lno_type numRows, size_type nnz, lno_type bandwidth, lno_type r
                                 typename device::memory_space>
       KernelHandle;
 
-    //input_mat was built to be square and then symmetrized, so COLORING_D2_VB_SYM is safe to use
     //TODO BMK: for more interesting test cases for the other algorithms, try
-    //non-symmetric graphs, and especially cases where rowgraph != colgraph^T.
+    //cases where the one-way graphs aren't symmetric, and for the non-symmetric algos, cases where rowgraph != colgraph^T
     GraphColoringAlgorithmDistance2 coloring_algorithms[] = {
-      COLORING_D2_MATRIX_SQUARED, COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF, COLORING_D2_VB_SYM};
+      COLORING_D2_MATRIX_SQUARED, COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF};
 
     int num_algorithms = 7;
 

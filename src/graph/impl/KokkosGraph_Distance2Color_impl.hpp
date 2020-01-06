@@ -739,6 +739,7 @@ class GraphColorDistance2
       this->gc_handle->set_num_phases(iter);
     }
 
+    //Symmetric serial algorithm
     void compute_sym_distance2_color_serial()
     {
       //Member data used:

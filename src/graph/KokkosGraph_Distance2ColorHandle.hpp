@@ -63,8 +63,7 @@ enum GraphColoringAlgorithmDistance2
     COLORING_D2,                     // Distance-2 Graph Coloring
     COLORING_D2_VB,                  // Distance-2 Graph Coloring Vertex Based
     COLORING_D2_VB_BIT,              // Distance-2 Graph Coloring Vertex Based BIT
-    COLORING_D2_VB_SYM,              // Distance-2 Graph Coloring Vertex Based, fast version for symmetric graph
-    COLORING_D2_VB_BIT_EF,           // Distance-2 Graph Coloring Vertex Based BIT + Edge Filtering
+    COLORING_D2_VB_BIT_EF            // Distance-2 Graph Coloring Vertex Based BIT + Edge Filtering
 };
 
 
@@ -107,6 +106,7 @@ class GraphColorDistance2Handle
     // Parameters
     GraphColoringAlgorithmDistance2 coloring_algorithm_type;      // Which algorithm type to use.
 
+    bool symmetric;    // expecting symmetric input? (xadj/adj graph is transpose of t_xadj/t_adj?)
     bool verbose;      // verbosity flag
     bool tictoc;       // print time at every step
 
@@ -139,6 +139,7 @@ class GraphColorDistance2Handle
      */
     GraphColorDistance2Handle()
         : coloring_algorithm_type(COLORING_D2_DEFAULT)
+        , symmetric(true)
         , verbose(false)
         , tictoc(false)
         , vb_edge_filtering(false)
@@ -210,6 +211,9 @@ class GraphColorDistance2Handle
      * - COLORING_D2_VB_BIT otherwise
      *
      */
+
+    //COLORING_D2_SYM
+    //COLORING_D2_SYM_SERIAL
     void choose_default_algorithm()
     {
 #if defined(KOKKOS_ENABLE_SERIAL)
@@ -217,7 +221,7 @@ class GraphColorDistance2Handle
         {
             this->coloring_algorithm_type = COLORING_D2_SERIAL;
 #ifdef VERBOSE
-            std::cout << "Serial Execution Space, Default Algorithm: COLORING_VB" << std::endl;
+            std::cout << "Serial Execution Space, Default Algorithm: Serial" << std::endl;
 #endif
         }
 #endif

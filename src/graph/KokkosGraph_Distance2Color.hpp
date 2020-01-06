@@ -97,6 +97,9 @@ void graph_compute_distance2_color(KernelHandle *handle,
     using color_view_type = typename KernelHandle::GraphColorDistance2HandleType::color_view_type;
     color_view_type colors_out("Graph Colors", num_rows);
 
+    Impl::GraphColorDistance2<typename KernelHandle::GraphColorDistance2HandleType, lno_row_view_t_, lno_nnz_view_t_, lno_col_view_t_, lno_colnnz_view_t_>
+      gc(num_rows, num_cols, row_entries.extent(0), row_map, row_entries, col_map, col_entries, gch_d2);
+
     switch(algorithm)
     {
         case COLORING_D2_MATRIX_SQUARED:
@@ -110,9 +113,6 @@ void graph_compute_distance2_color(KernelHandle *handle,
         break;
 
         case COLORING_D2_SERIAL:
-        {
-            // todo: The original Serial D2 coloring code is in GraphColorHandle. This should get moved to the
-            //       distance-2 coloring handle but that might break backwards compatibility.
             int num_phases = 0;
 
             typename KernelHandle::GraphColoringHandleType *gch_d1 = handle->get_graph_coloring_handle();
@@ -145,17 +145,7 @@ void graph_compute_distance2_color(KernelHandle *handle,
             break;
         }
 
-        case COLORING_D2_VB_SYM:
-        {
-            //By using the symmetric graph version, the user is promising that the row->col and col->row graphs are the same, but verify that
-            if(num_rows != num_cols)
-              throw std::invalid_argument("The dist-2 coloring algorithm COLORING_D2_VB_SYM requires that num_rows == num_cols");
-            if(row_map.data() != col_map.data() || row_map.extent(0) != col_map.extent(0) ||
-                row_entries.data() != col_entries.data() || row_entries.extent(0) != col_entries.extent(0))
-              throw std::invalid_argument("The dist-2 coloring algorithm COLORING_D2_VB_SYM requires that row_map == col_map and row_entries == col_entries");
 
-            Impl::GraphColorDistance2<typename KernelHandle::GraphColorDistance2HandleType, lno_row_view_t_, lno_nnz_view_t_, lno_col_view_t_, lno_colnnz_view_t_>
-                gc(num_rows, num_cols, row_entries.extent(0), row_map, row_entries, col_map, col_entries, gch_d2);
 
             gc.compute_sym_distance2_color();
 
