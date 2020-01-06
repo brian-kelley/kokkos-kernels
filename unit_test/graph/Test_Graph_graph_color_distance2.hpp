@@ -181,7 +181,7 @@ test_coloring_d2(lno_type numRows, size_type nnz, lno_type bandwidth, lno_type r
     //TODO BMK: for more interesting test cases for the other algorithms, try
     //cases where the one-way graphs aren't symmetric, and for the non-symmetric algos, cases where rowgraph != colgraph^T
     GraphColoringAlgorithmDistance2 coloring_algorithms[] = {
-      COLORING_D2_MATRIX_SQUARED, COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF};
+      COLORING_D2_MATRIX_SQUARED, COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF, COLORING_D2_VB_DYNAMIC};
 
     int num_algorithms = 7;
 

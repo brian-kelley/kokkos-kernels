@@ -64,7 +64,7 @@
 #include "KokkosKernels_HashmapAccumulator.hpp"
 #include "KokkosKernels_Uniform_Initialized_MemoryPool.hpp"
 #include "KokkosSparse_spgemm_handle.hpp"
-#include "KokkosGraph_Distance1Color.hpp"
+#include "KokkosGraph_Distance2Color.hpp"
 
 namespace KokkosSparse{
 

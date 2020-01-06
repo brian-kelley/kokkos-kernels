@@ -119,7 +119,6 @@ class GraphColorDistance2
     using non_const_1d_size_type_view_type = typename HandleType::non_const_1d_size_type_view_type;
     using bit_64_forbidden_type            = long long int;
     using bitset_t                         = Kokkos::Bitset<row_lno_view_device_type>;
-    //Symmetric algorithm uses 32-bit words, so that bitwise atomics are supported on all Kokkos devices
     using forbidden_view                   = Kokkos::View<uint32_t*, row_lno_view_device_type>;
 
     // For HashmapAccumulator (EXPERIMENTAL)
@@ -413,37 +412,10 @@ class GraphColorDistance2
 
     }      // color_graph_d2 (end)
 
-    /*
-      TODO:
-      -Write a symmetric serial algorithm, where conflict resolution isn't needed
-      -Add "symmetric" flag to handle constructor
-        -Default should be true, since so far the non-symmetric case has no users
-         and is not tested. Aggregation always uses the symmetric case .
-      -
-    */
-    // Semi-symmetric faster version
-    //  -Uses V->C = (C->V)^T (called xadj/adj) and C->V = (V->C)^T (called t_xadj/t_adj)
-    //  -Important: C forbidden should be a "ratchet" function within each color batch. Once
-    //   a forbidden bit is set, it should never need to be cleared.
-    //    -Clearing a forbidden bit would mean that _all_ incident Vs with that color are uncolored.
-    //    -But conflict resolution is designed to uncolor all but 1 that is incident
-    //
-    //  -Needs several functors:
-    //  -Should still easily beat neighbors-of-neighbors algo, since it loops over all the Vs
-    //    (and does N-of-N loops) when resolving conflicts.
-    //    -Speculative color (for over V worklist): allowed to create conflicts,
-    //     only based on current C forbidden array. Updates C's forbidden array using atomic_or.
-    //     (for GPU, should make a TeamPolicy version)
-    //    -Conflict elimination (for over C): Recompute forbidden c incrementally,
-    //     observing actual color of each incident V (v). If v's current color is already in c's forbidden,
-    //     just set v's color to CONFLICTED.
-    //     (for GPU, should make a TeamPolicy version)
-    //    -Worklist construction (scan over all V): for each v that is CONFLICTED, mark as UNPROCESSED and place in worklist
-
     template<int batch>
-    struct SymColoring
+    struct DynColoring
     {
-      SymColoring(
+      DynColoring(
           nnz_lno_temp_work_view_t& worklist_,
           single_dim_index_view_type worklen_,
           color_type colorBase_,
@@ -510,9 +482,9 @@ class GraphColorDistance2
     };
     
     template<int batch>
-    struct SymConflict
+    struct DynConflict
     {
-      SymConflict(
+      DynConflict(
           color_type& colorBase_, forbidden_view& forbidden_, color_view_type& colors_,
           const_lno_row_view_type& Crowmap_, const_lno_nnz_view_t& Ccolinds_)
         : colorBase(colorBase_), forbidden(forbidden_), colors(colors_), Crowmap(Crowmap_), Ccolinds(Ccolinds_)
@@ -557,9 +529,9 @@ class GraphColorDistance2
       const_lno_nnz_view_t    Ccolinds;
     };
 
-    struct SymWorklist
+    struct DynWorklist
     {
-      SymWorklist(
+      DynWorklist(
           color_view_type& colors_, nnz_lno_temp_work_view_t& worklist_, single_dim_index_view_type& worklen_, nnz_lno_type nv_)
         : colors(colors_), worklist(worklist_), worklen(worklen_), nv(nv_)
       {}
@@ -588,9 +560,9 @@ class GraphColorDistance2
       nnz_lno_type nv;
     };
 
-    struct SymUpdateBatch
+    struct DynUpdateBatch
     {
-      SymUpdateBatch(
+      DynUpdateBatch(
           color_view_type& colors_, nnz_lno_temp_work_view_t& worklist_, single_dim_index_view_type& worklen_, nnz_lno_type nv_)
         : colors(colors_), worklist(worklist_), worklen(worklen_), nv(nv_)
       {}
@@ -618,9 +590,7 @@ class GraphColorDistance2
       nnz_lno_type nv;
     };
 
-    //Special case of distance-2 where graph xadj/adj is the transpose of t_xadj/t_adj.
-    //This is true for most applications of dist-2 (esp. MueLu aggregation)
-    void compute_sym_distance2_color()
+    void compute_d2_coloring_dynamic()
     {
       //Member data used:
       // gc_handle    = graph coloring handle
@@ -682,42 +652,42 @@ class GraphColorDistance2
           switch(batch)
           {
             case 1:
-              Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  SymColoring<1>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
-              Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
-                  SymConflict<1>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, currentWork),
+                  DynColoring<1>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Dyn D2 Conflict Resolution", range_policy_type(0, this->nc),
+                  DynConflict<1>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 2:
-              Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  SymColoring<2>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
-              Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
-                  SymConflict<2>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, currentWork),
+                  DynColoring<2>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Dyn D2 Conflict Resolution", range_policy_type(0, this->nc),
+                  DynConflict<2>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 4:
-              Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  SymColoring<4>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
-              Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
-                  SymConflict<4>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, currentWork),
+                  DynColoring<4>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Dyn D2 Conflict Resolution", range_policy_type(0, this->nc),
+                  DynConflict<4>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 8:
-              Kokkos::parallel_for("Sym D2 Coloring", range_policy_type(0, currentWork),
-                  SymColoring<8>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
-              Kokkos::parallel_for("Sym D2 Conflict Resolution", range_policy_type(0, this->nc),
-                  SymConflict<8>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, currentWork),
+                  DynColoring<8>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Dyn D2 Conflict Resolution", range_policy_type(0, this->nc),
+                  DynConflict<8>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             default:
               throw std::logic_error("D2 symmetric color batch size is not a power-of-two, or is too big");
           }
           //Then build the next worklist
-          Kokkos::parallel_scan("Sym D2 worklist", range_policy_type(0, this->nv),
-              SymWorklist(colors_out, worklist, worklen, this->nv));
+          Kokkos::parallel_scan("Dyn D2 worklist", range_policy_type(0, this->nv),
+              DynWorklist(colors_out, worklist, worklen, this->nv));
           //worklen has been updated on device
           Kokkos::deep_copy(currentWork, worklen);
           iter++;
         }
         //Will need to run with a different color base, so rebuild the work list
-        Kokkos::parallel_scan("Sym D2 Worklist Rebuild", range_policy_type(0, this->nv),
-            SymUpdateBatch(colors_out, worklist, worklen, this->nv));
+        Kokkos::parallel_scan("Dyn D2 Worklist Rebuild", range_policy_type(0, this->nv),
+            DynUpdateBatch(colors_out, worklist, worklen, this->nv));
         Kokkos::deep_copy(currentWork, worklen);
         if(currentWork == 0)
         {
@@ -739,8 +709,7 @@ class GraphColorDistance2
       this->gc_handle->set_num_phases(iter);
     }
 
-    //Symmetric serial algorithm
-    void compute_sym_distance2_color_serial()
+    void compute_distance2_color_serial()
     {
       //Member data used:
       // gc_handle    = graph coloring handle
