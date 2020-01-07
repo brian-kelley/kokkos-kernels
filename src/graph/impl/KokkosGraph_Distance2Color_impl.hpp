@@ -422,54 +422,60 @@ class GraphColorDistance2
           forbidden_view forbidden_,
           color_view_type colors_,
           const_lno_row_view_type Vrowmap_,
-          const_lno_nnz_view_t Vcolinds_) :
+          const_lno_nnz_view_t Vcolinds_,
+          nnz_lno_type vertsPerThread_) :
         worklist(worklist_), worklen(worklen_), colorBase(colorBase_), forbidden(forbidden_),
-        colors(colors_), Vrowmap(Vrowmap_), Vcolinds(Vcolinds_)
+        colors(colors_), Vrowmap(Vrowmap_), Vcolinds(Vcolinds_), vertsPerThread(vertsPerThread_)
       {}
-      KOKKOS_INLINE_FUNCTION void operator()(const nnz_lno_type i) const
+      KOKKOS_INLINE_FUNCTION void operator()(const nnz_lno_type ti) const
       {
         constexpr color_type UNPROCESSED = 0;
         constexpr color_type UNCOLORABLE = ~UNPROCESSED;
-        nnz_lno_type v = worklist(i);
-        //compute forbidden for v
-        unsigned forbid[batch] = {0};
-        //union the forbidden of all incident c's
-        size_type rowBegin = Vrowmap(v);
-        size_type rowEnd = Vrowmap(v + 1);
-        for(size_type j = rowBegin; j < rowEnd; j++)
+        for(nnz_lno_type i = ti * vertsPerThread; i < (ti + 1) * vertsPerThread; i++)
         {
-          nnz_lno_type nei = Vcolinds(j);
-          for(int b = 0; b < batch; b++)
-            forbid[b] |= forbidden(nei * batch + b);
-        }
-        //Find the first 0 bit in forbid
-        color_type color = 0;
-        int colorWord = 0;
-        int colorBit = 0;
-        for(int b = 0; b < batch; b++)
-        {
-          if(~forbid[b])
-          {
-            //least_set_bit returns 1 for the least significant bit, so subtracting 1
-            colorWord = b;
-            colorBit = KokkosKernels::Impl::least_set_bit(~forbid[b]) - 1;
-            color = colorBase + 32 * b + colorBit;
-            break;
-          }
-        }
-        if(color)
-        {
-          //Color v
-          colors(v) = color;
-          //Update forbidden for all of v's neighbors
+          if(i >= worklen())
+            return;
+          nnz_lno_type v = worklist(i);
+          //compute forbidden for v
+          unsigned forbid[batch] = {0};
+          //union the forbidden of all incident c's
+          size_type rowBegin = Vrowmap(v);
+          size_type rowEnd = Vrowmap(v + 1);
           for(size_type j = rowBegin; j < rowEnd; j++)
           {
-            //Update column forbidden
-            Kokkos::atomic_fetch_or(&forbidden(Vcolinds(j) * batch + colorWord), 1U << colorBit);
+            nnz_lno_type nei = Vcolinds(j);
+            for(int b = 0; b < batch; b++)
+              forbid[b] |= Kokkos::volatile_load(&forbidden(nei * batch + b));
           }
+          //Find the first 0 bit in forbid
+          color_type color = 0;
+          int colorWord = 0;
+          int colorBit = 0;
+          for(int b = 0; b < batch; b++)
+          {
+            if(~forbid[b])
+            {
+              //least_set_bit returns 1 for the least significant bit, so subtracting 1
+              colorWord = b;
+              colorBit = KokkosKernels::Impl::least_set_bit(~forbid[b]) - 1;
+              color = colorBase + 32 * b + colorBit;
+              break;
+            }
+          }
+          if(color)
+          {
+            //Color v
+            colors(v) = color;
+            //Update forbidden for all of v's neighbors
+            for(size_type j = rowBegin; j < rowEnd; j++)
+            {
+              //Update column forbidden
+              Kokkos::atomic_fetch_or(&forbidden(Vcolinds(j) * batch + colorWord), 1U << colorBit);
+            }
+          }
+          else
+            colors(v) = UNCOLORABLE;
         }
-        else
-          colors(v) = UNCOLORABLE;
       }
 
       nnz_lno_temp_work_view_t worklist;
@@ -479,6 +485,7 @@ class GraphColorDistance2
       color_view_type colors;
       const_lno_row_view_type Vrowmap;  //V <-> C graph (row v is the columns incident to v)
       const_lno_nnz_view_t    Vcolinds;
+      nnz_lno_type vertsPerThread;
     };
     
     template<int batch>
@@ -495,31 +502,88 @@ class GraphColorDistance2
         constexpr color_type UNPROCESSED = 0;
         constexpr color_type UNCOLORABLE = ~UNPROCESSED;
         constexpr color_type CONFLICTED = UNCOLORABLE - 1;
-        unsigned forbid[batch] = {0};
+        //Here, only processing 32 colors at a time.
+        //forbidNei is the (minimum) neighbor ID where each forbidden color was observed.
+        //This is why the whole batch can't be processed at once
+        nnz_lno_type forbidNei[32];
         //Go over all the v neighbors, updating forbidden
         size_type rowBegin = Crowmap(c);
         size_type rowEnd = Crowmap(c + 1);
-        color_type batchBegin = colorBase;
-        color_type batchEnd = colorBase + 32 * batch;
-        for(size_type j = rowBegin; j < rowEnd; j++)
+        for(int b = 0; b < batch; b++)
         {
-          nnz_lno_type nei = Ccolinds(j);
-          color_type neiColor = colors(nei);
-          if(batchBegin <= neiColor && neiColor < batchEnd)
+          unsigned forbid = 0U;
+          color_type batchBegin = colorBase + 32 * b;
+          for(size_type j = rowBegin; j < rowEnd; j++)
           {
-            int batchWord = (neiColor - batchBegin) / 32;
-            unsigned mask = 1U << ((neiColor - batchBegin) % 32);
-            if(forbid[batchWord] & mask)
+            nnz_lno_type nei = Ccolinds(j);
+            color_type neiColor = colors(nei);
+            int colorOffset = neiColor - batchBegin;
+            if(colorOffset >= 0 && colorOffset < 32)
             {
-              //v is in conflict
-              colors(nei) = CONFLICTED;
-            }
-            else
-            {
-              forbid[batchWord] |= mask;
+              //if this is the first time the color has been seen, register nei in forbidNei
+              unsigned mask = 1U << colorOffset;
+              if(0 == (forbid & mask))
+              {
+                //First time seeing this color
+                forbidNei[colorOffset] = nei;
+              }
+              else
+              {
+                //Have seen this color before:
+                //must uncolor either nei or forbidNei[colorOffset] (whichever has higher ID)
+                if(nei > forbidNei[colorOffset])
+                {
+                  //nei has a higher id than another neighbor of the same color, so uncolor nei
+                  colors(nei) = CONFLICTED;
+                }
+                else if(nei < forbidNei[colorOffset])
+                {
+                  colors(forbidNei[colorOffset]) = CONFLICTED;
+                  forbidNei[colorOffset] = nei;
+                }
+              }
+              forbid |= mask;
             }
           }
         }
+      }
+
+      color_type colorBase;
+      forbidden_view forbidden;         //forbidden color bitset for columns
+      color_view_type colors;
+      const_lno_row_view_type Crowmap;  //C <-> V graph (row c is the vertices incident to c)
+      const_lno_nnz_view_t    Ccolinds;
+    };
+
+    template<int batch>
+    struct DynRefreshForbidden
+    {
+      DynRefreshForbidden(
+          color_type& colorBase_, forbidden_view& forbidden_, color_view_type& colors_,
+          const_lno_row_view_type& Crowmap_, const_lno_nnz_view_t& Ccolinds_)
+        : colorBase(colorBase_), forbidden(forbidden_), colors(colors_), Crowmap(Crowmap_), Ccolinds(Ccolinds_)
+      {}
+
+      KOKKOS_INLINE_FUNCTION void operator()(const nnz_lno_type c) const
+      {
+        unsigned newForbid[batch] = {0};
+        //Go over all the v neighbors, updating forbidden
+        size_type rowBegin = Crowmap(c);
+        size_type rowEnd = Crowmap(c + 1);
+        color_type colorEnd = colorBase + 32 * batch;
+        for(size_type i = rowBegin; i < rowEnd; i++)
+        {
+          nnz_lno_type nei = Ccolinds(i);
+          color_type neiColor = colors(nei);
+          if(colorBase <= neiColor && neiColor < colorEnd)
+          {
+            int colorWord = (neiColor - colorBase) / 32;
+            int colorBit = (neiColor - colorBase) % 32;
+            newForbid[colorWord] |= (1U << colorBit);
+          }
+        }
+        for(int i = 0; i < batch; i++)
+          forbidden(c * batch + i) = newForbid[i];
       }
 
       color_type colorBase;
@@ -649,29 +713,31 @@ class GraphColorDistance2
         //Until the worklist is completely empty, run the functor specialization for batch size
         while(currentWork)
         {
+          constexpr nnz_lno_type vertsPerThread = 4;
+          nnz_lno_type workBatches = (currentWork + vertsPerThread - 1) / vertsPerThread;
           switch(batch)
           {
             case 1:
-              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, currentWork),
-                  DynColoring<1>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, workBatches),
+                  DynColoring<1>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj, vertsPerThread));
               Kokkos::parallel_for("Dyn D2 Conflict Resolution", range_policy_type(0, this->nc),
                   DynConflict<1>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 2:
-              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, currentWork),
-                  DynColoring<2>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, workBatches),
+                  DynColoring<2>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj, vertsPerThread));
               Kokkos::parallel_for("Dyn D2 Conflict Resolution", range_policy_type(0, this->nc),
                   DynConflict<2>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 4:
-              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, currentWork),
-                  DynColoring<4>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, workBatches),
+                  DynColoring<4>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj, vertsPerThread));
               Kokkos::parallel_for("Dyn D2 Conflict Resolution", range_policy_type(0, this->nc),
                   DynConflict<4>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
             case 8:
-              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, currentWork),
-                  DynColoring<8>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj));
+              Kokkos::parallel_for("Dyn D2 Coloring", range_policy_type(0, workBatches),
+                  DynColoring<8>(worklist, worklen, colorBase, forbidden, colors_out, this->xadj, this->adj, vertsPerThread));
               Kokkos::parallel_for("Dyn D2 Conflict Resolution", range_policy_type(0, this->nc),
                   DynConflict<8>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
               break;
@@ -683,6 +749,31 @@ class GraphColorDistance2
               DynWorklist(colors_out, worklist, worklen, this->nv));
           //worklen has been updated on device
           Kokkos::deep_copy(currentWork, worklen);
+          //if still using this color set, refresh forbidden.
+          //This avoids using too many colors, by relying on forbidden from before conflict resolution (which is now stale).
+          if(currentWork)
+          {
+            switch(batch)
+            {
+              case 1:
+                Kokkos::parallel_for("Dyn D2 Forbidden", range_policy_type(0, this->nc),
+                    DynRefreshForbidden<1>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+                break;
+              case 2:
+                Kokkos::parallel_for("Dyn D2 Forbidden", range_policy_type(0, this->nc),
+                    DynRefreshForbidden<2>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+                break;
+              case 4:
+                Kokkos::parallel_for("Dyn D2 Forbidden", range_policy_type(0, this->nc),
+                    DynRefreshForbidden<4>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+                break;
+              case 8:
+                Kokkos::parallel_for("Dyn D2 Forbidden", range_policy_type(0, this->nc),
+                    DynRefreshForbidden<8>(colorBase, forbidden, colors_out, this->t_xadj, this->t_adj));
+                break;
+              default:;
+            }
+          }
           iter++;
         }
         //Will need to run with a different color base, so rebuild the work list
@@ -732,7 +823,6 @@ class GraphColorDistance2
       Kokkos::View<const nnz_lno_type*, Kokkos::HostSpace> Vcolinds = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->adj);
       //Create worklist
       Kokkos::View<nnz_lno_type*, Kokkos::HostSpace> worklist(Kokkos::ViewAllocateWithoutInitializing("Worklist"), this->nv);
-      nnz_lno_type worklen = this->nv;
       int iter = 0;
       Kokkos::Impl::Timer timer;
       nnz_lno_type currentWork = this->nv;

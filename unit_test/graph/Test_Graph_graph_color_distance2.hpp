@@ -169,14 +169,7 @@ test_coloring_d2(lno_type numRows, size_type nnz, lno_type bandwidth, lno_type r
 
     graph_type static_graph(sym_adj, sym_xadj);
     input_mat = crsMat_type("CrsMatrix", numCols, newValues, static_graph);
-
-    typedef KokkosKernelsHandle<size_type,
-                                lno_type,
-                                scalar_type,
-                                typename device::execution_space,
-                                typename device::memory_space,
-                                typename device::memory_space>
-      KernelHandle;
+    std::cout << "**** TESTING D2 on " << numRows << "x" << numCols << '\n';
 
     //TODO BMK: for more interesting test cases for the other algorithms, try
     //cases where the one-way graphs aren't symmetric, and for the non-symmetric algos, cases where rowgraph != colgraph^T
@@ -195,6 +188,8 @@ test_coloring_d2(lno_type numRows, size_type nnz, lno_type bandwidth, lno_type r
         size_t                          num_colors;
 
         int res = run_graphcolor_d2<crsMat_type, device>(input_mat, coloring_algorithm, num_colors, vector_colors);
+
+        std::cout << "**** ALGORITHM " << ii << " USED " << num_colors << " COLORS!!!!\n";
 
         EXPECT_TRUE((res == 0));
     }
