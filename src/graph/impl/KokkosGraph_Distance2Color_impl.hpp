@@ -387,6 +387,7 @@ class GraphColorDistance2
         if(numUncolored > 0)
         {
             this->resolveConflictsSerial(this->nv,
+                                         this->nc,
                                          this->xadj,
                                          this->adj,
                                          this->t_xadj,
@@ -940,7 +941,7 @@ class GraphColorDistance2
         // Deep copy initialized flags to device
         Kokkos::deep_copy(d_flags, h_flags);
 
-        functorVerifyDistance2Coloring vr(this->nv, xadj_, adj_, t_xadj_, t_adj_, vertex_colors_, d_flags, chunkSize_);
+        functorVerifyDistance2Coloring vr(this->nv, this->nc, xadj_, adj_, t_xadj_, t_adj_, vertex_colors_, d_flags, chunkSize_);
         Kokkos::parallel_for("ValidateD2Coloring", range_policy_type(0, num_chunks), vr);
 
         // Deep copy flags back to host memory
@@ -1124,7 +1125,7 @@ class GraphColorDistance2
             case COLORING_D2_VB:
             {
                 functorGreedyColorVB gc(
-                  this->nv, xadj_, adj_, t_xadj_, t_adj_, vertex_colors_, current_vertexList_, current_vertexListLength_);
+                  this->nv, this->nc, xadj_, adj_, t_xadj_, t_adj_, vertex_colors_, current_vertexList_, current_vertexListLength_);
                 Kokkos::parallel_for("LoopOverChunks", range_policy_type(0, this->nv), gc);
             }
             break;
@@ -1137,7 +1138,7 @@ class GraphColorDistance2
             case COLORING_D2_VB_BIT:
             {
                 functorGreedyColorVB_BIT gc(
-                  this->nv, xadj_, adj_, t_xadj_, t_adj_, vertex_colors_, current_vertexList_, current_vertexListLength_);
+                  this->nv, this->nc, xadj_, adj_, t_xadj_, t_adj_, vertex_colors_, current_vertexList_, current_vertexListLength_);
                 Kokkos::parallel_for("LoopOverChunks", range_policy_type(0, this->nv), gc);
             }
             break;
@@ -1173,7 +1174,7 @@ class GraphColorDistance2
             // 4. [S] loop over vertex neighbors of neighbors
             case COLORING_D2_VB_BIT_EF:
             {
-                functorGreedyColorVB_BIT_EF gc(this->nv,
+                functorGreedyColorVB_BIT_EF gc(this->nv, this->nc,
                                                xadj_,
                                                adj_copy_,
                                                t_xadj_,
@@ -1215,7 +1216,7 @@ class GraphColorDistance2
 
         if(0 == this->_use_color_set)
         {
-            functorFindConflicts_Atomic<adj_view_t> conf(this->nv,
+            functorFindConflicts_Atomic<adj_view_t> conf(this->nv, this->nc,
                                                          xadj_,
                                                          adj_,
                                                          t_xadj_,
@@ -1239,6 +1240,7 @@ class GraphColorDistance2
     // -----------------------------------------------------------------
     template<typename adj_view_t>
     void resolveConflictsSerial(nnz_lno_type             _nv,
+                                nnz_lno_type             _nc,
                                 const_lno_row_view_type  xadj_,
                                 adj_view_t               adj_,
                                 const_clno_row_view_t    t_xadj_,
@@ -1284,17 +1286,17 @@ class GraphColorDistance2
             for(size_type vid_d1_adj = h_idx(vid); vid_d1_adj < h_idx(vid + 1); vid_d1_adj++)
             {
                 size_type vid_d1 = h_adj(vid_d1_adj);
-
-                // loop over neighbors of vid_d1 (distance-2 from vid)
-                for(size_type vid_d2_adj = h_t_idx(vid_d1); vid_d2_adj < h_t_idx(vid_d1 + 1); vid_d2_adj++)
+                if(vid_d1 < nc)
                 {
-                    nnz_lno_type vid_d2 = h_t_adj(vid_d2_adj);
+                  // loop over neighbors of vid_d1 (distance-2 from vid)
+                  for(size_type vid_d2_adj = h_t_idx(vid_d1); vid_d2_adj < h_t_idx(vid_d1 + 1); vid_d2_adj++)
+                  {
+                      nnz_lno_type vid_d2 = h_t_adj(vid_d2_adj);
 
-                    // skip over loops vid -- x -- vid
-                    if(vid_d2 == vid)
-                        continue;
-
-                    forbidden[ h_colors(vid_d2) ] = vid;
+                      // skip over loops vid -- x -- vid, and filter out-of-bounds
+                      if(vid_d2 != vid && vid_d2 < nv)
+                        forbidden[ h_colors(vid_d2) ] = vid;
+                  }
                 }
             }
 
@@ -1395,6 +1397,7 @@ class GraphColorDistance2
     struct functorGreedyColorVB
     {
         nnz_lno_type             nv;                     // num vertices
+        nnz_lno_type             nc;                     // num columns
         const_lno_row_view_type  _idx;                   // vertex degree list
         const_lno_nnz_view_t     _adj;                   // vertex adjacency list
         const_clno_row_view_t    _t_idx;                 // transpose vertex degree list
@@ -1405,6 +1408,7 @@ class GraphColorDistance2
         nnz_lno_type             _chunkSize;             //
 
         functorGreedyColorVB(nnz_lno_type             nv_,
+                             nnz_lno_type             nc_,
                              const_lno_row_view_type  xadj_,
                              const_lno_nnz_view_t     adj_,
                              const_clno_row_view_t    t_xadj_,
@@ -1412,7 +1416,7 @@ class GraphColorDistance2
                              color_view_type          colors,
                              nnz_lno_temp_work_view_t vertexList,
                              nnz_lno_type             vertexListLength)
-            : nv(nv_)
+            : nv(nv_), nc(nc_)
             , _idx(xadj_)
             , _adj(adj_)
             , _t_idx(t_xadj_)
@@ -1468,24 +1472,27 @@ class GraphColorDistance2
                     for(size_type vid_adj = vid_adj_begin; vid_adj < vid_adj_end; vid_adj++)
                     {
                         const nnz_lno_type vid_d1           = _adj(vid_adj);
-                        const size_type    vid_d1_adj_begin = _t_idx(vid_d1);
-                        const size_type    vid_d1_adj_end   = _t_idx(vid_d1 + 1);
-
-                        for(size_type vid_d1_adj = vid_d1_adj_begin; vid_d1_adj < vid_d1_adj_end; vid_d1_adj++)
+                        if(vid_d1 < nc)
                         {
-                            const nnz_lno_type vid_d2 = _t_adj(vid_d1_adj);
+                          const size_type    vid_d1_adj_begin = _t_idx(vid_d1);
+                          const size_type    vid_d1_adj_end   = _t_idx(vid_d1 + 1);
 
-                            // Skip distance-2-self-loops
-                            if(vid_d2 != vid && vid_d2 < nv)
-                            {
-                                const color_type c = _colors(vid_d2);
+                          for(size_type vid_d1_adj = vid_d1_adj_begin; vid_d1_adj < vid_d1_adj_end; vid_d1_adj++)
+                          {
+                              const nnz_lno_type vid_d2 = _t_adj(vid_d1_adj);
 
-                                if((c >= offset) && (c - offset < VB_D2_COLORING_FORBIDDEN_SIZE))
-                                {
-                                    forbidden[ c - offset ] = true;
-                                }
-                            }
-                        }      // for vid_d1_adj...
+                              // Skip distance-2-self-loops
+                              if(vid_d2 != vid && vid_d2 < nv)
+                              {
+                                  const color_type c = _colors(vid_d2);
+
+                                  if((c >= offset) && (c - offset < VB_D2_COLORING_FORBIDDEN_SIZE))
+                                  {
+                                      forbidden[ c - offset ] = true;
+                                  }
+                              }
+                          }      // for vid_d1_adj...
+                        }
                     }          // for vid_adj...
 
                     // color vertex i with smallest available color (firstFit)
@@ -1512,6 +1519,7 @@ class GraphColorDistance2
     struct functorGreedyColorVB_BIT
     {
         nnz_lno_type             nv;                     // num vertices
+        nnz_lno_type             nc;                     // num columns
         const_lno_row_view_type  _idx;                   // vertex degree list
         const_lno_nnz_view_t     _adj;                   // vertex adjacency list
         const_clno_row_view_t    _t_idx;                 // transpose vertex degree list
@@ -1521,6 +1529,7 @@ class GraphColorDistance2
         nnz_lno_type             _vertexListLength;      //
 
         functorGreedyColorVB_BIT(nnz_lno_type             nv_,
+                                 nnz_lno_type             nc_,
                                  const_lno_row_view_type  xadj_,
                                  const_lno_nnz_view_t     adj_,
                                  const_clno_row_view_t    t_xadj_,
@@ -1528,7 +1537,7 @@ class GraphColorDistance2
                                  color_view_type          colors,
                                  nnz_lno_temp_work_view_t vertexList,
                                  nnz_lno_type             vertexListLength)
-            : nv(nv_)
+            : nv(nv_), nc(nc_)
             , _idx(xadj_)
             , _adj(adj_)
             , _t_idx(t_xadj_)
@@ -1572,45 +1581,48 @@ class GraphColorDistance2
                     for(size_type vid_adj = vid_adj_begin; !break_out && vid_adj < vid_adj_end; ++vid_adj)
                     {
                         const nnz_lno_type vid_d1           = _adj(vid_adj);
-                        const size_type    vid_d1_adj_begin = _t_idx(vid_d1);
-                        const size_type    vid_d1_adj_end   = _t_idx(vid_d1 + 1);
-
-                        // Loop over distance-2 neighbors of vid
-                        for(size_type vid_d1_adj = vid_d1_adj_begin; !break_out && vid_d1_adj < vid_d1_adj_end; ++vid_d1_adj)
+                        if(vid_d1 < nc)
                         {
-                            const nnz_lno_type vid_d2 = _t_adj(vid_d1_adj);
+                          const size_type    vid_d1_adj_begin = _t_idx(vid_d1);
+                          const size_type    vid_d1_adj_end   = _t_idx(vid_d1 + 1);
 
-                            // Ignore Distance-2 Self Loops
-                            if(vid_d2 != vid && vid_d2 < nv)
-                            {
-                                const color_type color        = _colors(vid_d2);
-                                const color_type color_offset = color - offset;
+                          // Loop over distance-2 neighbors of vid
+                          for(size_type vid_d1_adj = vid_d1_adj_begin; !break_out && vid_d1_adj < vid_d1_adj_end; ++vid_d1_adj)
+                          {
+                              const nnz_lno_type vid_d2 = _t_adj(vid_d1_adj);
 
-                                // if color is within the current range, or if its color is in a previously traversed
-                                // range
-                                if(color && color_offset <= VBBIT_D2_COLORING_FORBIDDEN_SIZE)
-                                {
-                                    // if it is in the current range, then add the color to the banned colors
-                                    if(color > offset)
-                                    {
-                                        // convert color to bit representation
-                                        bit_64_forbidden_type ban_color_bit = 1;
+                              // Ignore Distance-2 Self Loops
+                              if(vid_d2 != vid && vid_d2 < nv)
+                              {
+                                  const color_type color        = _colors(vid_d2);
+                                  const color_type color_offset = color - offset;
 
-                                        ban_color_bit = ban_color_bit << (color_offset - 1);
+                                  // if color is within the current range, or if its color is in a previously traversed
+                                  // range
+                                  if(color && color_offset <= VBBIT_D2_COLORING_FORBIDDEN_SIZE)
+                                  {
+                                      // if it is in the current range, then add the color to the banned colors
+                                      if(color > offset)
+                                      {
+                                          // convert color to bit representation
+                                          bit_64_forbidden_type ban_color_bit = 1;
 
-                                        // add it to forbidden colors
-                                        forbidden = forbidden | ban_color_bit;
+                                          ban_color_bit = ban_color_bit << (color_offset - 1);
 
-                                        // if there are no available colors in this range then exit early,
-                                        // no need to traverse the rest.
-                                        if(0 == ~forbidden)
-                                        {
-                                            break_out = true;
-                                        }
-                                    }      // if color > offset ...
-                                }          // if color && color_offset ...
-                            }              // if vid_d2 ...
-                        }                  // for vid_d1_adj ...
+                                          // add it to forbidden colors
+                                          forbidden = forbidden | ban_color_bit;
+
+                                          // if there are no available colors in this range then exit early,
+                                          // no need to traverse the rest.
+                                          if(0 == ~forbidden)
+                                          {
+                                              break_out = true;
+                                          }
+                                      }      // if color > offset ...
+                                  }          // if color && color_offset ...
+                              }              // if vid_d2 ...
+                          }                  // for vid_d1_adj ...
+                        }
                     }                      // for vid_adj ...
                     forbidden = ~(forbidden);
 
@@ -1646,6 +1658,7 @@ class GraphColorDistance2
     struct functorGreedyColorVB_BIT_EF
     {
         nnz_lno_type              _nv;                    // num vertices
+        nnz_lno_type              _nc;                    // num vertices
         const_lno_row_view_type   _idx;                   // vertex degree list
         nnz_lno_temp_work_view_t  _adj;                   // vertex adjacency list  (mutable)
         const_clno_row_view_t     _t_idx;                 // transpose vertex degree list
@@ -1655,6 +1668,7 @@ class GraphColorDistance2
         nnz_lno_type              _vertexListLength;      //
 
         functorGreedyColorVB_BIT_EF(nnz_lno_type              nv_,
+                                    nnz_lno_type              nc_,
                                     const_lno_row_view_type   xadj_,
                                     nnz_lno_temp_work_view_t  adj_,
                                     const_clno_row_view_t     t_xadj_,
@@ -1662,7 +1676,7 @@ class GraphColorDistance2
                                     color_view_type           colors,
                                     nnz_lno_temp_work_view_t  vertexList,
                                     nnz_lno_type              vertexListLength)
-            : _nv(nv_)
+            : _nv(nv_), _nc(nc_)
             , _idx(xadj_)
             , _adj(adj_)
             , _t_idx(t_xadj_)
@@ -1706,78 +1720,81 @@ class GraphColorDistance2
                     for(size_type vid_adj = vid_adj_begin; !offset_colors_full && vid_adj < vid_adj_end; ++vid_adj)
                     {
                         const nnz_lno_type vid_d1 = _adj(vid_adj);
-
-                        size_type       vid_d1_adj_begin            = _t_idx(vid_d1);
-                        const size_type vid_d1_adj_end              = _t_idx(vid_d1 + 1);
-                        const size_type degree_vid_d1               = vid_d1_adj_end - vid_d1_adj_begin;
-                        size_type       num_vid_d2_colored_in_range = 0;
-
-                        // Store the maximum color value found in the vertices adjacent to vid_d1
-                        color_type max_color_adj_to_d1 = 0;
-
-                        // Loop over distance-2 neighbors of vid
-                        for(size_type vid_d1_adj = vid_d1_adj_begin; !offset_colors_full && vid_d1_adj < vid_d1_adj_end;
-                            ++vid_d1_adj)
+                        if(vid_d1 < _nc)
                         {
-                            const nnz_lno_type vid_d2 = _t_adj(vid_d1_adj);
 
-                            // Ignore Distance-2 Self Loops
-                            if(vid_d2 != vid && vid_d2 < _nv)
-                            {
-                                color_type color = _colors(vid_d2);
-                                color_type color_offset =
-                                  color - offset;      // color_offset < 0 means color is from a previous offset.
+                          size_type       vid_d1_adj_begin            = _t_idx(vid_d1);
+                          const size_type vid_d1_adj_end              = _t_idx(vid_d1 + 1);
+                          const size_type degree_vid_d1               = vid_d1_adj_end - vid_d1_adj_begin;
+                          size_type       num_vid_d2_colored_in_range = 0;
 
-                                // Update maximum color adjacent to vid_d1 found so far.
-                                max_color_adj_to_d1 = color > max_color_adj_to_d1 ? color : max_color_adj_to_d1;
+                          // Store the maximum color value found in the vertices adjacent to vid_d1
+                          color_type max_color_adj_to_d1 = 0;
 
-                                // if color is within the current range, or if its color is in a previously traversed
-                                // range
-                                if(color && color_offset <= VBBIT_D2_COLORING_FORBIDDEN_SIZE)
-                                {
-                                    num_vid_d2_colored_in_range++;
+                          // Loop over distance-2 neighbors of vid
+                          for(size_type vid_d1_adj = vid_d1_adj_begin; !offset_colors_full && vid_d1_adj < vid_d1_adj_end;
+                              ++vid_d1_adj)
+                          {
+                              const nnz_lno_type vid_d2 = _t_adj(vid_d1_adj);
 
-                                    // if it is in the current range, then add the color to the banned colors
-                                    if(color > offset)
-                                    {
-                                        // convert color to bit representation
-                                        bit_64_forbidden_type ban_color_bit = 1;
+                              // Ignore Distance-2 Self Loops
+                              if(vid_d2 != vid && vid_d2 < _nv)
+                              {
+                                  color_type color = _colors(vid_d2);
+                                  color_type color_offset =
+                                    color - offset;      // color_offset < 0 means color is from a previous offset.
 
-                                        ban_color_bit = ban_color_bit << (color_offset - 1);
+                                  // Update maximum color adjacent to vid_d1 found so far.
+                                  max_color_adj_to_d1 = color > max_color_adj_to_d1 ? color : max_color_adj_to_d1;
 
-                                        // add it to forbidden colors
-                                        forbidden = forbidden | ban_color_bit;
+                                  // if color is within the current range, or if its color is in a previously traversed
+                                  // range
+                                  if(color && color_offset <= VBBIT_D2_COLORING_FORBIDDEN_SIZE)
+                                  {
+                                      num_vid_d2_colored_in_range++;
 
-                                        // if there are no available colors in this range then exit early,
-                                        // no need to traverse the rest b/c they contribute no new information
-                                        // at this offset.
-                                        if(0 == ~forbidden)
-                                        {
-                                            offset_colors_full = true;
-                                            // Note: with edge-filtering, this can short-circuit the loop over all
-                                            //       neighbors of VID and will reduce the number of filtered edges.
-                                        }
-                                    }      // if color > offset
-                                }          // if color && color_offset
-                            }              // if vid_d2 != vid ...
-                            else
-                            {
-                                // If there's a self-loop then we should increment our 'colored in range' so we don't
-                                // block filtering since we know there must be a (v2,v1) edge
-                                num_vid_d2_colored_in_range++;
-                            }
-                        }      // for vid_d1_adj ...
+                                      // if it is in the current range, then add the color to the banned colors
+                                      if(color > offset)
+                                      {
+                                          // convert color to bit representation
+                                          bit_64_forbidden_type ban_color_bit = 1;
 
-                        // Edge filtering on the neighbors of vid.  We can only do this if ALL neighbors of vid_d1
-                        // have been visited and if all were colored in current offset range or lower.
-                        if(degree_vid_d1 == num_vid_d2_colored_in_range)
-                        {
-                            if(vid_adj_begin > vid_adj)
-                            {
-                                _adj(vid_adj)       = _adj(vid_adj_begin);
-                                _adj(vid_adj_begin) = vid_d1;
-                            }
-                            vid_adj_begin++;
+                                          ban_color_bit = ban_color_bit << (color_offset - 1);
+
+                                          // add it to forbidden colors
+                                          forbidden = forbidden | ban_color_bit;
+
+                                          // if there are no available colors in this range then exit early,
+                                          // no need to traverse the rest b/c they contribute no new information
+                                          // at this offset.
+                                          if(0 == ~forbidden)
+                                          {
+                                              offset_colors_full = true;
+                                              // Note: with edge-filtering, this can short-circuit the loop over all
+                                              //       neighbors of VID and will reduce the number of filtered edges.
+                                          }
+                                      }      // if color > offset
+                                  }          // if color && color_offset
+                              }              // if vid_d2 != vid ...
+                              else
+                              {
+                                  // If there's a self-loop then we should increment our 'colored in range' so we don't
+                                  // block filtering since we know there must be a (v2,v1) edge
+                                  num_vid_d2_colored_in_range++;
+                              }
+                          }      // for vid_d1_adj ...
+
+                          // Edge filtering on the neighbors of vid.  We can only do this if ALL neighbors of vid_d1
+                          // have been visited and if all were colored in current offset range or lower.
+                          if(degree_vid_d1 == num_vid_d2_colored_in_range)
+                          {
+                              if(vid_adj_begin > vid_adj)
+                              {
+                                  _adj(vid_adj)       = _adj(vid_adj_begin);
+                                  _adj(vid_adj_begin) = vid_d1;
+                              }
+                              vid_adj_begin++;
+                          }
                         }
 
                     }      // for vid_adj
@@ -1811,6 +1828,7 @@ class GraphColorDistance2
     struct functorFindConflicts_Atomic
     {
         nnz_lno_type               nv;      // num verts
+        nnz_lno_type               nc;      // num columns
         const_lno_row_view_type    _idx;
         adj_view_t                 _adj;
         const_clno_row_view_t      _t_idx;
@@ -1822,6 +1840,7 @@ class GraphColorDistance2
 
 
         functorFindConflicts_Atomic(nnz_lno_type               nv_,
+                                    nnz_lno_type               nc_,
                                     const_lno_row_view_type    xadj_,
                                     adj_view_t                 adj_,
                                     const_clno_row_view_t      t_xadj_,
@@ -1830,7 +1849,7 @@ class GraphColorDistance2
                                     nnz_lno_temp_work_view_t   vertexList,
                                     nnz_lno_temp_work_view_t   recolorList,
                                     single_dim_index_view_type recolorListLength)
-            : nv(nv_)
+            : nv(nv_), nc(nc_)
             , _idx(xadj_)
             , _adj(adj_)
             , _t_idx(t_xadj_)
@@ -1858,26 +1877,28 @@ class GraphColorDistance2
             for(; !break_out && vid_d1_adj < vid_d1_adj_end; vid_d1_adj++)
             {
                 nnz_lno_type vid_d1 = _adj(vid_d1_adj);
-
-                for(size_type vid_d2_adj = _t_idx(vid_d1); !break_out && vid_d2_adj < _t_idx(vid_d1 + 1); vid_d2_adj++)
+                if(vid_d1 < nc)
                 {
-                    const nnz_lno_type vid_d2 = _t_adj(vid_d2_adj);
+                  for(size_type vid_d2_adj = _t_idx(vid_d1); !break_out && vid_d2_adj < _t_idx(vid_d1 + 1); vid_d2_adj++)
+                  {
+                      const nnz_lno_type vid_d2 = _t_adj(vid_d2_adj);
 
-                    if(vid != vid_d2 && vid_d2 < nv)
-                    {
-                        if(_colors(vid_d2) == my_color)
-                        {
-                            _colors(vid) = 0;      // uncolor vertex
+                      if(vid != vid_d2 && vid_d2 < nv)
+                      {
+                          if(_colors(vid_d2) == my_color)
+                          {
+                              _colors(vid) = 0;      // uncolor vertex
 
-                            // Atomically add vertex to recolorList
-                            const nnz_lno_type k = Kokkos::atomic_fetch_add(&_recolorListLength(), atomic_incr_type(1));
-                            _recolorList(k)      = vid;
-                            numConflicts += 1;
-                            break_out = true;
-                            // break;      // Can exit if vertex gets marked as a conflict.
-                        }
-                    }      // if vid != vid_d2 ...
-                }          // for vid_d2_adj ...
+                              // Atomically add vertex to recolorList
+                              const nnz_lno_type k = Kokkos::atomic_fetch_add(&_recolorListLength(), atomic_incr_type(1));
+                              _recolorList(k)      = vid;
+                              numConflicts += 1;
+                              break_out = true;
+                              // break;      // Can exit if vertex gets marked as a conflict.
+                          }
+                      }      // if vid != vid_d2 ...
+                  }          // for vid_d2_adj ...
+                }
             }              // for vid_d1_adj ...
         }                  // operator() (end)
     };                     // struct functorFindConflicts_Atomic (end)
@@ -1890,99 +1911,107 @@ class GraphColorDistance2
      */
     struct functorVerifyDistance2Coloring
     {
-        nnz_lno_type             nv;           // num vertices
-        const_lno_row_view_type  _idx;         // vertex degree list
-        const_lno_nnz_view_t     _adj;         // vertex adjacency list
-        const_clno_row_view_t    _t_idx;       // transpose vertex degree list
-        const_clno_nnz_view_t    _t_adj;       // transpose vertex adjacency list
-        color_view_type          _colors;      // vertex colors
-        non_const_1d_bool_view_t _flags;       // [0]: valid or not?  [1]=true means something is uncolored. [2]=true means
-                                               // something has distance-2 neighbor of same color
-        nnz_lno_type _chunkSize;               //
+      nnz_lno_type             nv;           // num vertices
+      nnz_lno_type             nc;           // num columns
+      const_lno_row_view_type  _idx;         // vertex degree list
+      const_lno_nnz_view_t     _adj;         // vertex adjacency list
+      const_clno_row_view_t    _t_idx;       // transpose vertex degree list
+      const_clno_nnz_view_t    _t_adj;       // transpose vertex adjacency list
+      color_view_type          _colors;      // vertex colors
+      non_const_1d_bool_view_t _flags;       // [0]: valid or not?  [1]=true means something is uncolored. [2]=true means
+      // something has distance-2 neighbor of same color
+      nnz_lno_type _chunkSize;               //
 
-        functorVerifyDistance2Coloring(nnz_lno_type             nv_,
-                                       const_lno_row_view_type  xadj_,
-                                       const_lno_nnz_view_t     adj_,
-                                       const_clno_row_view_t    t_xadj_,
-                                       const_clno_nnz_view_t    t_adj_,
-                                       color_view_type          colors,
-                                       non_const_1d_bool_view_t flags,
-                                       nnz_lno_type             chunkSize)
-            : nv(nv_)
-            , _idx(xadj_)
-            , _adj(adj_)
-            , _t_idx(t_xadj_)
-            , _t_adj(t_adj_)
-            , _colors(colors)
-            , _flags(flags)
-            , _chunkSize(chunkSize)
-        {
-        }
+      functorVerifyDistance2Coloring(
+          nnz_lno_type             nv_,
+          nnz_lno_type             nc_,
+          const_lno_row_view_type  xadj_,
+          const_lno_nnz_view_t     adj_,
+          const_clno_row_view_t    t_xadj_,
+          const_clno_nnz_view_t    t_adj_,
+          color_view_type          colors,
+          non_const_1d_bool_view_t flags,
+          nnz_lno_type             chunkSize)
+        : nv(nv_), nc(nc_)
+          , _idx(xadj_)
+          , _adj(adj_)
+          , _t_idx(t_xadj_)
+          , _t_adj(t_adj_)
+          , _colors(colors)
+          , _flags(flags)
+          , _chunkSize(chunkSize)
+      {
+      }
 
-        KOKKOS_INLINE_FUNCTION
+      KOKKOS_INLINE_FUNCTION
         void operator()(const nnz_lno_type chunk_id) const
         {
-            bool has_uncolored_vertex            = false;
-            bool has_invalid_color               = false;
-            bool has_color_bigger_than_num_verts = false;
+          bool has_uncolored_vertex            = false;
+          bool has_invalid_color               = false;
+          bool has_color_bigger_than_num_verts = false;
 
-            // Loop over vertices in chunks
-            for(nnz_lno_type chunk_idx = 0; chunk_idx < _chunkSize; chunk_idx++)
+          // Loop over vertices in chunks
+          for(nnz_lno_type chunk_idx = 0; chunk_idx < _chunkSize; chunk_idx++)
+          {
+            bool         break_out = false;
+            nnz_lno_type vid       = chunk_id * _chunkSize + chunk_idx;
+
+            if(vid < nv)
             {
-                bool         break_out = false;
-                nnz_lno_type vid       = chunk_id * _chunkSize + chunk_idx;
+              const color_type color_vid        = _colors(vid);
+              const size_type  vid_d1_adj_begin = _idx(vid);
+              const size_type  vid_d1_adj_end   = _idx(vid + 1);
 
-                if(vid < nv)
+              if(color_vid == 0)
+              {
+                has_uncolored_vertex = true;
+              }
+
+              if(color_vid > nv)
+              {
+                has_color_bigger_than_num_verts = true;
+              }
+
+              // Loop over neighbors of vid (distance-1 from vid)
+              for(size_type vid_d1_adj = vid_d1_adj_begin; !break_out && vid_d1_adj < vid_d1_adj_end; ++vid_d1_adj)
+              {
+                const nnz_lno_type vid_d1           = _adj(vid_d1_adj);
+                if(vid_d1 < nc)
                 {
-                    const color_type color_vid        = _colors(vid);
-                    const size_type  vid_d1_adj_begin = _idx(vid);
-                    const size_type  vid_d1_adj_end   = _idx(vid + 1);
+                  const size_type    vid_d2_adj_begin = _t_idx(vid_d1);
+                  const size_type    vid_d2_adj_end   = _t_idx(vid_d1 + 1);
 
-                    if(color_vid == 0)
+                  // Loop over neighbors of vid_d1 (distance-2 from vid)
+                  for(size_type vid_d2_adj = vid_d2_adj_begin; !break_out && vid_d2_adj < vid_d2_adj_end; ++vid_d2_adj)
+                  {
+                    const nnz_lno_type vid_d2 = _t_adj(vid_d2_adj);
+                    if(vid_d2 < nv)
                     {
-                        has_uncolored_vertex = true;
-                    }
-
-                    if(color_vid > nv)
-                    {
-                        has_color_bigger_than_num_verts = true;
-                    }
-
-                    // Loop over neighbors of vid (distance-1 from vid)
-                    for(size_type vid_d1_adj = vid_d1_adj_begin; !break_out && vid_d1_adj < vid_d1_adj_end; ++vid_d1_adj)
-                    {
-                        const nnz_lno_type vid_d1           = _adj(vid_d1_adj);
-                        const size_type    vid_d2_adj_begin = _t_idx(vid_d1);
-                        const size_type    vid_d2_adj_end   = _t_idx(vid_d1 + 1);
-
-                        // Loop over neighbors of vid_d1 (distance-2 from vid)
-                        for(size_type vid_d2_adj = vid_d2_adj_begin; !break_out && vid_d2_adj < vid_d2_adj_end; ++vid_d2_adj)
+                      // Ignore Distance-2 self loops
+                      if(vid != vid_d2)
+                      {
+                        const color_type color_d2 = _colors(vid_d2);
+                        // If distance-2 neighbor of vid has the same color as vid, then the coloring is invalid
+                        if(color_vid == color_d2)
                         {
-                            const nnz_lno_type vid_d2 = _t_adj(vid_d2_adj);
-
-                            // Ignore Distance-2 self loops
-                            if(vid != vid_d2)
-                            {
-                                const color_type color_d2 = _colors(vid_d2);
-                                // If distance-2 neighbor of vid has the same color as vid, then the coloring is invalid
-                                if(color_vid == color_d2)
-                                {
-                                    has_invalid_color = true;
-                                    break_out         = true;
-                                }
-                            }
+                          has_invalid_color = true;
+                          break_out         = true;
                         }
+                      }
                     }
+                  }
                 }
+              }
             }
-            if(has_uncolored_vertex || has_invalid_color)
-                Kokkos::atomic_fetch_or(&_flags[ 0 ], has_uncolored_vertex || has_invalid_color);
-            if(has_uncolored_vertex)
-                Kokkos::atomic_fetch_or(&_flags[ 1 ], has_uncolored_vertex);
-            if(has_invalid_color)
-                Kokkos::atomic_fetch_or(&_flags[ 2 ], has_invalid_color);
-            if(has_color_bigger_than_num_verts)
-                Kokkos::atomic_fetch_or(&_flags[ 3 ], has_color_bigger_than_num_verts);
+          }
+          if(has_uncolored_vertex || has_invalid_color)
+            Kokkos::atomic_fetch_or(&_flags[ 0 ], has_uncolored_vertex || has_invalid_color);
+          if(has_uncolored_vertex)
+            Kokkos::atomic_fetch_or(&_flags[ 1 ], has_uncolored_vertex);
+          if(has_invalid_color)
+            Kokkos::atomic_fetch_or(&_flags[ 2 ], has_invalid_color);
+          if(has_color_bigger_than_num_verts)
+            Kokkos::atomic_fetch_or(&_flags[ 3 ], has_color_bigger_than_num_verts);
         }      // operator()
     };         // struct functorVerifyDistance2Coloring (end)
 
