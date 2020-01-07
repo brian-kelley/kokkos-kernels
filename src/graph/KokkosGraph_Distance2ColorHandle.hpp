@@ -212,14 +212,15 @@ class GraphColorDistance2Handle
 
     void choose_default_algorithm()
     {
+        bool found = false;
 #if defined(KOKKOS_ENABLE_SERIAL)
         if(Kokkos::Impl::is_same<Kokkos::Serial, ExecutionSpace>::value)
         {
             this->coloring_algorithm_type = COLORING_D2_SERIAL;
+            found = true;
 #ifdef VERBOSE
             std::cout << "Serial Execution Space, Default Algorithm: Serial" << std::endl;
 #endif
-            return;
         }
 #endif
 
@@ -227,10 +228,10 @@ class GraphColorDistance2Handle
         if(Kokkos::Impl::is_same<Kokkos::Threads, ExecutionSpace>::value)
         {
             this->coloring_algorithm_type = COLORING_D2_VB_DYNAMIC;
+            found = true;
 #ifdef VERBOSE
             std::cout << "PTHREAD Execution Space, Default Algorithm: COLORING_VB" << std::endl;
 #endif
-            return;
         }
 #endif
 
@@ -238,10 +239,10 @@ class GraphColorDistance2Handle
         if(Kokkos::Impl::is_same<Kokkos::OpenMP, ExecutionSpace>::value)
         {
             this->coloring_algorithm_type = COLORING_D2_VB_DYNAMIC;
+            found = true;
 #ifdef VERBOSE
             std::cout << "OpenMP Execution Space, Default Algorithm: COLORING_VB" << std::endl;
 #endif
-            return;
         }
 #endif
 
@@ -249,10 +250,10 @@ class GraphColorDistance2Handle
         if(Kokkos::Impl::is_same<Kokkos::Cuda, ExecutionSpace>::value)
         {
             this->coloring_algorithm_type = COLORING_D2_VB_DYNAMIC;
+            found = true;
 #ifdef VERBOSE
             std::cout << "Cuda Execution Space, Default Algorithm: COLORING_VB" << std::endl;
 #endif
-            return;
         }
 #endif
 
@@ -260,14 +261,15 @@ class GraphColorDistance2Handle
         if(Kokkos::Impl::is_same<Kokkos::Qthread, ExecutionSpace>::value)
         {
             this->coloring_algorithm_type = COLORING_D2_VB_DYNAMIC;
+            found = true;
 #ifdef VERBOSE
             std::cout << "Qthread Execution Space, Default Algorithm: COLORING_VB" << std::endl;
 #endif
-            return;
         }
 #endif
         //Since this logic is based on checking every exec space, detect when a new one needs to be supported
-        throw std::logic_error("D2 coloring: default algorithm hasn't been chosen for th current execution space");
+        if(!found)
+          throw std::logic_error("D2 coloring: default algorithm hasn't been chosen for th current execution space");
     }
 
     nnz_lno_type get_num_colors()
