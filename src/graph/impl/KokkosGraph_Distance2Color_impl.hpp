@@ -449,7 +449,7 @@ class GraphColorDistance2
             if(nei < numCols)
             {
               for(int b = 0; b < batch; b++)
-                forbid[b] |= Kokkos::volatile_load(&forbidden(nei * batch + b));
+                forbid[b] |= forbidden(nei * batch + b);
             }
           }
           //Find the first 0 bit in forbid
