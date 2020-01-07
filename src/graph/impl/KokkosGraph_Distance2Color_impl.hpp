@@ -1285,7 +1285,7 @@ class GraphColorDistance2
             // loop over distance-1 neighbors of vid
             for(size_type vid_d1_adj = h_idx(vid); vid_d1_adj < h_idx(vid + 1); vid_d1_adj++)
             {
-                size_type vid_d1 = h_adj(vid_d1_adj);
+                nnz_lno_type vid_d1 = h_adj(vid_d1_adj);
                 if(vid_d1 < nc)
                 {
                   // loop over neighbors of vid_d1 (distance-2 from vid)

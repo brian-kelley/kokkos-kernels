@@ -148,6 +148,8 @@ test_d2_symmetric(lno_type numRows, size_type nnz, lno_type bandwidth, lno_type 
     using graph_type        = typename crsMat_type::StaticCrsGraphType;
     using lno_view_type     = typename graph_type::row_map_type;
     using lno_nnz_view_type = typename graph_type::entries_type;
+    using lno_view_nc       = typename graph_type::row_map_type::non_const_type;
+    using lno_nnz_view_nc   = typename graph_type::entries_type::non_const_type;
     using scalar_view_type  = typename crsMat_type::values_type::non_const_type;
 
     lno_type    numCols = numRows;
@@ -157,7 +159,7 @@ test_d2_symmetric(lno_type numRows, size_type nnz, lno_type bandwidth, lno_type 
     typename lno_nnz_view_type::non_const_type sym_adj;
 
     KokkosKernels::Impl::symmetrize_graph_symbolic_hashmap
-      <lno_view_type, lno_nnz_view_type, typename lno_view_type::non_const_type, typename lno_nnz_view_type::non_const_type, device>
+      <lno_view_type, lno_nnz_view_type, lno_view_nc, lno_nnz_view_nc, device>
       (numRows, input_mat.graph.row_map, input_mat.graph.entries, sym_xadj, sym_adj);
 
     size_type        numentries = sym_adj.extent(0);
