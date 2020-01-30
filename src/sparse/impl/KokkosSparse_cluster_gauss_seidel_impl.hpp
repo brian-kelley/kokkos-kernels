@@ -1020,62 +1020,88 @@ namespace KokkosSparse{
           weights(weights_)
         {}
 
-        KOKKOS_INLINE_FUNCTION void operator()(nnz_lno_t cluster) const
+        KOKKOS_INLINE_FUNCTION void operator()(const team_member_t& t) const
         {
+          nnz_lno_t cluster = t.league_rank();
           nnz_lno_t clusterBegin = clusterOffsets(cluster);
           nnz_lno_t clusterEnd = clusterOffsets(cluster + 1);
           //Initialize weights for each vertex (NOT ordered within cluster, since that will change)
           //This is the absolute sum of off-diagonal matrix values corresponding to intra-cluster edges
-          for(nnz_lno_t i = clusterBegin; i < clusterEnd; i++)
+          Kokkos::parallel_for(Kokkos::TeamThreadRange(t, clusterEnd - clusterBegin),
+          [&](nnz_lno_t i)
           {
-            nnz_lno_t row = clusterVerts(i);
+            nnz_lno_t row = clusterVerts(clusterBegin + i);
             size_type rowBegin = rowmap(row);
             size_type rowEnd = rowmap(row + 1);
-            for(size_type j = rowBegin; j < rowEnd; j++)
+            mag_t w = 0;
+            Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(t, rowEnd - rowBegin),
+            [&](size_type j, mag_t& lweight)
             {
-              nnz_lno_t col = colinds(j);
+              size_type ent = rowBegin + j;
+              nnz_lno_t col = colinds(ent);
               if(col < numRows && col != row && vertClusters(col) == cluster)
               {
-                weights(row) += KAT::abs(values(j));
+                lweight += KAT::abs(values(ent));
               }
-            }
-          }
+            }, w);
+            Kokkos::single(Kokkos::PerThread(t),
+            [&]()
+            {
+              weights(row) = w;
+            });
+          });
+          t.team_barrier();
           //Until all vertices are reordered, swap the min-weighted vertex with the one
           //in position i (like selection sort)
+          using MinLoc = Kokkos::MinLoc<mag_t, nnz_lno_t>;
+          using MinLocVal = typename MinLoc::value_type;
           for(nnz_lno_t i = clusterBegin; i < clusterEnd - 1; i++)
           {
-            //Extract the minimum weighted vertex between i and clusterEnd
-            mag_t minWeight = Kokkos::ArithTraits<mag_t>::max();
-            nnz_lno_t minWeightOffset = 0;
-            for(nnz_lno_t j = i; j < clusterEnd; j++)
+            MinLocVal bestVert;
+            Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(t, clusterEnd - 1 - i),
+            [&](nnz_lno_t j, MinLocVal& lbest)
             {
-              nnz_lno_t row = clusterVerts(j);
-              if(weights(row) < minWeight)
+              nnz_lno_t row = clusterVerts(i + j);
+              if(weights(row) < lbest.val)
               {
-                minWeight = weights(row);
-                minWeightOffset = j;
+                lbest.val = weights(row);
+                lbest.loc = i + j;
               }
-            }
-            nnz_lno_t elimRow = clusterVerts(minWeightOffset);
-            nnz_lno_t swapVert = clusterVerts(i);
-            //Swap minWeightRow into the first position (clusterVerts indices i and minWeightOffset)
-            clusterVerts(minWeightOffset) = clusterVerts(i);
-            clusterVerts(i) = elimRow;
-            //Now, subtract from each remaining vertex the absolute weight of edge to elimRow
-            for(nnz_lno_t j = i + 1; j < clusterEnd; j++)
+            }, MinLoc(bestVert));
+            //Swap the min-weighted row into position i
+            Kokkos::single(Kokkos::PerTeam(t),
+            [&]()
             {
-              nnz_lno_t row = clusterVerts(j);
+              nnz_lno_t elimRow = clusterVerts(bestVert.loc);
+              nnz_lno_t swapRow = clusterVerts(i);
+              clusterVerts(bestVert.loc) = elimRow;
+              clusterVerts(i) = swapRow;
+            });
+            t.team_barrier();
+            nnz_lno_t elimRow = clusterVerts(i);
+            Kokkos::parallel_for(Kokkos::TeamThreadRange(t, clusterEnd - i - 1),
+            [&](nnz_lno_t j)
+            {
+              nnz_lno_t row = clusterVerts(i + j);
               size_type rowBegin = rowmap(row);
               size_type rowEnd = rowmap(row + 1);
-              for(size_type k = rowBegin; k < rowEnd; k++)
+              //Compute the amount by which row's weight should be reduced
+              mag_t w = 0;
+              Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(t, rowEnd - rowBegin),
+              [&](size_type k, mag_t& lweight)
               {
-                nnz_lno_t col = colinds(k);
+                size_type ent = rowBegin + k;
+                nnz_lno_t col = colinds(ent);
                 if(col == elimRow)
-                {
-                  weights(row) -= KAT::abs(values(k));
-                }
-              }
-            }
+                  lweight += KAT::abs(values(ent));
+              }, w);
+              Kokkos::single(Kokkos::PerThread(t),
+              [&]()
+              {
+                weights(row) -= w;
+              });
+            });
+            t.team_barrier();
           }
         }
 
@@ -1139,8 +1165,16 @@ namespace KokkosSparse{
         nnz_view_t vertClusters = gsHandle->get_vert_clusters();
         nnz_lno_t numClusters = clusterOffsets.extent(0) - 1;
         mag_view_t intraClusterWeights("Intra-cluster weights", num_rows);
-        Kokkos::parallel_for(my_exec_space(0, numClusters),
-            FlowOrderFunctor(clusterOffsets, clusterVerts, vertClusters, this->row_map, this->entries, this->values, num_rows, intraClusterWeights));
+        FlowOrderFunctor fof(clusterOffsets, clusterVerts, vertClusters, this->row_map, this->entries, this->values, num_rows, intraClusterWeights);
+        nnz_lno_t fofTeamSize;
+        {
+          team_policy_t temp(numClusters, Kokkos::AUTO(), suggested_vector_size);
+          fofTeamSize = temp.template team_size_recommended<FlowOrderFunctor>(fof, Kokkos::ParallelForTag());
+          nnz_lno_t avgClusterSize = (num_rows + numClusters - 1) / numClusters;
+          if(fofTeamSize > avgClusterSize)
+            fofTeamSize = avgClusterSize;
+        }
+        Kokkos::parallel_for(team_policy_t(numClusters, fofTeamSize, suggested_vector_size), fof);
         gsHandle->set_call_numeric(true);
         MyExecSpace().fence();
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
