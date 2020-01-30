@@ -111,6 +111,10 @@ namespace KokkosSparse{
       typedef Kokkos::TeamPolicy<MyExecSpace> team_policy_t ;
       typedef typename team_policy_t::member_type team_member_t ;
 
+      using KAT = Kokkos::Details::ArithTraits<nnz_scalar_t>;
+      using mag_t = typename KAT::mag_type;
+      using mag_view_t = Kokkos::View<mag_t*, MyPersistentMemorySpace>;
+
     private:
       HandleType *handle;
 
@@ -273,7 +277,7 @@ namespace KokkosSparse{
                   nnz_lno_persistent_work_view_t cluster_verts_,
                   scalar_persistent_work_view_t inverse_diagonal_,
                   nnz_lno_t clusters_per_team_,
-                  nnz_scalar_t omega_ = Kokkos::Details::ArithTraits<nnz_scalar_t>::one()) :
+                  nnz_scalar_t omega_ = KAT::one()) :
           _xadj( xadj_),
           _adj( adj_),
           _adj_vals( adj_vals_),
@@ -916,6 +920,7 @@ namespace KokkosSparse{
         gsHandle->set_num_colors(numColors);
         gsHandle->set_cluster_xadj(clusterOffsets);
         gsHandle->set_cluster_adj(clusterVerts);
+        gsHandle->set_vert_clusters(vertClusters);
         gsHandle->set_call_symbolic(true);
       }
 
@@ -942,7 +947,7 @@ namespace KokkosSparse{
           _adj(adj_),
           _adj_vals(adj_vals_), _diagonals(diagonals_),
           num_total_rows(num_total_rows_), rows_per_team(rows_per_team_),
-          one(Kokkos::Details::ArithTraits<nnz_scalar_t>::one())
+          one(KAT::one())
         {}
 
         KOKKOS_INLINE_FUNCTION
@@ -988,8 +993,108 @@ namespace KokkosSparse{
         }
       };
 
+      //FlowOrderFunctor: greedily reorder vertices within a cluster to maximize
+      //convergence in the forward direction.
+      //
+      //IMPORTANT TODO (performance): lots of nested loops, really needs to be a TeamPolicy
+      struct FlowOrderFunctor
+      {
+        using nnz_view_t = nnz_lno_persistent_work_view_t;
+
+        FlowOrderFunctor(
+            const nnz_view_t& clusterOffsets_,
+            const nnz_view_t& clusterVerts_,
+            const nnz_view_t& vertClusters_,
+            const const_lno_row_view_t& rowmap_,
+            const const_lno_nnz_view_t& colinds_,
+            const const_scalar_nnz_view_t& values_,
+            const nnz_lno_t& numRows_,
+            const mag_view_t& weights_) :
+          clusterOffsets(clusterOffsets_),
+          clusterVerts(clusterVerts_),
+          vertClusters(vertClusters_),
+          rowmap(rowmap_),
+          colinds(colinds_),
+          values(values_),
+          numRows(numRows_),
+          weights(weights_)
+        {}
+
+        KOKKOS_INLINE_FUNCTION void operator()(nnz_lno_t cluster) const
+        {
+          nnz_lno_t clusterBegin = clusterOffsets(cluster);
+          nnz_lno_t clusterEnd = clusterOffsets(cluster + 1);
+          //Initialize weights for each vertex (NOT ordered within cluster, since that will change)
+          //This is the absolute sum of off-diagonal matrix values corresponding to intra-cluster edges
+          for(nnz_lno_t i = clusterBegin; i < clusterEnd; i++)
+          {
+            nnz_lno_t row = clusterVerts(i);
+            size_type rowBegin = rowmap(row);
+            size_type rowEnd = rowmap(row + 1);
+            for(size_type j = rowBegin; j < rowEnd; j++)
+            {
+              nnz_lno_t col = colinds(j);
+              if(col < numRows && col != row && vertClusters(col) == cluster)
+              {
+                weights(row) += KAT::abs(values(j));
+              }
+            }
+          }
+          //Until all vertices are reordered, swap the min-weighted vertex with the one
+          //in position i (like selection sort)
+          for(nnz_lno_t i = clusterBegin; i < clusterEnd - 1; i++)
+          {
+            //Extract the minimum weighted vertex between i and clusterEnd
+            mag_t minWeight = KAT::max();
+            nnz_lno_t minWeightOffset = 0;
+            for(nnz_lno_t j = i; j < clusterEnd; j++)
+            {
+              nnz_lno_t row = clusterVerts(j);
+              if(weights(row) < minWeight)
+              {
+                minWeight = weights(row);
+                minWeightOffset = j;
+              }
+            }
+            nnz_lno_t elimRow = clusterVerts(minWeightOffset);
+            nnz_lno_t swapVert = clusterVerts(i);
+            //Swap minWeightRow into the first position (clusterVerts indices i and minWeightOffset)
+            clusterVerts(minWeightOffset) = clusterVerts(i);
+            clusterVerts(i) = elimRow;
+            //Now, subtract from each remaining vertex the absolute weight of edge to elimRow
+            for(nnz_lno_t j = i + 1; j < clusterEnd; j++)
+            {
+              nnz_lno_t row = clusterVerts(j);
+              size_type rowBegin = rowmap(row);
+              size_type rowEnd = rowmap(row + 1);
+              for(size_type k = rowBegin; k < rowEnd; k++)
+              {
+                nnz_lno_t col = colinds(k);
+                if(col == elimRow)
+                {
+                  weights(row) -= KAT::abs(values(k));
+                }
+              }
+            }
+          }
+        }
+
+        //Cluster mapping
+        nnz_view_t clusterOffsets;
+        nnz_view_t clusterVerts;
+        nnz_view_t vertClusters;
+        //Input matrix
+        const_lno_row_view_t rowmap;
+        const_lno_nnz_view_t colinds;
+        const_scalar_nnz_view_t values;
+        nnz_lno_t numRows;
+        //Intra-cluster absolute sum of edge weights, per vertex
+        mag_view_t weights;
+      };
+
       void initialize_numeric()
       {
+        using nnz_view_t = nnz_lno_persistent_work_view_t;
         auto gsHandle = get_gs_handle();
         if(!gsHandle->is_symbolic_called())
         {
@@ -1028,6 +1133,14 @@ namespace KokkosSparse{
           }
         }
         gsHandle->set_inverse_diagonal(inverse_diagonal);
+        //Get the clusters back from handle
+        nnz_view_t clusterOffsets = gsHandle->get_cluster_xadj();
+        nnz_view_t clusterVerts = gsHandle->get_cluster_adj();
+        nnz_view_t vertClusters = gsHandle->get_vert_clusters();
+        nnz_lno_t numClusters = clusterOffsets.extent(0) - 1;
+        mag_view_t intraClusterWeights("Intra-cluster weights", num_rows);
+        Kokkos::parallel_for(my_exec_space(0, numClusters),
+            FlowOrderFunctor(clusterOffsets, clusterVerts, vertClusters, this->row_map, this->entries, this->values, num_rows, intraClusterWeights));
         gsHandle->set_call_numeric(true);
         MyExecSpace().fence();
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
