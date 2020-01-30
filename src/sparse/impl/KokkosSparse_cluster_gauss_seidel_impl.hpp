@@ -1045,7 +1045,7 @@ namespace KokkosSparse{
           for(nnz_lno_t i = clusterBegin; i < clusterEnd - 1; i++)
           {
             //Extract the minimum weighted vertex between i and clusterEnd
-            mag_t minWeight = KAT::max();
+            mag_t minWeight = Kokkos::ArithTraits<mag_t>::max();
             nnz_lno_t minWeightOffset = 0;
             for(nnz_lno_t j = i; j < clusterEnd; j++)
             {
