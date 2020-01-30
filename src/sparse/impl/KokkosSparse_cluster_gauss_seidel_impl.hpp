@@ -1064,9 +1064,11 @@ namespace KokkosSparse{
           using MinLocVal = typename MinLoc::value_type;
           for(nnz_lno_t i = clusterBegin; i < clusterEnd - 1; i++)
           {
+            //Find lowest-weight vertex (just on one thread)
             MinLocVal bestVert;
             bestVert.val = Kokkos::ArithTraits<mag_t>::max();
-            Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(t, clusterEnd - i),
+            //Whole team works on this loop
+            Kokkos::parallel_reduce(Kokkos::TeamVectorRange(t, clusterEnd - i),
             [&](nnz_lno_t j, MinLocVal& lbest)
             {
               const nnz_lno_t row = clusterVerts(i + j);
@@ -1080,10 +1082,9 @@ namespace KokkosSparse{
             Kokkos::single(Kokkos::PerTeam(t),
             [&]()
             {
-              const nnz_lno_t elimRow = clusterVerts(bestVert.loc);
-              const nnz_lno_t swapRow = clusterVerts(i);
-              clusterVerts(bestVert.loc) = elimRow;
-              clusterVerts(i) = swapRow;
+              const nnz_lno_t temp = clusterVerts(i);
+              clusterVerts(i) = clusterVerts(bestVert.loc);
+              clusterVerts(bestVert.loc) = temp;
             });
             t.team_barrier();
             const nnz_lno_t elimRow = clusterVerts(i);
