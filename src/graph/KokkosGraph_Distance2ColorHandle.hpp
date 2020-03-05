@@ -58,15 +58,12 @@ enum GraphColoringAlgorithmDistance2
 {
     COLORING_D2_DEFAULT,             // Distance-2 Graph Coloring default algorithm
     COLORING_D2_SERIAL,              // Distance-2 Graph Coloring (SERIAL)
-    COLORING_D2_MATRIX_SQUARED,      // Distance-2 Graph Coloring using Matrix Squared + D1 Coloring
-    COLORING_D2_SPGEMM,              // - Same as COLORING_D2_MATRIX_SQUARED
     COLORING_D2,                     // Distance-2 Graph Coloring
     COLORING_D2_VB,                  // Distance-2 Graph Coloring Vertex Based
     COLORING_D2_VB_BIT,              // Distance-2 Graph Coloring Vertex Based BIT
     COLORING_D2_VB_BIT_EF,           // Distance-2 Graph Coloring Vertex Based BIT + Edge Filtering
     COLORING_D2_NB_BIT               // Distance-2 Graph Coloring Net Based BIT
 };
-
 
 template<class size_type_,
          class color_t_,
@@ -173,7 +170,6 @@ class GraphColorDistance2Handle
      * @param[in] col_algo Coloring algorithm, one of:
      *                     - COLORING_D2_DEFAULT
      *                     - COLORING_D2_SERIAL
-     *                     - COLORING_D2_MATRIX_SQUARED
      *                     - COLORING_D2_VB
      *                     - COLORING_D2_VB_BIT
      *                     - COLORING_D2_VB_BIT_EF
@@ -276,11 +272,7 @@ class GraphColorDistance2Handle
     nnz_lno_type get_num_colors()
     {
         if(num_colors == 0)
-        {
-            typedef typename Kokkos::RangePolicy<ExecutionSpace> my_exec_space;
-            Kokkos::parallel_reduce(
-              "KokkosKernels::FindMax", my_exec_space(0, vertex_colors.extent(0)), ReduceMaxFunctor(vertex_colors), num_colors);
-        }
+          KokkosKernels::Impl::view_reduce_max<color_view_type, ExecutionSpace>(vertex_colors.extent(0), vertex_colors, num_colors);
         return num_colors;
     }
 
@@ -291,7 +283,6 @@ class GraphColorDistance2Handle
     {
         switch(col_algo)
         {
-            case COLORING_D2_MATRIX_SQUARED:
             case COLORING_D2_SERIAL:
             case COLORING_D2:
             case COLORING_D2_VB:
@@ -487,44 +478,27 @@ class GraphColorDistance2Handle
         os << "}" << std::endl;
     }      // dump_graphviz (end)
 
-
-  private:
-    // -----------------------------------------
-    //  Helpers
-    // -----------------------------------------
-
-    // -----------------------------------------
-    //  Functors
-    // -----------------------------------------
-
-  public:
-    struct ReduceMaxFunctor
+    const char* getD2AlgorithmName() const
     {
-        color_view_type colors;
-        ReduceMaxFunctor(color_view_type cat) : colors(cat) {}
-
-        KOKKOS_INLINE_FUNCTION
-        void operator()(const nnz_lno_type& i, color_type& color_max) const
-        {
-            if(color_max < colors(i))
-                color_max = colors(i);
-        }
-
-        // max -plus semiring equivalent of "plus"
-        KOKKOS_INLINE_FUNCTION
-        void join(volatile color_type& dst, const volatile color_type& src) const
-        {
-            if(dst < src)
-            {
-                dst = src;
-            }
-        }
-
-        KOKKOS_INLINE_FUNCTION
-        void init(color_type& dst) const { dst = 0; }
-    };
-
-
+      switch(coloring_algorithm_type)
+      {
+        case COLORING_D2_DEFAULT:
+          return "COLORING_D2_DEFAULT";
+        case COLORING_D2_SERIAL:
+          return "COLORING_D2_SERIAL";
+        case COLORING_D2:
+          return "COLORING_D2";
+        case COLORING_D2_VB:
+          return "COLORING_D2_VB";
+        case COLORING_D2_VB_BIT:
+          return "COLORING_D2_VB_BIT";
+        case COLORING_D2_VB_BIT_EF:
+          return "COLORING_D2_VB_BIT_EF";
+        case COLORING_D2_NB_BIT:
+          return "COLORING_D2_NB_BIT";
+      }
+      return "ERROR: unregistered algorithm";
+    }
 };      // class GraphColorDistance2Handle (end)
 
 }      // namespace KokkosGraph

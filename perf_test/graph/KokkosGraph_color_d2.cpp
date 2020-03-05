@@ -124,7 +124,6 @@ void print_options(std::ostream &os, const char *app_name, unsigned int indent =
        << spaces << "      --amtx <filename>   Input file in Matrix Market format (.mtx)." << std::endl
        << std::endl
        << spaces << "      --algorithm <algorithm_name>   Set the algorithm to use.  Allowable values are:" << std::endl
-       << spaces << "                 COLORING_D2_MATRIX_SQUARED  - Matrix-squared + Distance-1 method." << std::endl
        << spaces << "                 COLORING_D2_SERIAL          - Serial algorithm (must use with 'serial' mode)" << std::endl
        << spaces << "                 COLORING_D2_VB              - Vertex Based method using boolean forbidden array (Default)." << std::endl
        << spaces << "                 COLORING_D2_VB_BIT          - VB with Bitvector Forbidden Array" << std::endl
@@ -209,12 +208,7 @@ int parse_inputs(KokkosKernels::Experiment::Parameters &params, int argc, char *
         else if(0 == strcasecmp(argv[i], "--algorithm"))
         {
             ++i;
-            if(0 == strcasecmp(argv[i], "COLORING_D2_MATRIX_SQUARED"))
-            {
-                params.algorithm             = 1;
-                got_required_param_algorithm = true;
-            }
-            else if(0 == strcasecmp(argv[i], "COLORING_D2_SERIAL"))
+            if(0 == strcasecmp(argv[i], "COLORING_D2_SERIAL"))
             {
                 params.algorithm             = 2;
                 got_required_param_algorithm = true;
@@ -354,10 +348,6 @@ void run_experiment(crsGraph_t crsGraph, int num_cols, Parameters params)
     std::string label_algorithm;
     switch(algorithm)
     {
-        case 1:
-            kh.create_distance2_graph_coloring_handle(COLORING_D2_MATRIX_SQUARED);
-            label_algorithm = "COLORING_D2_MATRIX_SQUARED";
-            break;
         case 2:
             kh.create_distance2_graph_coloring_handle(COLORING_D2_SERIAL);
             label_algorithm = "COLORING_D2_SERIAL";
@@ -380,7 +370,7 @@ void run_experiment(crsGraph_t crsGraph, int num_cols, Parameters params)
             break;
         default:
             kh.create_distance2_graph_coloring_handle(COLORING_D2_VB);
-            label_algorithm = "COLORING_D2_VB";
+            label_algorithm = "COLORING_D2_NB_BIT";
             break;
     }
 

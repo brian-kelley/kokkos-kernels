@@ -47,7 +47,6 @@
 #include "KokkosGraph_Distance2ColorHandle.hpp"
 #include "KokkosGraph_Distance1Color_impl.hpp" 
 #include "KokkosGraph_Distance2Color_impl.hpp"
-#include "KokkosGraph_Distance2Color_MatrixSquared_impl.hpp"
 
 #include "KokkosKernels_Utils.hpp"
 
@@ -93,29 +92,19 @@ void graph_compute_distance2_color(KernelHandle *handle,
     using color_view_type = typename KernelHandle::GraphColorDistance2HandleType::color_view_type;
     color_view_type colors_out("Graph Colors", num_rows);
 
-    if(algorithm == COLORING_D2_MATRIX_SQUARED ||
-        algorithm == COLORING_D2_SPGEMM)
+    Impl::GraphColorDistance2<typename KernelHandle::GraphColorDistance2HandleType, lno_row_view_t_, lno_nnz_view_t_, lno_col_view_t_, lno_colnnz_view_t_>
+      gc(num_rows, num_cols, row_entries.extent(0), row_map, row_entries, col_map, col_entries, gch_d2);
+    if(algorithm == COLORING_D2_SERIAL)
     {
-      Impl::GraphColorDistance2MatrixSquared<KernelHandle, lno_row_view_t_, lno_nnz_view_t_, lno_col_view_t_, lno_colnnz_view_t_>
-        gc(num_rows, num_cols, row_entries.extent(0), row_map, row_entries, col_map, col_entries, handle);
-      gc.compute_distance2_color();
+      gc.compute_distance2_color_serial();
+    }
+    else if(algorithm == COLORING_D2_NB_BIT)
+    {
+      gc.compute_d2_coloring_dynamic();
     }
     else
     {
-      Impl::GraphColorDistance2<typename KernelHandle::GraphColorDistance2HandleType, lno_row_view_t_, lno_nnz_view_t_, lno_col_view_t_, lno_colnnz_view_t_>
-        gc(num_rows, num_cols, row_entries.extent(0), row_map, row_entries, col_map, col_entries, gch_d2);
-      if(algorithm == COLORING_D2_SERIAL)
-      {
-        gc.compute_distance2_color_serial();
-      }
-      else if(algorithm == COLORING_D2_NB_BIT)
-      {
-        gc.compute_d2_coloring_dynamic();
-      }
-      else
-      {
-        gc.compute_distance2_color();
-      }
+      gc.compute_distance2_color();
     }
     gch_d2->add_to_overall_coloring_time(timer.seconds());
     gch_d2->set_coloring_time(timer.seconds());

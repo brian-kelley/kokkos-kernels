@@ -99,8 +99,10 @@ run_graphcolor_d2(crsMat_type input_mat, crsMat_type input_mat_T, const std::vec
       graph_compute_distance2_color<KernelHandle, lno_view_type, lno_nnz_view_type>
           (&kh, nv, nc, input_mat.graph.row_map, input_mat.graph.entries, input_mat_T.graph.row_map, input_mat_T.graph.entries);
 
-      kh.get_distance2_graph_coloring_handle()->get_num_colors();
-      kh.get_distance2_graph_coloring_handle()->get_vertex_colors();
+      auto coloring_handle = kh.get_distance2_graph_coloring_handle();
+
+      coloring_handle->get_num_colors();
+      coloring_handle->get_vertex_colors();
 
       // Verify the Distance-2 graph coloring is valid.
       bool d2_coloring_is_valid = false;
@@ -115,17 +117,21 @@ run_graphcolor_d2(crsMat_type input_mat, crsMat_type input_mat_T, const std::vec
       // Print out messages based on coloring validation check.
       if(!d2_coloring_is_valid)
       {
-          std::cout << std::endl
-                    << "Distance-2 Graph Coloring is NOT VALID" << std::endl
-                    << "  - Vert(s) left uncolored : " << d2_coloring_validation_flags[1] << std::endl
-                    << "  - Invalid D2 Coloring    : " << d2_coloring_validation_flags[2] << std::endl
-                    << std::endl;
+          std::cout << '\n' << "Distance-2 Graph Coloring is NOT VALID (algorithm " <<
+            coloring_handle->getD2AlgorithmName() << ")\n" <<
+            "  - Vert(s) left uncolored : " << d2_coloring_validation_flags[1] << '\n' <<
+            "  - Invalid D2 Coloring    : " << d2_coloring_validation_flags[2] << "\n\n";
       }
-      if(d2_coloring_validation_flags[3])
+      else if(d2_coloring_validation_flags[3])
       {
-          std::cout << "Distance-2 Graph Coloring may have poor quality." << std::endl
-                    << "  - Vert(s) have high color value : " << d2_coloring_validation_flags[3] << std::endl
-                    << std::endl;
+          std::cout << "Distance-2 Graph Coloring may have poor quality (algorithm " <<
+            coloring_handle->getD2AlgorithmName() << ")\n" <<
+            "  - Vert(s) have high color value : " << d2_coloring_validation_flags[3] << "\n\n";
+      }
+      else
+      {
+          std::cout << "Distance-2 Graph Coloring algorithm " <<
+            coloring_handle->getD2AlgorithmName() << " passed cleanly.\n";
       }
 
       kh.destroy_distance2_graph_coloring_handle();
@@ -168,7 +174,8 @@ test_d2_symmetric(lno_type numRows, size_type nnz, lno_type bandwidth, lno_type 
     graph_type static_graph(sym_adj, sym_xadj);
     input_mat = crsMat_type("CrsMatrix", numCols, newValues, static_graph);
     run_graphcolor_d2<crsMat_type, device>(input_mat, input_mat,
-        {COLORING_D2_MATRIX_SQUARED, COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF, COLORING_D2_NB_BIT});
+        //{COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF, COLORING_D2_NB_BIT});
+        {COLORING_D2_VB});
 
 }
 
@@ -195,7 +202,8 @@ test_d2_asymmetric(lno_type numRows, lno_type numCols, size_type nnz, lno_type b
       (numRows, numCols, input_mat.graph.row_map, input_mat.graph.entries, transRowmap, transColinds);
     crsMat_type input_mat_T("input^T", numCols, numRows, input_mat.nnz(), input_mat.values, transRowmap, transColinds);
     run_graphcolor_d2<crsMat_type, device>(input_mat, input_mat_T,
-        {COLORING_D2_MATRIX_SQUARED, COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF, COLORING_D2_NB_BIT});
+        //{COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF, COLORING_D2_NB_BIT});
+        {COLORING_D2_VB});
 }
 
 //Filtering test: start with a symmetric matrix, but intentionally add some entries that are have out-of-bounds columns.
@@ -266,9 +274,9 @@ test_d2_filtering(lno_type numRows, lno_type numCols, size_type nnz, lno_type ba
 
     input_mat = crsMat_type("input", numRows, numRows, newNNZ, newValues, finalRowmap, finalEntries);
 
-    //Note that MATRIX_SQUARED cannot be used here, because SPGEMM doesn't accept out-of-bounds indices
     run_graphcolor_d2<crsMat_type, device>(input_mat, input_mat,
-        {COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF, COLORING_D2_NB_BIT});
+        //{COLORING_D2_SERIAL, COLORING_D2, COLORING_D2_VB, COLORING_D2_VB_BIT, COLORING_D2_VB_BIT_EF, COLORING_D2_NB_BIT});
+        {COLORING_D2_VB});
 }
 
 #define EXECUTE_TEST(SCALAR, ORDINAL, OFFSET, DEVICE)                                           \
@@ -277,10 +285,13 @@ test_d2_filtering(lno_type numRows, lno_type numCols, size_type nnz, lno_type ba
       test_d2_symmetric<SCALAR, ORDINAL, OFFSET, DEVICE>(5000, 5000 * 30, 200, 10);          \
       test_d2_symmetric<SCALAR, ORDINAL, OFFSET, DEVICE>(5000, 5000 * 5, 100, 10);          \
     } \
-    TEST_F(TestCategory, graph##_##graph_color_d2_asymmetric##_##SCALAR##_##ORDINAL##_##OFFSET##_##DEVICE) \
+    TEST_F(TestCategory, graph##_##graph_color_d2_asymmetric_tall##_##SCALAR##_##ORDINAL##_##OFFSET##_##DEVICE) \
     {                                                                                           \
-      test_d2_asymmetric<SCALAR, ORDINAL, OFFSET, DEVICE>(5000, 6000, 5000 * 30, 200, 10);          \
-      test_d2_asymmetric<SCALAR, ORDINAL, OFFSET, DEVICE>(5000, 6000, 5000 * 5, 100, 10);          \
+      test_d2_asymmetric<SCALAR, ORDINAL, OFFSET, DEVICE>(6000, 3000, 6000 * 30, 200, 10);          \
+    } \
+    TEST_F(TestCategory, graph##_##graph_color_d2_asymmetric_short##_##SCALAR##_##ORDINAL##_##OFFSET##_##DEVICE) \
+    {                                                                                           \
+      test_d2_asymmetric<SCALAR, ORDINAL, OFFSET, DEVICE>(3000, 6000, 3000 * 30, 200, 10);          \
     } \
     TEST_F(TestCategory, graph##_##graph_color_d2_filtering##_##SCALAR##_##ORDINAL##_##OFFSET##_##DEVICE) \
     {                                                                                           \
