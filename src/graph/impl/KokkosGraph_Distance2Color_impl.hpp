@@ -149,15 +149,13 @@ class GraphColorDistance2
     /**
      * \brief GraphColorDistance2 constructor.
      * \param nv_: number of vertices in the graph
-     * \param ne_: number of edges in the graph
      * \param row_map: the xadj array of the graph. Its size is nv_ +1
-     * \param entries: adjacency array of the graph. Its size is ne_
+     * \param entries: adjacency array of the graph.
      * \param handle: GraphColoringHandle object that holds the specification about the graph coloring,
      *    including parameters.
      */
     GraphColorDistance2(nnz_lno_type            nv_,
                         nnz_lno_type            nc_,
-                        size_type               ne_,
                         const_lno_row_view_type row_map,
                         const_lno_nnz_view_t    entries,
                         const_clno_row_view_t   t_row_map,
@@ -166,7 +164,6 @@ class GraphColorDistance2
         : nv(nv_)
         , nr(nv_)
         , nc(nc_)
-        , ne(ne_)
         , xadj(row_map)
         , adj(entries)
         , t_xadj(t_row_map)
