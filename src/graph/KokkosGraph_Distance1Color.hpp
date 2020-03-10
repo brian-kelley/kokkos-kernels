@@ -53,18 +53,53 @@ namespace KokkosGraph{
 
 namespace Experimental{
 
+/**
+ * Coloring an undirected graph, so that no adjacent pair of vertices has the same color.
+ *
+ * @param[in]  handle       The Kernel Handle
+ * @param[in]  num_verts    Number of vertices to color (should match number of rows in the adjacency matrix)
+ * @param[in]  unused
+ * @param[in]  row_map      Row map of adjacency matrix
+ * @param[in]  row_entries  Row entries of adjacency matrix
+ * @param[in]  is_symmetric Whether the provided adjacency matrix is known to be symmetric. Note that "remote columns"
+ *                          (entries greater than or equal to num_verts) are ignored, so they don't affect symmetry.
+ *                          If the graph is not symmetric on input, it must be symmetrized internally,
+ *                          which costs additional time (typically much less than the coloring itself)
+ *                          and memory (in the worst case, twice as much as the input graph).
+ *
+  \post handle->get_graph_coloring_handle()->get_vertex_colors() will return a view of length num_verts, containing the colors.
+ */
 
-
-template <class KernelHandle,typename lno_row_view_t_, typename lno_nnz_view_t_>
-void graph_color_symbolic(
+template <class KernelHandle, typename lno_row_view_t_, typename lno_nnz_view_t_>
+void graph_color(
     KernelHandle *handle,
-    typename KernelHandle::nnz_lno_t num_rows,
-    typename KernelHandle::nnz_lno_t /* num_cols */,
+    typename KernelHandle::nnz_lno_t num_verts,
+    typename KernelHandle::nnz_lno_t,
     lno_row_view_t_ row_map,
     lno_nnz_view_t_ entries,
-    bool /* is_symmetric */ = true){
-
+    bool is_symmetric = true,
+    bool is_sorted = false)
+{
+  using InternalRowmap = typename lno_row_view_t_::non_const_type;
+  using InternalEntries = typename lno_nnz_view_t_::non_const_type;
+  InternalRowmap internalRowmap;
+  InternalEntries internalEntries;
   Kokkos::Impl::Timer timer;
+  if(is_symmetric)
+  {
+    internalRowmap = row_map;
+    internalEntries = entries;
+  }
+  else
+  {
+    //Note: since this is done after the construction of "timer", it will
+    //be included in overall_coloring_time.
+    //TODO: make this its own timing section in the handle?
+    using ExecSpace = typename KernelHandle::HandleExecSpace;
+    KokkosKernels::Impl::symmetrize_graph_symbolic_hashmap<
+      <lno_row_view_t_, lno_nnz_view_t_, InternalRowmap, InternalEntries, ExecSpace>
+      (num_verts, row_map, entries, internalRowmap, internalEntries);
+  }
 
   typename KernelHandle::GraphColoringHandleType *gch = handle->get_graph_coloring_handle();
 
@@ -76,32 +111,31 @@ void graph_color_symbolic(
 
   color_view_type colors_out = color_view_type("Graph Colors", num_rows);
 
-
   typedef typename Impl::GraphColor
-      <typename KernelHandle::GraphColoringHandleType, lno_row_view_t_, lno_nnz_view_t_> BaseGraphColoring;
+      <typename KernelHandle::GraphColoringHandleType, InternalRowmap, InternalEntries> BaseGraphColoring;
   BaseGraphColoring *gc = NULL;
 
   switch (algorithm){
   case COLORING_SERIAL:
-    gc = new BaseGraphColoring(num_rows, entries.extent(0), row_map, entries, gch);
+    gc = new BaseGraphColoring(num_rows, internalRowmap, internalEntries, gch);
     break;
 
   case COLORING_VB:
   case COLORING_VBBIT:
   case COLORING_VBCS:
     typedef typename Impl::GraphColor_VB <typename KernelHandle::GraphColoringHandleType, lno_row_view_t_, lno_nnz_view_t_> VBGraphColoring;
-    gc = new VBGraphColoring(num_rows, entries.extent(0), row_map, entries, gch);
+    gc = new VBGraphColoring(num_rows, internalRowmap, internalEntries, gch);
     break;
 
   case COLORING_VBD:
   case COLORING_VBDBIT:
     typedef typename Impl::GraphColor_VBD <typename KernelHandle::GraphColoringHandleType, lno_row_view_t_, lno_nnz_view_t_> VBDGraphColoring;
-    gc = new VBDGraphColoring(num_rows, entries.extent(0), row_map, entries, gch);
+    gc = new VBDGraphColoring(num_rows, internalRowmap, internalEntries, gch);
     break;
 
   case COLORING_EB:
     typedef typename Impl::GraphColor_EB <typename KernelHandle::GraphColoringHandleType, lno_row_view_t_, lno_nnz_view_t_> EBGraphColoring;
-    gc = new EBGraphColoring(num_rows, entries.extent(0),row_map, entries, gch);
+    gc = new EBGraphColoring(num_rows, internalRowmap, internalEntries, gch);
     break;
 
   case COLORING_DEFAULT:
@@ -122,17 +156,23 @@ void graph_color_symbolic(
   gch->set_vertex_colors(colors_out);
 }
 
+#ifdef KOKKOS_ENABLE_DEPRECATED_CODE
+///  Identical behavior to color_graph().
+///  Deprecated because it uses the naming convention of sparse numerical algorithms
+///  (separate symbolic and numeric phases) which doesn't apply to graph algorithms.
+///  The old interface also took \c num_cols, which is not necessary as the adjacency
+///  matrix must be square for coloring to make sense.
 template <class KernelHandle,typename lno_row_view_t_, typename lno_nnz_view_t_>
-void graph_color(
+void graph_color_symbolic(
     KernelHandle *handle,
-    typename KernelHandle::nnz_lno_t num_rows,
-    typename KernelHandle::nnz_lno_t num_cols,
+    typename KernelHandle::nnz_lno_t num_verts,
     lno_row_view_t_ row_map,
     lno_nnz_view_t_ entries,
     bool is_symmetric = true)
 {
-  graph_color_symbolic(handle, num_rows, num_cols, row_map, entries, is_symmetric);
+  color_graph(handle, num_verts, num_verts, row_map, entries, is_symmetric, false);
 }
+#endif
 
 }  // end namespace Experimental
 }  // end namespace KokkosGraph

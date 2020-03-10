@@ -110,19 +110,17 @@ public:
   /**
    * \brief GraphColor constructor.
    * \param nv_: number of vertices in the graph
-   * \param ne_: number of edges in the graph
    * \param row_map: the xadj array of the graph. Its size is nv_ +1
-   * \param entries: adjacency array of the graph. Its size is ne_
+   * \param entries: adjacency array of the graph.
    * \param coloring_handle: GraphColoringHandle object that holds the specification about the graph coloring,
    *    including parameters.
    */
   GraphColor(
       nnz_lno_t nv_,
-      size_type ne_,
       const_lno_row_view_t row_map,
       const_lno_nnz_view_t entries,
       HandleType *coloring_handle):
-        nv (nv_), ne(ne_),xadj(row_map), adj (entries),
+        nv (nv_), ne(entries.extent(0)),xadj(row_map), adj (entries),
         kok_src(), kok_dst(), cp(coloring_handle){}
 
   /** \brief GraphColor destructor.
@@ -275,17 +273,16 @@ public:
   /**
    * \brief GraphColor_VB constructor.
    * \param nv_: number of vertices in the graph
-   * \param ne_: number of edges in the graph
    * \param row_map: the xadj array of the graph. Its size is nv_ +1
-   * \param entries: adjacency array of the graph. Its size is ne_
+   * \param entries: adjacency array of the graph.
    * \param coloring_handle: GraphColoringHandle object that holds the specification about the graph coloring,
    *    including parameters.
    */
   GraphColor_VB(
-      nnz_lno_t nv_, size_type ne_,
+      nnz_lno_t nv_,
       const_lno_row_view_t row_map, const_lno_nnz_view_t entries,
       HandleType *coloring_handle):
-    GraphColor<HandleType,lno_row_view_t_,lno_nnz_view_t_>(nv_, ne_, row_map, entries, coloring_handle),
+    GraphColor<HandleType,lno_row_view_t_,lno_nnz_view_t_>(nv_, row_map, entries, coloring_handle),
     _serialConflictResolution(coloring_handle->get_serial_conflict_resolution()),
     _ticToc(coloring_handle->get_tictoc()),
     _conflict_scheme(coloring_handle->get_conflict_list_type()),
@@ -1843,17 +1840,16 @@ public:
   /**
    * \brief GraphColor_VBD constructor.
    * \param nv_: number of vertices in the graph
-   * \param ne_: number of edges in the graph
    * \param row_map: the xadj array of the graph. Its size is nv_ +1
-   * \param entries: adjacency array of the graph. Its size is ne_
+   * \param entries: adjacency array of the graph.
    * \param coloring_handle: GraphColoringHandle object that holds the specification about the graph coloring,
    *    including parameters.
    */
   GraphColor_VBD(
-      nnz_lno_t nv_, size_type ne_,
+      nnz_lno_t nv_,
       const_lno_row_view_t row_map, const_lno_nnz_view_t entries,
       HandleType *coloring_handle):
-    GraphColor<HandleType,lno_row_view_t_,lno_nnz_view_t_>(nv_, ne_, row_map, entries, coloring_handle),
+    GraphColor<HandleType,lno_row_view_t_,lno_nnz_view_t_>(nv_, row_map, entries, coloring_handle),
     _ticToc(coloring_handle->get_tictoc()),
     _chunkSize(coloring_handle->get_vb_chunk_size()),
     _use_color_set()
@@ -2237,16 +2233,14 @@ public:
   /**
    * \brief GraphColor_EB constructor.
    * \param nv_ number of vertices in the graph
-   * \param ne_ number of edges in the graph
    * \param xadj_ the xadj array of the graph. Its size is nv_ +1
-   * \param adj_ adjacency array of the graph. Its size is ne_
+   * \param adj_ adjacency array of the graph.
    */
   GraphColor_EB(nnz_lno_t nv_,
-                size_type ne_,
                 const_lno_row_view_t row_map,
                 const_nonzero_index_view_type entries,
                 HandleType *coloring_handle):
-    GraphColor<HandleType,in_row_index_view_type_,in_nonzero_index_view_type_>(nv_, ne_, row_map, entries, coloring_handle)
+    GraphColor<HandleType,in_row_index_view_type_,in_nonzero_index_view_type_>(nv_, row_map, entries, coloring_handle)
     {}
 
   /**
