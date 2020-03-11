@@ -1004,6 +1004,9 @@ void write_kokkos_crst_matrix(crs_matrix_t a_crsmat,const  char *filename){
   }
 }
 
+/* Read a MatrixMarket file into CRS arrays.
+ * Always produces a matrix with sorted rows.
+ */
 template <typename lno_t, typename size_type, typename scalar_t>
 int read_mtx (
     const char *fileName,

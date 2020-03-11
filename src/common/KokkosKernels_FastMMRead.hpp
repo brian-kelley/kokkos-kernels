@@ -55,8 +55,9 @@ namespace Impl{
  *  For very large matrices (CRS format uses >1/3 of device memory),
  *  this function may not be able to allocate some views and Kokkos will throw an
  *  exception - in this case, just fall back to the read_mtx() that runs on host.
+ *
+ *  Like read_mtx(), the result always has sorted rows.
  */
-
 template <typename crsMat_t>
 int read_mtx_device(const char *fileName);
 
@@ -182,7 +183,7 @@ struct CountRowEntriesFunctor
   using OffsetView = Kokkos::View<size_t*, memory_space>;
   using CharView = Kokkos::View<char*, memory_space>;
 
-  LineOffsetsFunctor(const CharView& text_, const OffsetView& offsets_, const Rowmap& rowCounts_)
+  CountRowEntriesFunctor(const CharView& text_, const OffsetView& offsets_, const Rowmap& rowCounts_)
     : text(text_), offsets(offsets_), rowCounts(rowCounts_) {}
 
   //i is the byte index into file
@@ -257,8 +258,8 @@ struct InsertEntriesFunctor
   using Offset = typename RowmapView::non_const_value_type;
   using Ordinal = typename EntriesView::non_const_value_type;
 
-  InsertEntriesFunctor(const CharView& text_, const OffsetView& lineOffsets_, const ScalarView& values_, const RowmapView& rowmap_, const EntrieView& colinds_)
-    : text(text_), lineOffsets(lineOffsets_), numInserted("Num inserted", rowmap_.extent(0) - 1), values(values_), rowmap(rowmap_), colinds(colinds_)
+  InsertEntriesFunctor(const CharView& text_, const OffsetView& lineOffsets_, const ScalarView& values_, const RowmapView& rowmap_, const EntrieView& colinds_, bool isPattern_)
+    : text(text_), lineOffsets(lineOffsets_), numInserted("Num inserted", rowmap_.extent(0) - 1), values(values_), rowmap(rowmap_), colinds(colinds_), isPattern(isPattern_)
   {}
 
   KOKKOS_INLINE_FUNCTION void operator()(size_t line) const
@@ -271,7 +272,7 @@ struct InsertEntriesFunctor
     Ordinal col = DeviceParsing::parseLong(str) - 1;
     while(*str == ' ' || *str == '\t')
       str++;
-    Scalar val = DeviceParsing::parseScalar<Scalar>(str);
+    Scalar val = isPattern ? Kokkos::ArithTraits<Scalar>::one() : DeviceParsing::parseScalar<Scalar>(str);
     Offset pos = rowmap(row) + Kokkos::atomic_fetch_add(&numInserted(row), 1);
     values(pos) = val;
     colinds(pos) = col;
@@ -283,6 +284,7 @@ struct InsertEntriesFunctor
   ScalarView values;
   RowmapView rowmap;
   EntriesView colinds;
+  bool isPattern;
 };
 
 namespace FastMMRead
@@ -317,28 +319,95 @@ namespace FastMMRead
   };
 }
 
+template<typename ScalarView, typename RowmapView, typename EntriesView>
+struct TransformTransposeFunctor
+{
+  using Scalar = typename ScalarView::non_const_value_type;
+  using Offset = typename RowmapView::non_const_value_type;
+  using Ordinal = typename EntriesView::non_const_value_type;
+
+  TransformTransposeFunctor(ScalarView values_, RowmapView rowmap_, EntriesView entries_, FastMMRead::MtxSym mode_)
+    : values(values_), rowmap(rowmap_), entries(entries_), mode(mode_)
+  {}
+
+  KOKKOS_INLINE_FUNCTION void operator()(Ordinal row) const
+  {
+    Offset rowBegin = rowmap(row);
+    Offset rowEnd = rowmap(row + 1);
+    for(Offset j = rowBegin; j < rowEnd; j++)
+    {
+      Ordinal col = entries(j);
+      if(row == col)
+      {
+        //Zero out the diagonal
+        values(j) = Kokkos::ArithTraits<Scalar>::zero();
+      }
+      else
+      {
+        //Depending on the mode, also modify the off-diagonals
+        if(mode == FastMMRead::SKEW_SYMMETRIC)
+          values(j) = -values(j);
+        else if(mode == FastMMRead::SKEW_SYMMETRIC)
+          values(j) = Kokkos::ArithTraits<Scalar>::conj(values(j));
+      }
+    }
+  }
+
+  ScalarView values;
+  RowmapView rowmap;
+  EntriesView entries;
+  const FastMMRead::MtxSym mode;
+};
+
+template<typename TeamMember, typename RowmapView, typename EntriesView, typename ValuesView>
+struct SortRowsFunctor
+{
+  using Scalar = typename ScalarView::non_const_value_type;
+  using Offset = typename RowmapView::non_const_value_type;
+  using Ordinal = typename EntriesView::non_const_value_type;
+
+  SortRowsFunctor(const RowmapView& rowmap_, const EntriesView& entries_, const ValuesView& values_) :
+    rowmap(rowmap_), entries(entries_), values(values_)
+  {}
+
+  KOKKOS_INLINE_FUNCTION void operator()(const TeamMember t) const
+  {
+    Ordinal row = t.league_rank();
+    Offset rowStart = rowmap(i);
+    Offset rowEnd = rowmap(i + 1);
+    Offset rowNum = rowEnd - rowStart;
+    KokkosKernels::Impl::TeamBitonicSort2<Ordinal, Ordinal, Scalar, TeamMember>
+      (entries.data() + rowStart, values.data() + rowStart, rowNum, t);
+  }
+
+  RowmapView rowmap;
+  EntriesView entries;
+  ValuesView values;
+};
+
 template <typename crsMat_t>
 int read_mtx_device(const char *fileName)
 {
   using namespace FastMMRead; //for MatrixMarket format enums
-
   typedef typename crsMat_t::StaticCrsGraphType graph_t;
-  typedef typename graph_t::row_map_type::non_const_type row_map_view_t;
-  typedef typename graph_t::entries_type::non_const_type   cols_view_t;
-  typedef typename crsMat_t::values_type::non_const_type values_view_t;
-  typedef typename row_map_view_t::value_type size_type;
-  typedef typename cols_view_t::value_type   lno_t;
-  typedef typename values_view_t::value_type scalar_t;
+  typedef typename graph_t::row_map_type::non_const_type row_map_t;
+  typedef typename graph_t::entries_type::non_const_type cols_t;
+  typedef typename crsMat_t::values_type::non_const_type values_t;
+  typedef typename row_map_t::value_type size_type;
+  typedef typename cols_t::value_type   lno_t;
+  typedef typename values_t::value_type scalar_t;
   typedef typename crsMat_t::execution_space execution_space;
   typedef typename crsMat_t::memory_space memory_space;
+  typedef Kokkos::View<char*, Kokkos::HostSpace> HostCharView;
+  typedef Kokkos::View<char*, memory_space> CharView;
+  typedef Kokkos::View<size_t*, memory_space> OffsetView;
   FILE* f = fopen(filename, "r");
   if(!f)
     throw std::runtime_error ("File cannot be opened\n");
   fseek(f, 0, SEEK_END);
   size_t fileLen = ftell(f);
   rewind(f);
-  Kokkos::View<char*, Kokkos::HostSpace> fileHost(
-      Kokkos::ViewAllocateWithoutInitializing("MM file contents host"), fileLen);
+  HostCharView fileHost(Kokkos::ViewAllocateWithoutInitializing("MM file contents host"), fileLen);
   fread((void*) fileHost.data(), 1, fileLen, f);
   fclose(f);
   //Now, parse the MatrixMarket header
@@ -362,14 +431,12 @@ int read_mtx_device(const char *fileName)
   MtxFormat mtx_format = UNDEFINED_FORMAT;
   MtxField mtx_field = UNDEFINED_FIELD;
   MtxSym mtx_sym = UNDEFINED_SYMMETRY;
-
   if (fline.find("matrix") != std::string::npos){
     mtx_object = MATRIX;
   } else if (fline.find("vector") != std::string::npos){
     mtx_object = VECTOR;
     throw std::runtime_error("MatrixMarket \"vector\" is not supported by KokkosKernels read_mtx()");
   }
-
   if (fline.find("coordinate") != std::string::npos){
     //sparse
     mtx_format = COORDINATE;
@@ -378,7 +445,6 @@ int read_mtx_device(const char *fileName)
     //dense
     mtx_format = ARRAY;
   }
-
   if(fline.find("real") != std::string::npos || 
      fline.find("double") != std::string::npos)
   {
@@ -404,7 +470,6 @@ int read_mtx_device(const char *fileName)
     mtx_field = PATTERN;
     //any reasonable choice for scalar_t can represent "1" or "1.0 + 0i", so nothing to check here
   }
-
   if (fline.find("general") != std::string::npos){
     mtx_sym = GENERAL;
   }
@@ -473,108 +538,80 @@ int read_mtx_device(const char *fileName)
   //The remainder of the file (from iter) is a list of entries, separated by newlines.
   //Copy this to device.
   size_t bodyLen = fileLen - iter;
-  Kokkos::View<char*, memory_space> fileDev(
-      Kokkos::ViewAllocateWithoutInitializing("MM file contents"), bodyLen);
+  CharView fileDev(Kokkos::ViewAllocateWithoutInitializing("MM file contents"), bodyLen);
   Kokkos::deep_copy(fileDev, Kokkos::subview(fileHost, std::make_pair(iter, fileLen)));
   //Use a scan to find the offset of each line (position of '\n' + 1)
-  Kokkos::View<size_t*, memory_space> lineOffsets("MM line offsets", nnz);
+  OffsetView lineOffsets("MM line offsets", nnz);
   Kokkos::parallel_scan(Kokkos::RangePolicy<execution_space>(0, bodyLen),
       LineOffsetsFunctor<memory_space>(fileDev, lineOffsets));
-  //Count the entries in each row
+  row_map_t rowmap(std::string("Rowmap: ") + fileName, nr + 1);
+  cols_t entries(Kokkos::ViewAllocateWithoutInitializing(std::string("Colinds: " + fileName)), nnz);
+  values_t values(Kokkos::ViewAllocateWithoutInitializing(std::string("Values: " + fileName)), nnz);
   if(mtx_format == ARRAY)
   {
+    Kokkos::parallel_for(Kokkos::RangePolicy<execution_space>(0, nnz),
+        CRSFromDenseFunctor<values_t, row_map_t, cols_t, memory_space>(nr, nc, values, rowmap, entries, lineOffsets, fileDev));
   }
-
-  //numEdges is only an upper bound (diagonal entries may be removed)
-  std::vector <struct Edge<lno_t, scalar_t> > edges (numEdges);
-  size_type nE = 0;
-  lno_t numDiagonal = 0;
-  for (size_type i = 0; i < nnz; ++i){
-    getline(mmf, fline);
-    std::stringstream ss2 (fline);
-    struct Edge<lno_t, scalar_t> tmp;
-    //read source, dest (edge) and weight (value)
-    lno_t s,d;
-    scalar_t w;
-    if(mtx_format == ARRAY)
-    {
-      //In array format, entries are listed in column major order,
-      //so the row and column can be determined just from the index i
-      //(but make them 1-based indices, to match the way coordinate works)
-      s = i % nr + 1; //row
-      d = i / nr + 1; //col
-    }
-    else
-    {
-      //In coordinate format, row and col of each entry is read from file
-      ss2 >> s >> d;
-    }
-    if(mtx_field == PATTERN)
-      w = 1;
-    else
-      w = readScalar<scalar_t>(ss2);
-    if (!transpose){
-      tmp.src = s - 1;
-      tmp.dst = d - 1;
-      tmp.ew = w;
-    }
-    else {
-      tmp.src = d - 1;
-      tmp.dst = s - 1;
-      tmp.ew = w;
-    }
-    if (tmp.src == tmp.dst){
-      numDiagonal++;
-      if (!remove_diagonal){
-        edges[nE++] = tmp;
-      }
-      continue;
-    }
-    edges[nE++] = tmp;
-    if (symmetrize){
-      struct Edge<lno_t, scalar_t> tmp2;
-      tmp2.src = tmp.dst;
-      tmp2.dst = tmp.src;
-      //the symmetrized value is w, -w or conj(w) if mtx_sym is
-      //SYMMETRIC, SKEW_SYMMETRIC or HERMITIAN, respectively.
-      tmp2.ew = symmetryFlip<scalar_t>(tmp.ew, mtx_sym);
-      edges[nE++] = tmp2;
-    }
+  else
+  {
+    //Count the entries in each row
+    Kokkos::parallel_for(Kokkos::RangePolicy<execution_space>(0, nnz),
+        CountEntriesFunctor<row_map_t, memory_space>(fileDev, lineOffsets, rowmap));
+    //Prefix-sum to get rowmap
+    exclusive_parallel_prefix_sum<row_map_t, execution_space>(nr + 1, rowmap);
+    //Insert entries
+    Kokkos::parallel_for(Kokkos::RangePolicy<execution_space>(0, nnz),
+        InsertEntriesFunctor<values_t, row_map_t, cols_t, memory_space>
+        (fileDev, lineOffsets, values, rowmap, entries, mtx_format == PATTERN));
   }
-  mmf.close();
-  std::sort (edges.begin(), edges.begin() + nE);
-  if (transpose){
-    lno_t tmp = nr;
-    nr = nc;
-    nc = tmp;
+  //At this point, have the full CRS from the file, so free the text and line offset views
+  fileHost = HostCharView();
+  fileDev = HostCharView();
+  lineOffsets = OffsetView();
+  //If needed, symmetrize the matrix.
+  if(symmetrize)
+  {
+    row_map_t t_rowmap("Rowmap^T", nr + 1);
+    cols_t    t_entries(Kokkos::ViewAllocateWithoutInitializing("Colinds^T"), nnz);
+    values_t  t_values(Kokkos::ViewAllocateWithoutInitializing("Values^T"), nnz);
+    transpose_matrix<row_map_t, cols_t, values_t, row_map_t, cols_t, values_t, row_map_t, execution_space>
+      (nr, nr, rowmap, entries, values, t_rowmap, t_entries, t_values);
+    //In all modes, zero out the transpose's diagonal. Also:
+    //If mtx_sym == SKEW_SYMMETRIC, multiply off-diagonals by -1.
+    //If mtx_sym == HERMITIAN, convert off-diagonals to their conjugates.
+    Kokkos::parallel_for(Kokkos::RangePolicy<execution_space>(0, nr),
+        TransformTransposeFunctor<values_t, row_map_t, cols_t>
+        (values, rowmap, entries, mtx_sym));
+    //Then use spadd to combine the orignal and transpose to get the final result
+    //Note: spadd always produces a sorted result
+    using HandleType = KokkosKernelsHandle<size_type, lno_t, scalar_t, execution_space, memory_space, memory_space>;
+    HandleType kkh;
+    kkh.create_spadd_handle(false);
+    row_map_t a_rowmap = rowmap;
+    cols_t a_entries = entries;
+    values_t a_values = values;
+    rowmap = row_map_t(std::string("Rowmap: ") + fileName, nr + 1);
+    KokkosSparse::Experimental::spadd_symbolic<HandleType, row_map_t, cols_t, row_map_t, cols_t, row_map_t, cols_t>
+      (&kkh, a_rowmap, a_entries, t_rowmap, t_entries, rowmap);
+    size_type finalNNZ = kkh.get_spadd_handle()->get_c_nnz();
+    values = values_t(std::string("Values: ") + fileName, finalNNZ);
+    entries = cols_t(std::string("Colinds: ") + fileName, finalNNZ);
+    KokkosSparse::Experimental::spadd_numeric<HandleType, row_map_t, cols_t, scalar_t, values_t, row_map_t, cols_t, scalar_t, values_t, row_map_t, cols_t, values_t>
+      (&kkh, a_rowmap, a_entries, a_values, t_rowmap, t_entries, t_values, rowmap, entries, values);
+    kkh.destroy_spadd_handle();
   }
-  //idx *nv, idx *ne, idx **xadj, idx **adj, wt **wt
-  *nv = nr;
-  *ne = nE;
-  //*xadj = new idx[nr + 1];
-  md_malloc<size_type>(xadj, nr+1);
-  //*adj = new idx[nE];
-  md_malloc<lno_t>(adj, nE);
-  //*ew = new wt[nE];
-  md_malloc<scalar_t>(ew, nE);
-  size_type eind = 0;
-  size_type actual = 0;
-  for (lno_t i = 0; i < nr; ++i){
-    (*xadj)[i] = actual;
-    bool is_first = true;
-    while (eind < nE && edges[eind].src == i){
-      if (is_first || !symmetrize || eind == 0 || (eind > 0 && edges[eind - 1].dst != edges[eind].dst)){
-        (*adj)[actual] = edges[eind].dst;
-        (*ew)[actual] = edges[eind].ew;
-        ++actual;
-      }
-      is_first = false;
-      ++eind;
-    }
+  else if(mtx_format != ARRAY)
+  {
+    //Didn't run spadd, so need to sort the columns in each row
+    using TeamPol = Kokkos::TeamPolicy<execution_space>;
+    using TeamMember = typename TeamPol::member_type;
+    SortRowsFunctor<TeamMember, row_map_t, cols_t, valuse_t> sortFunctor(rowmap, entries, values);
+    //Try to get a team size that's 0.5 times average degree
+    int teamSize = (nnz + nr - 1) / nr;
+    TeamPol temp(1, teamSize);
+    teamSize = std::min(teamSize, temp.team_size_max(sortFunctor, ParallelForTag()));
+    Kokkos::parallel_for(TeamPol(nr, teamSize), sortFunctor);
   }
-  (*xadj)[nr] = actual;
-  *ne = actual;
-  return 0;
 }
 
 }}
