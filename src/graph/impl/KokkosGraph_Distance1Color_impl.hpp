@@ -80,9 +80,7 @@ public:
   typedef typename HandleType::size_type size_type;
   typedef typename HandleType::nnz_lno_t nnz_lno_t;
 
-
   typedef typename in_lno_row_view_t::HostMirror row_lno_host_view_t; //Host view type
-
 
   typedef typename in_lno_nnz_view_t::HostMirror nnz_lno_host_view_t; //Host view type
 
@@ -103,7 +101,6 @@ protected:
   size_type ne; //# edges
   const_lno_row_view_t xadj; //rowmap
   const_lno_nnz_view_t adj; // entries
-  const_lno_nnz_view_t kok_src, kok_dst; //Edge list storage of the graph
   HandleType *cp;
 
 public:
@@ -121,14 +118,13 @@ public:
       const_lno_nnz_view_t entries,
       HandleType *coloring_handle):
         nv (nv_), ne(entries.extent(0)),xadj(row_map), adj (entries),
-        kok_src(), kok_dst(), cp(coloring_handle){}
+        cp(coloring_handle){}
 
   /** \brief GraphColor destructor.
    */
   virtual ~GraphColor(){}
 
-
-  /** \brief Function to color the vertices of the graphs. This is the base class,
+  /** \brief Function to color the vertices of the (general, possibly unsorted) graph. This is the base class,
    * therefore, it only performs sequential coloring on the host device, ignoring the execution space.
    * \param colors is the output array corresponding the color of each vertex.Size is this->nv.
    *   Attn: Color array must be nonnegative numbers. If there is no initial colors,
@@ -142,7 +138,6 @@ public:
 
     num_phases = 1;
 
-
     color_host_view_t colors = Kokkos::create_mirror_view (d_colors);
     typename const_lno_row_view_t::HostMirror h_xadj = Kokkos::create_mirror_view (this->xadj);
     typename const_lno_nnz_view_t::HostMirror h_adj = Kokkos::create_mirror_view (this->adj);
@@ -154,13 +149,9 @@ public:
 
     MyExecSpace().fence();
 
-
-
-
     //create a ban color array to keep track of
     //which colors have been taken by the neighbor vertices.
     nnz_lno_t *banned_colors = new nnz_lno_t[this->nv];
-
 
     for (nnz_lno_t i = 0; i < this->nv; ++i) banned_colors[i] = 0;
 
@@ -193,6 +184,62 @@ public:
 
     Kokkos::deep_copy (d_colors, colors); // Copy from host to device.
   }
+
+  virtual void color_sorted_graph(
+      color_view_t d_colors,
+      int &num_phases){
+
+    num_phases = 1;
+
+    color_host_view_t colors = Kokkos::create_mirror_view (d_colors);
+    typename const_lno_row_view_t::HostMirror h_xadj = Kokkos::create_mirror_view (this->xadj);
+    typename const_lno_nnz_view_t::HostMirror h_adj = Kokkos::create_mirror_view (this->adj);
+
+    //typename nnz_lno_host_view_t::HostMirror::HostMirror::HostMirror h_adj = tmp;
+
+    Kokkos::deep_copy (h_xadj, this->xadj);
+    Kokkos::deep_copy (h_adj, this->adj);
+
+    MyExecSpace().fence();
+
+    //create a ban color array to keep track of
+    //which colors have been taken by the neighbor vertices.
+    nnz_lno_t *banned_colors = new nnz_lno_t[this->nv];
+
+    for (nnz_lno_t i = 0; i < this->nv; ++i) banned_colors[i] = 0;
+
+    color_t max_color = 0;
+    //traverse vertices greedily
+    for (nnz_lno_t i = 0; i < this->nv; ++i){
+
+      size_type nbegin = h_xadj(i);
+      size_type nend = h_xadj(i + 1);
+      //std::cout << "nb:" << nbegin << " ne:" << nend << std::endl;
+      //check the colors of neighbors
+      for (size_type j = nbegin; j < nend; ++j){
+        nnz_lno_t n = h_adj(j);
+        //Source of speedup for sorted+symmetric: done with the row upon reaching the diagonal.
+        //This cannot lead to conflicts, as verts v > i will always
+        //see their edge with i, and avoid that color.
+        if (n >= i) break;
+        //set the banned_color of the color of the neighbor vertex to my vertex index.
+        //the entries in the banned_color array that has my vertex index will be the set of prohibeted colors.
+        banned_colors[colors(n)] = i;
+      }
+      //check the prohibeted colors, and pick the first available one.
+      for (color_t j = 1; j <= max_color; ++j) {
+        if(banned_colors[j] != i){
+          colors(i) = j;
+          break;
+        }
+      }
+      //if no color is available, pick a new color.
+      if (colors(i) == 0) colors(i) = ++max_color;
+    }
+    delete [] banned_colors;
+
+    Kokkos::deep_copy (d_colors, colors); // Copy from host to device.
+  }
 };
 
 /*! \brief Class for the vertex based graph coloring algorithms.
@@ -207,13 +254,11 @@ public:
 template <typename HandleType, typename lno_row_view_t_, typename lno_nnz_view_t_>
 class GraphColor_VB:public GraphColor <HandleType,lno_row_view_t_,lno_nnz_view_t_>{
 public:
-
-  typedef long long int ban_type;
+  typedef uint64_t ban_type;
 
   typedef lno_row_view_t_ in_lno_row_view_t;
   typedef lno_nnz_view_t_ in_lno_nnz_view_t;
   typedef typename HandleType::color_view_t color_view_type;
-
 
   typedef typename HandleType::size_type size_type;
   typedef typename lno_row_view_t_::device_type row_lno_view_device_t;
@@ -228,7 +273,6 @@ public:
   typedef typename HandleType::HandlePersistentMemorySpace MyPersistentMemorySpace;
 
   typedef typename Kokkos::View<nnz_lno_t, row_lno_view_device_t> single_dim_index_view_type;
-  //typedef typename Kokkos::View<row_index_type, Kokkos::MemoryUnmanaged> um_array_type;
   typedef typename single_dim_index_view_type::HostMirror single_dim_index_host_view_type; //Host view type
 
   typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
@@ -236,36 +280,25 @@ public:
   typedef typename HandleType::size_type_temp_work_view_t size_type_temp_work_view_t;
   typedef typename HandleType::size_type_persistent_work_view_t size_type_persistent_work_view_t;
 
-
   typedef typename HandleType::nnz_lno_temp_work_view_t nnz_lno_temp_work_view_t;
   typedef typename HandleType::nnz_lno_persistent_work_view_t nnz_lno_persistent_work_view_t;
 
   typedef typename in_lno_row_view_t::const_type const_lno_row_view_t;
 
-
   typedef typename lno_nnz_view_t_::const_type const_lno_nnz_view_t;
   typedef typename lno_nnz_view_t_::non_const_type non_const_lno_nnz_view_t;
 
-
 protected:
-
-
-
-  //typedef Kokkos::View<idx, /*Kokkos::Serial::array_layout,*//* Kokkos::Serial,*/ Kokkos::MemoryUnmanaged> um_array_type;
-
 
   bool _serialConflictResolution; //if true use serial conflict resolution
   bool _ticToc; //if true print info in each step
-  ConflictList _conflict_scheme; //Enum: COLORING_NOCONFLICT, COLORING_ATOMIC, COLORING_PPS
+  KokkosGraph::ConflictList _conflict_scheme; //Enum: COLORING_NOCONFLICT, COLORING_ATOMIC, COLORING_PPS
 
   double _pps_ratio; //the minimum number of reduction on the size of the conflictlist to create a new conflictlist
   nnz_lno_t _min_vertex_cut_off; //minimum number of vertices to reduce the conflictlist further.
   bool _edge_filtering; //if true, edge-filtering is applied by swaps on adjacency array.
   int _chunkSize; //the size of the minimum work unit assigned to threads. Changes the convergence on GPUs
-  char _use_color_set; //the VB algorithm type.
-                        // 0 for VB:
-                        // 1: for VBCS
-                        // 2: for VBBIT
+  ColoringAlgorithm _algo; //Just one of the non-deterministic VB algorithm types: VB, VBBIT, VBCS
 
   int _max_num_iterations;
 
@@ -282,7 +315,8 @@ public:
       nnz_lno_t nv_,
       const_lno_row_view_t row_map, const_lno_nnz_view_t entries,
       HandleType *coloring_handle):
-    GraphColor<HandleType,lno_row_view_t_,lno_nnz_view_t_>(nv_, row_map, entries, coloring_handle),
+    GraphColor<HandleType,lno_row_view_t_,lno_nnz_view_t_>
+    (nv_, row_map, entries, coloring_handle),
     _serialConflictResolution(coloring_handle->get_serial_conflict_resolution()),
     _ticToc(coloring_handle->get_tictoc()),
     _conflict_scheme(coloring_handle->get_conflict_list_type()),
@@ -290,24 +324,9 @@ public:
     _min_vertex_cut_off(coloring_handle->get_min_elements_for_conflictlist()),
     _edge_filtering(coloring_handle->get_vb_edge_filtering()),
     _chunkSize(coloring_handle->get_vb_chunk_size()),
-    _use_color_set(),
+    _algo(coloring_handle->get_coloring_algo_type()),
     _max_num_iterations(coloring_handle->get_max_number_of_iterations())
-    {
-      switch (coloring_handle->get_coloring_algo_type()){
-      case COLORING_VB:
-        this->_use_color_set = 0;
-        break;
-      case COLORING_VBBIT:
-        this->_use_color_set = 2;
-        break;
-      case COLORING_VBCS:
-        this->_use_color_set = 1;
-        break;
-      default: //cannnot get in here.
-        this->_use_color_set = 0;
-        break;
-      }
-    }
+    {}
 
   /** \brief GraphColor_VB destructor.
     */
@@ -326,10 +345,10 @@ public:
       std::cout
           << "\tVB params:" << std::endl
           << "\tuseConflictList:" << int (this->_conflict_scheme) << std::endl
-          << "\talgorithm:" << (int)this->_use_color_set << std::endl
+          << "\talgorithm:" << coloring_handle->getAlgorithmName() << std::endl
           << "\tserialConflictResolution:"  << (int) this->_serialConflictResolution << std::endl
           << "\tticToc:" << (int) this->_ticToc << std::endl
-          << "\tuse_color_set:" << (int) this->_use_color_set << std::endl
+          << "\tuse_color_set: " << (coloring_handle->get_coloring_algo_type() == COLORING_VBCS) ? "yes" : "no" << std::endl
           << "\tpps_ratio:" << this->_pps_ratio << std::endl
           << "\tmin_vertex_cut_off:" << this->_min_vertex_cut_off << std::endl
           << "\tedge_filtering:" << (int)this->_edge_filtering << std::endl
@@ -350,7 +369,7 @@ public:
 
     //if color set algorithm is used, we need one more array to represent the range.
     nnz_lno_temp_work_view_t vertex_color_set;
-    if (this->_use_color_set == 1){
+    if (this->_algo == COLORING_VBCS){
       vertex_color_set = nnz_lno_temp_work_view_t("colorset", this->nv);
     }
 
@@ -380,14 +399,12 @@ public:
     nnz_lno_t numUncolored = this->nv;
     nnz_lno_t current_vertexListLength = this->nv;
 
-
     double t, total=0.0;
     double total_time_greedy_phase=0.0;
     double total_time_find_conflicts=0.0;
     double total_time_serial_conflict_resolution=0.0;
     Kokkos::Impl::Timer timer;
     timer.reset();
-
 
     int iter=0;
     for (; (iter < this->_max_num_iterations) && (numUncolored>0); iter++){
@@ -468,7 +485,7 @@ public:
     }
 
     //if VBCS algorithm is used, the colors are converted back to original form.
-    if (this->_use_color_set == 1){
+    if (this->_algo == COLORING_VBCS){
       Kokkos::parallel_for("KokkosGraph::GraphColoring::SetFinalColors",
           my_exec_space(0, this->nv), set_final_colors (colors, vertex_color_set));
     }
@@ -533,7 +550,7 @@ private:
     if (current_vertexListLength_ < 100*chunkSize_) chunkSize_ = 1;
 
     //if the algorithm VBBIT
-    if (this->_use_color_set == 2) {
+    if (this->_algo == COLORING_VBBIT) {
       //std::cout << ">>> functorGreedyColor_IMPLOG" << std::endl;    // WCMCLEN
       functorGreedyColor_IMPLOG gc(
           this->nv,
@@ -545,7 +562,7 @@ private:
 
     }
     // VBCS algorithm
-    else if (this->_use_color_set == 1){
+    else if (this->_algo == COLORING_VBCS){
       //std::cout << ">>> functorGreedyColor_IMP" << std::endl;    // WCMCLEN
       functorGreedyColor_IMP gc(
           this->nv,
@@ -557,7 +574,7 @@ private:
 
     }
     //VB algorithm
-    else if (this->_use_color_set == 0)
+    else if (this->_algo == COLORING_VB)
     {
       //std::cout << ">>> functorGreedyColor" << std::endl;    // WCMCLEN
       functorGreedyColor  gc(
@@ -594,7 +611,7 @@ private:
     if (current_vertexListLength_ < 100*chunkSize_) chunkSize_ = 1;
 
     //if the algorithm VBBIT
-    if (this->_use_color_set == 2) {
+    if (this->_algo == COLORING_VBBIT) {
 
       //If edge filtering is applied
       //std::cout << ">>> functorGreedyColor_IMPLOG_EF" << std::endl;  // WCMCLEN
@@ -609,7 +626,7 @@ private:
 
     }
     // VBCS algorithm
-    else if (this->_use_color_set == 1){
+    else if (this->_algo == COLORING_VBCS){
       //std::cout << ">>> functorGreedyColor_IMP_EF" << std::endl;    // WCMCLEN
       functorGreedyColor_IMP_EF gc(
           this->nv,
@@ -620,7 +637,7 @@ private:
           my_exec_space(0, current_vertexListLength_/chunkSize_+1), gc);
     }
     //VB algorithm
-    else if (this->_use_color_set == 0)
+    else if (this->_algo == COLORING_VB)
     {
       //std::cout << ">>> functorGreedyColor_EF" << std::endl;    // WCMCLEN
       functorGreedyColor_EF  gc(
@@ -660,7 +677,7 @@ private:
     swap_work_arrays = true;
     nnz_lno_t numUncolored = 0;
     if (this->_conflict_scheme == COLORING_NOCONFLICT){
-      if (this->_use_color_set == 0 || this->_use_color_set == 2){
+      if (this->_algo != COLORING_VBCS) {
         functorFindConflicts_No_Conflist<adj_view_t> conf( this->nv, xadj_, adj_, vertex_colors_);
         Kokkos::parallel_reduce("KokkosGraph::GraphColoring::FindConflicts::CaseA", my_exec_space(0, current_vertexListLength_), conf, numUncolored);
       }
@@ -670,7 +687,7 @@ private:
       }
     }
     else if (this->_conflict_scheme == COLORING_PPS){
-      if (this->_use_color_set == 0 || this->_use_color_set == 2){
+      if (this->_algo != COLORING_VBCS) {
         // Check for conflicts. Compute numUncolored == numConflicts.
         functorFindConflicts_PPS<adj_view_t> conf(this->nv, xadj_, adj_,vertex_colors_,current_vertexList_);
         Kokkos::parallel_reduce("KokkosGraph::GraphColoring::FindConflicts::CaseC", my_exec_space(0, current_vertexListLength_), conf, numUncolored);
@@ -698,7 +715,7 @@ private:
       }
     }
     else { // worklist scheme COLORING_ATOMIC
-      if (this->_use_color_set == 0 || this->_use_color_set == 2){
+      if (this->_algo != COLORING_VBCS) {
         // Check for conflicts. Compute numUncolored == numConflicts.
         functorFindConflicts_Atomic<adj_view_t> conf(this->nv,
             xadj_, adj_,vertex_colors_,current_vertexList_,
@@ -729,7 +746,7 @@ private:
    *  \param current_vertexListLength_: size of current conflictlist
    */
   template <typename adj_view_t>
-  void  resolveConflicts(
+  void resolveConflicts(
       nnz_lno_t _nv,
       const_lno_row_view_t xadj_,
       adj_view_t adj_,
@@ -1786,13 +1803,11 @@ public:
 template <typename HandleType, typename lno_row_view_t_, typename lno_nnz_view_t_>
 class GraphColor_VBD:public GraphColor <HandleType,lno_row_view_t_,lno_nnz_view_t_>{
 public:
-
-  typedef long long int ban_type;
+  typedef uint64_t ban_type;
 
   typedef lno_row_view_t_ in_lno_row_view_t;
   typedef lno_nnz_view_t_ in_lno_nnz_view_t;
   typedef typename HandleType::color_view_t color_view_type;
-
 
   typedef typename HandleType::size_type size_type;
   typedef typename lno_row_view_t_::device_type row_lno_view_device_t;
@@ -1814,27 +1829,19 @@ public:
   typedef typename HandleType::size_type_temp_work_view_t size_type_temp_work_view_t;
   typedef typename HandleType::size_type_persistent_work_view_t size_type_persistent_work_view_t;
 
-
   typedef typename HandleType::nnz_lno_temp_work_view_t nnz_lno_temp_work_view_t;
   typedef typename HandleType::nnz_lno_persistent_work_view_t nnz_lno_persistent_work_view_t;
 
-
-
   typedef typename in_lno_row_view_t::const_type const_lno_row_view_t;
-
 
   typedef typename lno_nnz_view_t_::const_type const_lno_nnz_view_t;
   typedef typename lno_nnz_view_t_::non_const_type non_const_lno_nnz_view_t;
 
-
 protected:
-
-
 
   bool _ticToc; //if true print info in each step
   int _chunkSize; //the size of the minimum work unit assigned to threads. Changes the convergence on GPUs
-  char _use_color_set; //the VBD algorithm type.
-                        // 0 for VBD:
+  bool _useBitVector; //Whether to use bit-vector instead of bool[] for representing forbidden colors
 
 public:
   /**
@@ -1849,25 +1856,12 @@ public:
       nnz_lno_t nv_,
       const_lno_row_view_t row_map, const_lno_nnz_view_t entries,
       HandleType *coloring_handle):
-    GraphColor<HandleType,lno_row_view_t_,lno_nnz_view_t_>(nv_, row_map, entries, coloring_handle),
+    GraphColor<HandleType,lno_row_view_t_,lno_nnz_view_t_>
+    (nv_, row_map, entries, coloring_handle),
     _ticToc(coloring_handle->get_tictoc()),
     _chunkSize(coloring_handle->get_vb_chunk_size()),
-    _use_color_set()
-    {
-      switch (coloring_handle->get_coloring_algo_type()){
-      case COLORING_VBD:
-        this->_use_color_set = 0;
-        break;
-      case COLORING_VBDBIT:
-        this->_use_color_set = 1;
-        break;
-      default: //cannnot get in here.
-        this->_use_color_set = 0;
-        break;
-
-      }
-
-    }
+    _useBitVector(coloring_handle->get_coloring_algo_type() == COLORING_VBDBIT)
+    {}
 
   /** \brief GraphColor_VBD destructor.
     */
@@ -1885,7 +1879,7 @@ public:
     if (this->_ticToc) {
       std::cout
           << "\tVBD params:" << std::endl
-          << "\talgorithm:" << (int)this->_use_color_set << std::endl
+          << "\talgorithm:" << this->get_coloring_algo_type()->getAlgorithmName() << std::endl
           << "\tticToc:" << (int) this->_ticToc << std::endl
           << "\tchunkSize:" << this->_chunkSize << std::endl;
     }
@@ -1936,16 +1930,7 @@ public:
 
       // Loop over nodes in the frontier
       // First variant without bit array, easier to understand/program
-      if(this->_use_color_set == 0) {
-        functorDeterministicColoring myDeterministicColoring(this->xadj, this->adj,
-                                                             dependency, frontier, frontierSize,
-                                                             newFrontier, newFrontierSize,
-                                                             maxColors, colors);
-        Kokkos::parallel_for("Deterministic Coloring: color nodes in frontier",
-                             my_exec_space(0, host_frontierSize()),
-                             myDeterministicColoring);
-
-      } else if(this->_use_color_set == 1) {
+      if(this->_useBitVector)
         // Second variant with bit array for efficiency on GPU
         // The bit array is of size 64 so if maxColors > 64,
         // we need to use successive color ranges of width 64
@@ -1959,6 +1944,15 @@ public:
         Kokkos::parallel_for("Deterministic Coloring: color nodes in frontier",
                              my_exec_space(0, host_frontierSize()),
                              myDeterministicColoringBitArray); // Loop over current frontier
+      } else {
+        functorDeterministicColoring myDeterministicColoring(this->xadj, this->adj,
+                                                             dependency, frontier, frontierSize,
+                                                             newFrontier, newFrontierSize,
+                                                             maxColors, colors);
+        Kokkos::parallel_for("Deterministic Coloring: color nodes in frontier",
+                             my_exec_space(0, host_frontierSize()),
+                             myDeterministicColoring);
+
       }
       Kokkos::deep_copy(host_newFrontierSize, newFrontierSize);
     } // while newFrontierSize
@@ -2128,7 +2122,7 @@ public:
       typedef typename std::remove_reference< decltype( newFrontierSize_() ) >::type atomic_incr_type;
       size_type frontierNode = frontier_(frontierIdx);
       // Initialize bit array to all bits = 0
-      unsigned long long bannedColors = 0;
+      uint64_t bannedColors = 0;
       color_t myColor = 0, colorOffset = 0;
 
       while(myColor == 0) {
@@ -2183,25 +2177,19 @@ template <typename HandleType, typename in_row_index_view_type_, typename in_non
 class GraphColor_EB:public GraphColor <HandleType,in_row_index_view_type_,in_nonzero_index_view_type_>{
 public:
 
-  typedef long long int ban_type;
+  typedef uint64_t ban_type;
 
   typedef in_row_index_view_type_ in_row_index_view_type;
   typedef in_nonzero_index_view_type_ in_nonzero_index_view_type;
   typedef typename HandleType::color_view_t color_view_type;
 
-
   typedef typename HandleType::size_type size_type;
   typedef typename in_row_index_view_type_::device_type row_lno_view_device_t;
 
-
   typedef typename HandleType::nnz_lno_t nnz_lno_t;
-
 
   typedef typename HandleType::color_t color_t;
   typedef typename HandleType::color_host_view_t color_host_view_t; //Host view type
-
-
-
 
   typedef typename HandleType::HandleExecSpace MyExecSpace;
   typedef typename HandleType::HandleTempMemorySpace MyTempMemorySpace;
@@ -2222,8 +2210,6 @@ public:
 
   typedef Kokkos::View<char *, MyTempMemorySpace> char_temp_work_view_type;
   typedef typename char_temp_work_view_type::HostMirror char_temp_work_host_view_type; //Host view type
-
-
 
   typedef typename in_row_index_view_type::const_type const_lno_row_view_t;
   typedef typename in_nonzero_index_view_type::const_type const_nonzero_index_view_type;
@@ -2248,17 +2234,12 @@ public:
    */
   virtual ~GraphColor_EB(){}
 
-
-
   /** \brief function to color the vertices of the graphs. Performs an edge based graph coloring.
    *  the algorithm uses kokkos, so it is modular.
    * \param colors is the output array corresponding the color of each vertex.Size is this->nv.
    * \param num_loops is the output for the number of phases that the algorithm took to converge.
    */
   virtual void color_graph(color_view_type kok_colors, int &num_loops ){
-
-    //std::cout << ">>> GraphColor_EB::color_graph()" << std::endl;  // WCMCLEN
-
     //get EB parameters
     color_t numInitialColors = this->cp->get_eb_num_initial_colors();
     double pps_cutoff = this->cp->get_min_reduction_for_conflictlist();
@@ -2371,20 +2352,6 @@ public:
           ),num_conflict_reduction);
 
       MyExecSpace().fence();
-
-      /*
-      std::cout << "nv:" << this->nv
-          << " i:" << i
-          << " num_work_edges:" << num_work_edges
-          << " num_conflict_reduction:" << num_conflict_reduction
-          << " kok_src:" << kok_src.extent(0)
-          << " kok_dst:" << kok_dst.extent(0)
-          << " kok_colors:" << kok_colors.extent(0)
-          << " color_set:" << color_set.extent(0)
-          << " edge_conflict_indices:" << edge_conflict_indices.extent(0)
-          << " edge_conflict_marker:" << edge_conflict_marker.extent(0)
-          << std::endl;
-      */
 
       if (tictoc){
         cnt_time += timer->seconds();

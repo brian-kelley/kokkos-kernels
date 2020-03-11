@@ -61,11 +61,23 @@ namespace Experimental{
  * @param[in]  unused
  * @param[in]  row_map      Row map of adjacency matrix
  * @param[in]  row_entries  Row entries of adjacency matrix
- * @param[in]  is_symmetric Whether the provided adjacency matrix is known to be symmetric. Note that "remote columns"
- *                          (entries greater than or equal to num_verts) are ignored, so they don't affect symmetry.
+ * @param[in]  is_symmetric Whether the input matrix is known to be symmetric.
+ *                          Note that "remote columns" (entries >= num_verts) are ignored and do not
+ *                          affect symmetry.
+ *
  *                          If the graph is not symmetric on input, it must be symmetrized internally,
  *                          which costs additional time (typically much less than the coloring itself)
- *                          and memory (in the worst case, twice as much as the input graph).
+ *                          and memory (up to twice as much space as the input graph).
+ *
+ *                          This is necessary so that the algorithm can guarantee forward progress: 
+ *                          if U and V are adjacent in the undirected graph but it is not known whether
+ *                          (U,V), (V,U) or both appear in the adjacency matrix, then it is not clear which
+ *                          vertex should be uncolored during conflict detection. If both vertices are
+ *                          uncolored, they may conflict in the next iteration, and so on indefinitely.
+ *                          
+ * @param[in]  is_sorted    Whether the provided adjacency matrix is known to be sorted within rows. 
+ *                          In each row, "remote columns" (entries >= num_verts) must be placed after
+ *                          "local columns", as is generally the case with Tpetra column maps.
  *
   \post handle->get_graph_coloring_handle()->get_vertex_colors() will return a view of length num_verts, containing the colors.
  */
@@ -99,6 +111,8 @@ void graph_color(
     KokkosKernels::Impl::symmetrize_graph_symbolic_hashmap<
       <lno_row_view_t_, lno_nnz_view_t_, InternalRowmap, InternalEntries, ExecSpace>
       (num_verts, row_map, entries, internalRowmap, internalEntries);
+    //Being sorted doesn't help if the graph isn't symmetric
+    is_sorted = false;
   }
 
   typename KernelHandle::GraphColoringHandleType *gch = handle->get_graph_coloring_handle();
@@ -146,7 +160,10 @@ void graph_color(
   }
 
   int num_phases = 0;
-  gc->color_graph(colors_out, num_phases);
+  if(sorted)
+    gc->color_sorted_graph(colors_out, num_phases);
+  else
+    gc->color_graph(colors_out, num_phases);
 
   delete gc;
   double coloring_time = timer.seconds();

@@ -60,13 +60,10 @@ enum ColoringAlgorithm { COLORING_DEFAULT,
                          COLORING_VBCS,                       // Vertex Based Color Set
                          COLORING_VBD,                        // Vertex Based Deterministic Coloring
                          COLORING_VBDBIT,                     // Vertex Based Deterministic Coloring with bit array
-                         COLORING_EB,                         // Edge Based Coloring
-                         COLORING_SERIAL2,                    // Serial Distance-2 Graph Coloring (kept here for backwards compatibility for SPGEMM and other use cases)
+                         COLORING_EB                          // Edge Based Coloring
                        };
 
 enum ConflictList{COLORING_NOCONFLICT, COLORING_ATOMIC, COLORING_PPS};
-
-enum ColoringType {Distance1, Distance2};
 
 template <class size_type_, class color_t_, class lno_t_,
          //class lno_row_view_t_, class nonconst_color_view_t_, class lno_nnz_view_t_,
@@ -115,7 +112,6 @@ public:
 
 private:
 
-  ColoringType GraphColoringType;
   //Parameters
   ColoringAlgorithm coloring_algorithm_type; //VB, VBBIT, VBCS, VBD or EB.
   ConflictList conflict_list_type;  // whether to use a conflict list or not, and
@@ -169,7 +165,6 @@ private:
    * \brief Default constructor.
    */
   GraphColoringHandle():
-    GraphColoringType(Distance1),
     coloring_algorithm_type(COLORING_DEFAULT),
     conflict_list_type(COLORING_ATOMIC),
     min_reduction_for_conflictlist(0.35),
@@ -193,23 +188,6 @@ private:
     this->choose_default_algorithm();
     this->set_defaults(this->coloring_algorithm_type);
   }
-
-  /** \brief Sets the graph coloring type. Whether it is distance-1 or distance-2 coloring.
-   *  \param col_type: Coloring Type: KokkosKernels::Experimental::Graph::ColoringType which can be
-   *        either KokkosKernels::Experimental::Graph::Distance1 or KokkosKernels::Experimental::Graph::Distance2
-   */
-  void set_coloring_type(const ColoringType &col_type){
-    this->GraphColoringType = col_type;
-  }
-
-  /** \brief Gets the graph coloring type. Whether it is distance-1 or distance-2 coloring.
-   *  returns Coloring Type: KokkosKernels::Experimental::Graph::ColoringType which can be
-   *        either KokkosKernels::Experimental::Graph::Distance1 or KokkosKernels::Experimental::Graph::Distance2
-   */
-  ColoringType get_coloring_type(){
-    return this->GraphColoringType;
-  }
-
 
   /** \brief Changes the graph coloring algorithm.
    *  \param col_algo: Coloring algorithm: one of COLORING_VB, COLORING_VBBIT, COLORING_VBCS, COLORING_EB
@@ -645,6 +623,31 @@ private:
       throw std::runtime_error ("Unknown Coloring Algorithm\n");
       //break;
     }
+  }
+
+  //Map enum values to their names
+  const char* getAlgorithmName() const
+  {
+    switch(coloring_algorithm_type)
+    {
+      case COLORING_DEFAULT:
+        return "COLORING_DEFAULT";
+      case COLORING_SERIAL:
+        return "COLORING_SERIAL";
+      case COLORING_VB:
+        return "COLORING_VB";
+      case COLORING_VBBIT:
+        return "COLORING_VBBIT";
+      case COLORING_VBCS:
+        return "COLORING_VBCS";
+      case COLORING_VBD:
+        return "COLORING_VBD";
+      case COLORING_VBDBIT:
+        return "COLORING_VBDBIT";
+      case COLORING_EB:
+        return "COLORING_EB";
+    }
+    return "ERROR: unregistered algorithm";
   }
 
 
