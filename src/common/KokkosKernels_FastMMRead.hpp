@@ -53,7 +53,7 @@ namespace Impl{
  *  and the read from disk is done in a single fread() call.
  *
  *  For very large matrices (CRS format uses >1/3 of device memory),
- *  this function may fail to allocate some views and will throw an
+ *  this function may not be able to allocate some views and Kokkos will throw an
  *  exception - in this case, just fall back to the read_mtx() that runs on host.
  */
 
@@ -90,6 +90,14 @@ struct DeviceParsing
 {
   KOKKOS_INLINE_FUNCTION static long parseLong(char*& str)
   {
+    bool minus = false;
+    if(*str == '-')
+    {
+      minus = true;
+      str++;
+    }
+    else if(*str == '+')
+      str++;
     long val = 0;
     while(*str >= '0' && *str <= '9')
     {
@@ -97,6 +105,9 @@ struct DeviceParsing
       val += (*str - '0');
       str++;
     }
+    if(minus)
+      return -val;
+    return val;
   }
 
   KOKKOS_INLINE_FUNCTION static double parseDouble(char*& str)
@@ -130,22 +141,38 @@ struct DeviceParsing
     if(*str == 'e' || *str == 'E')
     {
       str++;
-      bool esign = false;
-      if(*str == '-')
-      {
-        str++;
-        esign = true;
-      }
-      else if(*str == '+')
-        str++;
-      int exp = parseInt(str);
-      if(esign)
-        exp = -exp;
-      val *= Kokkos::ArithTraits<double>::pow(10.0, exp);
+      val *= Kokkos::ArithTraits<double>::pow(10.0, parseLong(str));
     }
     if(minus)
       return -val;
     return val;
+  }
+
+  //Float and double
+  template<typename Scalar, typename std::enable_if<std::is_floating_point<Scalar>::value>::type* = nullptr>
+  KOKKOS_INLINE_FUNCTION static Scalar parseScalar(char*& str)
+  {
+    return parseDouble(str);
+  }
+
+  //Integers
+  template<typename Scalar, typename std::enable_if<std::is_integral<Scalar>::value>::type* = nullptr>
+  KOKKOS_INLINE_FUNCTION static Scalar parseScalar(char*& str)
+  {
+    return parseLong(str);
+  }
+
+  //Kokkos::complex, either float or double
+  template<typename Scalar, typename std::enable_if<
+    std::is_same<Scalar, Kokkos::complex<double>>::value ||
+    std::is_same<Scalar, Kokkos::complex<float>>::value>::type* = nullptr>
+  KOKKOS_INLINE_FUNCTION static Scalar parseScalar(char*& str)
+  {
+    double real = parseDouble(str);
+    while(*str == ' ' || *str == '\t')
+      str++;
+    double imag = parseDouble(str);
+    return Scalar(real, imag);
   }
 };
 
@@ -176,6 +203,51 @@ struct CountRowEntriesFunctor
 };
 
 template<typename ScalarView, typename RowmapView, typename EntriesView, typename memory_space>
+struct CRSFromDenseFunctor
+{
+  using OffsetView = Kokkos::View<size_t*, memory_space>;
+  using CharView = Kokkos::View<char*, memory_space>;
+  using Scalar = typename ScalarView::non_const_value_type;
+  using Offset = typename RowmapView::non_const_value_type;
+  using Ordinal = typename EntriesView::non_const_value_type;
+
+  CRSFromDenseFunctor(Ordinal numRows_, Ordinal numCols_, const ScalarView& values_, const RowmapView& rowmap_, const EntriesView& entries_, const OffsetView& lineOffsets_, const CharView& text_)
+    : numRows(numRows_), numCols(numCols_), values(values_), rowmap(rowmap_), entries(entries_), lineOffsets(lineOffsets_), text(text_)
+  {}
+
+  //i is the byte index into file
+  //if finalPass, lline is the line in which byte i appears
+  KOKKOS_INLINE_FUNCTION void operator()(size_t line) const
+  {
+    size_t lineOffset = offsets(line);
+    //Line will only contain one scalar
+    Scalar val = DeviceParsing::parseScalar<Scalar>(&text(lineOffset));
+    //Lines are ordered column-major, so know exactly what entry this is
+    Ordinal row = line % numRows;
+    Ordinal col = line / numRows;
+    if(col == 0)
+    {
+      rowmap(row) = (Offset) row * numCols;
+      if(line == 0)
+        rowmap(numRows) = numRows * numCols;
+    }
+    Offset offset = row * numCols + col;
+    entries(offset) = col;
+    values(offset) = val;
+  }
+
+  Ordinal numRows;
+  Ordinal numCols;
+  ScalarView values;
+  RowmapView rowmap;
+  EntriesView entries;
+  CharView text;
+  OffsetView offsets;
+  OffsetView lineOffsets;
+  CharView text;
+};
+
+template<typename ScalarView, typename RowmapView, typename EntriesView, typename memory_space>
 struct InsertEntriesFunctor
 {
   using OffsetView = Kokkos::View<size_t*, memory_space>;
@@ -189,8 +261,6 @@ struct InsertEntriesFunctor
     : text(text_), lineOffsets(lineOffsets_), numInserted("Num inserted", rowmap_.extent(0) - 1), values(values_), rowmap(rowmap_), colinds(colinds_)
   {}
 
-  //i is the byte index into file
-  //if finalPass, lline is the line in which byte i appears
   KOKKOS_INLINE_FUNCTION void operator()(size_t line) const
   {
     size_t offset = offsets(line);
@@ -394,7 +464,7 @@ int read_mtx_device(const char *fileName)
   }
   if(mtx_format == ARRAY)
   {
-    //Array format only supports general symmetry and non-pattern 
+    //Array format only supports general symmetry and non-pattern
     if(symmetrize)
       throw std::runtime_error("array format MatrixMarket file cannot be symmetrized.");
     if(mtx_field == PATTERN)
@@ -411,7 +481,6 @@ int read_mtx_device(const char *fileName)
   Kokkos::parallel_scan(Kokkos::RangePolicy<execution_space>(0, bodyLen),
       LineOffsetsFunctor<memory_space>(fileDev, lineOffsets));
   //Count the entries in each row
-
   if(mtx_format == ARRAY)
   {
   }

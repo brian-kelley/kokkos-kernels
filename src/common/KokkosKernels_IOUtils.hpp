@@ -1124,7 +1124,7 @@ int read_mtx (
   }
   if(mtx_format == ARRAY)
   {
-    //Array format only supports general symmetry and non-pattern 
+    //Array format only supports general symmetry and non-pattern
     if(symmetrize)
       throw std::runtime_error("array format MatrixMarket file cannot be symmetrized.");
     if(mtx_field == PATTERN)
