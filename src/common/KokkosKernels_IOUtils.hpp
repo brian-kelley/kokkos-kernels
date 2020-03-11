@@ -57,6 +57,7 @@
 #include "Kokkos_ArithTraits.hpp"
 #include <Kokkos_Core.hpp>
 #include "KokkosKernels_SimpleUtils.hpp"
+#include "KokkosKernels_FastMMRead.hpp"
 #include <sys/stat.h>
 
 namespace KokkosKernels{
@@ -1251,7 +1252,22 @@ void read_matrix(lno_t *nv, size_type *ne,size_type **xadj, lno_t **adj, scalar_
 }
 
 template <typename crsMat_t>
-crsMat_t read_kokkos_crst_matrix(const char * filename_){
+crsMat_t read_kokkos_crst_matrix(const char* filename_) {
+  //Intercept MatrixMarket case: doesn't use raw host buffers, instead
+  //copies file contents to device and parses values in parallel.
+  //Is inside a try block because if the file is extremely large, the
+  //device may not have enough memory to hold both the file text and
+  //the CRS data structures. If an allocation fails, Kokkos will throw
+  //and this will fall back to the default read_mtx.
+  std::string strfilename(filename);
+  //This 
+  try
+  {
+    if (endswith(strfilename, ".mtx") || endswith(strfilename, ".mm")){
+      return read_mtx_device<crsMat_t>(filename);
+    }
+  }
+  catch(...) {}
 
   typedef typename crsMat_t::StaticCrsGraphType graph_t;
   typedef typename graph_t::row_map_type::non_const_type row_map_view_t;
@@ -1261,7 +1277,6 @@ crsMat_t read_kokkos_crst_matrix(const char * filename_){
   typedef typename row_map_view_t::value_type size_type;
   typedef typename cols_view_t::value_type   lno_t;
   typedef typename values_view_t::value_type scalar_t;
-
 
   lno_t nv, *adj;
   size_type *xadj, nnzA;
