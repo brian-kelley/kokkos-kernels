@@ -41,6 +41,9 @@
 // ************************************************************************
 //@HEADER
 */
+#ifndef _KOKKOSKERNELSUTILS_HPP
+#define _KOKKOSKERNELSUTILS_HPP
+
 #include "Kokkos_Core.hpp"
 #include "Kokkos_Atomic.hpp"
 #include "impl/Kokkos_Timer.hpp"
@@ -55,10 +58,6 @@
 #include "KokkosKernels_SparseUtils.hpp"
 #include "KokkosKernels_PrintUtils.hpp"
 #include "KokkosKernels_VectorUtils.hpp"
-
-#ifndef _KOKKOSKERNELSUTILS_HPP
-#define _KOKKOSKERNELSUTILS_HPP
-
 
 namespace KokkosKernels{
 

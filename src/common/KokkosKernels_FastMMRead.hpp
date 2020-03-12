@@ -45,6 +45,12 @@
 #ifndef _KOKKOSKERNELS_FASTMMREAD_H_
 #define _KOKKOSKERNELS_FASTMMREAD_H_
 
+#include "KokkosKernels_Sorting.hpp"
+#include "KokkosKernels_Utils.hpp"
+#include <type_traits>
+#include <cstdio>
+#include <string>
+
 namespace KokkosKernels{
 namespace Impl{
 
@@ -220,7 +226,7 @@ struct CRSFromDenseFunctor
   //if finalPass, lline is the line in which byte i appears
   KOKKOS_INLINE_FUNCTION void operator()(size_t line) const
   {
-    size_t lineOffset = offsets(line);
+    size_t lineOffset = lineOffsets(line);
     //Line will only contain one scalar
     Scalar val = DeviceParsing::parseScalar<Scalar>(&text(lineOffset));
     //Lines are ordered column-major, so know exactly what entry this is
@@ -242,8 +248,6 @@ struct CRSFromDenseFunctor
   ScalarView values;
   RowmapView rowmap;
   EntriesView entries;
-  CharView text;
-  OffsetView offsets;
   OffsetView lineOffsets;
   CharView text;
 };
@@ -258,13 +262,13 @@ struct InsertEntriesFunctor
   using Offset = typename RowmapView::non_const_value_type;
   using Ordinal = typename EntriesView::non_const_value_type;
 
-  InsertEntriesFunctor(const CharView& text_, const OffsetView& lineOffsets_, const ScalarView& values_, const RowmapView& rowmap_, const EntrieView& colinds_, bool isPattern_)
+  InsertEntriesFunctor(const CharView& text_, const OffsetView& lineOffsets_, const ScalarView& values_, const RowmapView& rowmap_, const EntriesView& colinds_, bool isPattern_)
     : text(text_), lineOffsets(lineOffsets_), numInserted("Num inserted", rowmap_.extent(0) - 1), values(values_), rowmap(rowmap_), colinds(colinds_), isPattern(isPattern_)
   {}
 
   KOKKOS_INLINE_FUNCTION void operator()(size_t line) const
   {
-    size_t offset = offsets(line);
+    size_t offset = lineOffsets(line);
     char* str = &text(offset);
     Ordinal row = DeviceParsing::parseLong(str) - 1;
     while(*str == ' ' || *str == '\t')
@@ -359,22 +363,22 @@ struct TransformTransposeFunctor
   const FastMMRead::MtxSym mode;
 };
 
-template<typename TeamMember, typename RowmapView, typename EntriesView, typename ValuesView>
+template<typename TeamMember, typename RowmapView, typename EntriesView, typename ScalarView>
 struct SortRowsFunctor
 {
   using Scalar = typename ScalarView::non_const_value_type;
   using Offset = typename RowmapView::non_const_value_type;
   using Ordinal = typename EntriesView::non_const_value_type;
 
-  SortRowsFunctor(const RowmapView& rowmap_, const EntriesView& entries_, const ValuesView& values_) :
+  SortRowsFunctor(const RowmapView& rowmap_, const EntriesView& entries_, const ScalarView& values_) :
     rowmap(rowmap_), entries(entries_), values(values_)
   {}
 
   KOKKOS_INLINE_FUNCTION void operator()(const TeamMember t) const
   {
     Ordinal row = t.league_rank();
-    Offset rowStart = rowmap(i);
-    Offset rowEnd = rowmap(i + 1);
+    Offset rowStart = rowmap(row);
+    Offset rowEnd = rowmap(row + 1);
     Offset rowNum = rowEnd - rowStart;
     KokkosKernels::Impl::TeamBitonicSort2<Ordinal, Ordinal, Scalar, TeamMember>
       (entries.data() + rowStart, values.data() + rowStart, rowNum, t);
@@ -382,7 +386,7 @@ struct SortRowsFunctor
 
   RowmapView rowmap;
   EntriesView entries;
-  ValuesView values;
+  ScalarView values;
 };
 
 template <typename crsMat_t>
@@ -401,7 +405,7 @@ int read_mtx_device(const char *fileName)
   typedef Kokkos::View<char*, Kokkos::HostSpace> HostCharView;
   typedef Kokkos::View<char*, memory_space> CharView;
   typedef Kokkos::View<size_t*, memory_space> OffsetView;
-  FILE* f = fopen(filename, "r");
+  FILE* f = fopen(fileName, "r");
   if(!f)
     throw std::runtime_error ("File cannot be opened\n");
   fseek(f, 0, SEEK_END);
@@ -413,7 +417,7 @@ int read_mtx_device(const char *fileName)
   //Now, parse the MatrixMarket header
   size_t iter = 0;
   //scan one line into fline
-  string fline;
+  std::string fline;
   //note: for CRLF line endings, the '\r' will appear as
   //the last char of fline and won't break anything
   while(iter < fileLen && fileHost(iter) != '\n')
@@ -545,8 +549,8 @@ int read_mtx_device(const char *fileName)
   Kokkos::parallel_scan(Kokkos::RangePolicy<execution_space>(0, bodyLen),
       LineOffsetsFunctor<memory_space>(fileDev, lineOffsets));
   row_map_t rowmap(std::string("Rowmap: ") + fileName, nr + 1);
-  cols_t entries(Kokkos::ViewAllocateWithoutInitializing(std::string("Colinds: " + fileName)), nnz);
-  values_t values(Kokkos::ViewAllocateWithoutInitializing(std::string("Values: " + fileName)), nnz);
+  cols_t entries(Kokkos::ViewAllocateWithoutInitializing(std::string("Colinds: ") + fileName, nnz));
+  values_t values(Kokkos::ViewAllocateWithoutInitializing(std::string("Values: ") + fileName, nnz));
   if(mtx_format == ARRAY)
   {
     Kokkos::parallel_for(Kokkos::RangePolicy<execution_space>(0, nnz),
@@ -556,7 +560,7 @@ int read_mtx_device(const char *fileName)
   {
     //Count the entries in each row
     Kokkos::parallel_for(Kokkos::RangePolicy<execution_space>(0, nnz),
-        CountEntriesFunctor<row_map_t, memory_space>(fileDev, lineOffsets, rowmap));
+        CountRowEntriesFunctor<row_map_t, memory_space>(fileDev, lineOffsets, rowmap));
     //Prefix-sum to get rowmap
     exclusive_parallel_prefix_sum<row_map_t, execution_space>(nr + 1, rowmap);
     //Insert entries
