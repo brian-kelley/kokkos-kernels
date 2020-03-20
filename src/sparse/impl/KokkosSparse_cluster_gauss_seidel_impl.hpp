@@ -1167,16 +1167,19 @@ namespace KokkosSparse{
         nnz_view_t vertClusters = gsHandle->get_vert_clusters();
         nnz_lno_t numClusters = clusterOffsets.extent(0) - 1;
         mag_view_t intraClusterWeights("Intra-cluster weights", num_rows);
-        FlowOrderFunctor fof(clusterOffsets, clusterVerts, vertClusters, this->row_map, this->entries, this->values, num_rows, intraClusterWeights);
-        nnz_lno_t fofTeamSize;
+        if(num_rows)
         {
-          team_policy_t temp(numClusters, Kokkos::AUTO(), suggested_vector_size);
-          fofTeamSize = temp.template team_size_recommended<FlowOrderFunctor>(fof, Kokkos::ParallelForTag());
-          nnz_lno_t avgClusterSize = (num_rows + numClusters - 1) / numClusters;
-          if(fofTeamSize > avgClusterSize)
-            fofTeamSize = avgClusterSize;
+          FlowOrderFunctor fof(clusterOffsets, clusterVerts, vertClusters, this->row_map, this->entries, this->values, num_rows, intraClusterWeights);
+          nnz_lno_t fofTeamSize;
+          {
+            team_policy_t temp(numClusters, Kokkos::AUTO(), suggested_vector_size);
+            fofTeamSize = temp.template team_size_recommended<FlowOrderFunctor>(fof, Kokkos::ParallelForTag());
+            nnz_lno_t avgClusterSize = (num_rows + numClusters - 1) / numClusters;
+            if(fofTeamSize > avgClusterSize)
+              fofTeamSize = avgClusterSize;
+          }
+          Kokkos::parallel_for(team_policy_t(numClusters, fofTeamSize, suggested_vector_size), fof);
         }
-        Kokkos::parallel_for(team_policy_t(numClusters, fofTeamSize, suggested_vector_size), fof);
         gsHandle->set_call_numeric(true);
         MyExecSpace().fence();
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
