@@ -55,7 +55,7 @@
 
 namespace KokkosSparse{
 
-  enum GSAlgorithm{GS_DEFAULT, GS_PERMUTED, GS_TEAM, GS_CLUSTER, GS_TWOSTAGE};
+  enum GSAlgorithm{GS_POINT, GS_CLUSTER, GS_TWOSTAGE};
   enum GSDirection{GS_FORWARD, GS_BACKWARD, GS_SYMMETRIC};
   enum ClusteringAlgorithm{CLUSTER_DEFAULT, CLUSTER_MIS2, CLUSTER_BALLOON, NUM_CLUSTERING_ALGORITHMS};
 
@@ -106,8 +106,6 @@ namespace KokkosSparse{
 
 
   protected:
-    GSAlgorithm algorithm_type;
-
     nnz_lno_persistent_work_host_view_t color_xadj;
     nnz_lno_persistent_work_view_t color_adj;
     nnz_lno_t numColors;
@@ -124,7 +122,6 @@ namespace KokkosSparse{
      * \brief Default constructor.
      */
     GaussSeidelHandle(GSAlgorithm gs) :
-      algorithm_type(gs),
       color_xadj(), color_adj(), numColors(0),
       called_symbolic(false), called_numeric(false),
       suggested_vector_size(0), suggested_team_size(0)
@@ -133,7 +130,44 @@ namespace KokkosSparse{
     virtual ~GaussSeidelHandle() = default;
 
     //getters
-    GSAlgorithm get_algorithm_type() const {return this->algorithm_type;}
+
+    //Is this handle for GS_POINT or GS_CLUSTER?
+    virtual GSAlgorithm get_algorithm_type() const = 0;
+
+    //Always use TeamPolicy on GPU, and RangePolicy on CPU
+    bool use_teams() const
+    {
+#if defined( KOKKOS_ENABLE_SERIAL )
+      if (std::is_same< Kokkos::Serial , ExecutionSpace >::value)
+        return false;
+#endif
+
+#if defined( KOKKOS_ENABLE_THREADS )
+      if (std::is_same< Kokkos::Threads , ExecutionSpace >::value)
+        return false;
+#endif
+
+#if defined( KOKKOS_ENABLE_OPENMP )
+      if (std::is_same< Kokkos::OpenMP, ExecutionSpace >::value)
+        return false;
+#endif
+
+#if defined( KOKKOS_ENABLE_QTHREAD)
+      if (std::is_same< Kokkos::Qthread, ExecutionSpace >::value)
+        return false;
+#endif
+
+#if defined( KOKKOS_ENABLE_CUDA )
+      if (std::is_same<Kokkos::Cuda, ExecutionSpace >::value)
+        return true;
+#endif
+
+#if defined( KOKKOS_ENABLE_ROCM )
+      if (std::is_same<Kokkos::Experimental::ROCm, ExecutionSpace >::value)
+        return true;
+#endif
+      throw std::runtime_error(std::string("GaussSeidelHandle::use_teams(): exec space ") + ExecutionSpace::name() + " is not registered");
+    }
 
     virtual bool is_owner_of_coloring() const {return false;}
 
@@ -199,6 +233,10 @@ namespace KokkosSparse{
 
       }
     }
+
+    void choose_policy_type()
+    {
+    }
   };
 
   template <class size_type_, class lno_t_, class scalar_t_,
@@ -259,75 +297,23 @@ namespace KokkosSparse{
     /**
      * \brief Default constructor.
      */
-    PointGaussSeidelHandle(GSAlgorithm gs = GS_DEFAULT) :
-      GSHandle(gs),
+    PointGaussSeidelHandle() :
+      GSHandle(GS_POINT),
       permuted_xadj(), permuted_adj(), permuted_adj_vals(), old_to_new_map(),
       permuted_y_vector(), permuted_x_vector(),
       permuted_inverse_diagonal(), block_size(1),
       max_nnz_input_row(-1),
       num_values_in_l1(-1), num_values_in_l2(-1),num_big_rows(0), level_1_mem(0), level_2_mem(0),
       owner_of_coloring(false)
-    {
-      if (gs == GS_DEFAULT)
-        this->choose_default_algorithm();
-    }
+    {}
+
+    GSAlgorithm get_algorithm_type() const {return GS_POINT;}
 
     bool is_owner_of_coloring() const override {return this->owner_of_coloring;}
     void set_owner_of_coloring(bool owner = true) {this->owner_of_coloring = owner;}
 
     void set_block_size(nnz_lno_t bs){this->block_size = bs; }
     nnz_lno_t get_block_size() const {return this->block_size;}
-
-    /** \brief Chooses best algorithm based on the execution space. COLORING_EB if cuda, COLORING_VB otherwise.
-     */
-    void choose_default_algorithm(){
-#if defined( KOKKOS_ENABLE_SERIAL )
-      if (std::is_same< Kokkos::Serial , ExecutionSpace >::value){
-        this->algorithm_type = GS_PERMUTED;
-#ifdef VERBOSE
-        std::cout << "Serial Execution Space, Default Algorithm: GS_PERMUTED" << std::endl;
-#endif
-      }
-#endif
-
-#if defined( KOKKOS_ENABLE_THREADS )
-      if (std::is_same< Kokkos::Threads , ExecutionSpace >::value){
-        this->algorithm_type = GS_PERMUTED;
-#ifdef VERBOSE
-        std::cout << "PTHREAD Execution Space, Default Algorithm: GS_PERMUTED" << std::endl;
-#endif
-      }
-#endif
-
-#if defined( KOKKOS_ENABLE_OPENMP )
-      if (std::is_same< Kokkos::OpenMP, ExecutionSpace >::value){
-        this->algorithm_type = GS_PERMUTED;
-#ifdef VERBOSE
-        std::cout << "OpenMP Execution Space, Default Algorithm: GS_PERMUTED" << std::endl;
-#endif
-      }
-#endif
-
-#if defined( KOKKOS_ENABLE_CUDA )
-      if (std::is_same<Kokkos::Cuda, ExecutionSpace >::value){
-        this->algorithm_type = GS_TEAM;
-#ifdef VERBOSE
-        std::cout << "Cuda Execution Space, Default Algorithm: GS_TEAM" << std::endl;
-#endif
-      }
-#endif
-
-#if defined( KOKKOS_ENABLE_QTHREAD)
-      if (std::is_same< Kokkos::Qthread, ExecutionSpace >::value){
-        this->algorithm_type = GS_PERMUTED;
-#ifdef VERBOSE
-        std::cout << "Qthread Execution Space, Default Algorithm: GS_PERMUTED" << std::endl;
-#endif
-      }
-#endif
-    }
-
-    ~PointGaussSeidelHandle() = default;
 
     //getters
     row_lno_persistent_work_view_t get_new_xadj() const {
@@ -525,6 +511,9 @@ namespace KokkosSparse{
       inverse_diagonal(), cluster_xadj(), cluster_adj(), vert_clusters()
     {}
 
+    GSAlgorithm get_algorithm_type() const {return GS_CLUSTER;}
+    ClusteringAlgorithm get_clustering_algo() const {return this->cluster_algo;}
+
     void set_cluster_size(nnz_lno_t cs) {this->cluster_size = cs;}
     nnz_lno_t get_cluster_size() const {return this->cluster_size;}
 
@@ -565,41 +554,6 @@ namespace KokkosSparse{
         throw std::runtime_error("inverse diagonal does not exist until after numeric setup.");
       return inverse_diagonal;
     }
-    
-    bool use_teams() const
-    {
-      bool return_value = false;
-#if defined( KOKKOS_ENABLE_SERIAL )
-      if (std::is_same< Kokkos::Serial , ExecutionSpace >::value) {
-        return_value = false;
-      }
-#endif
-#if defined( KOKKOS_ENABLE_THREADS )
-      if (std::is_same< Kokkos::Threads , ExecutionSpace >::value){
-        return_value = false;
-      }
-#endif
-#if defined( KOKKOS_ENABLE_OPENMP )
-      if (std::is_same< Kokkos::OpenMP, ExecutionSpace >::value){
-        return_value = false;
-      }
-#endif
-#if defined( KOKKOS_ENABLE_CUDA )
-      if (std::is_same<Kokkos::Cuda, ExecutionSpace >::value){
-        return_value = true;
-      }
-#endif
-#if defined( KOKKOS_ENABLE_QTHREAD)
-      if (std::is_same< Kokkos::Qthread, ExecutionSpace >::value){
-        return_value = false;
-      }
-#endif
-      return return_value;
-    }
-
-    ~ClusterGaussSeidelHandle() = default;
-
-    ClusteringAlgorithm get_clustering_algo() const {return this->cluster_algo;}
   };
 
 

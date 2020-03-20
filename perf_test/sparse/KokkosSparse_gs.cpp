@@ -59,6 +59,17 @@
 using std::cout;
 using std::string;
 
+static char* getNextArg(int& i, int argc, char** argv)
+{
+  i++;
+  if(i >= argc)
+  {
+    std::cerr << "Error: expected additional command-line argument!\n";
+    exit(1);
+  }
+  return argv[i];
+}
+
 template<typename device_t>
 void runGS(string matrixPath, string devName, bool symmetric, bool twostage, bool classic)
 {
@@ -93,31 +104,17 @@ void runGS(string matrixPath, string devName, bool symmetric, bool twostage, boo
     }
     Kokkos::deep_copy(b, bhost);
   }
-  kh.set_team_work_size(16);
-  kh.set_dynamic_scheduling(true);
   //initial LHS is 0
   scalar_view_t x("x", nrows);
-  //Data to dump to CSV
-  //cluster size sequence: 1, 2, 3, 5, 8, 12, 18, ... up to 1000, or < 96 clusters (whichever comes first)
-  std::vector<int> clusterSizes;
   //how long symbolic/numeric phases take (the graph reuse case isn't that interesting since numeric doesn't do much)
   std::vector<double> symbolicTimes;
   std::vector<double> numericTimes;
   std::vector<double> applyTimes;
-  std::vector<double> scaledRes;
-  //the initial residual norm (for x = 0) is bnorm
-  double bnorm = KokkosBlas::nrm2(b);
   Kokkos::Timer timer;
-  clusterSizes.push_back(1);
-  clusterSizes.push_back(4);
-  clusterSizes.push_back(8);
-  clusterSizes.push_back(16);
-  //for(int clusterSize = 1; clusterSize <= nrows / 64 && clusterSize <= 1000; clusterSize = ceil(1.5 * clusterSize))
-  //  clusterSizes.push_back(clusterSize);
-  for(int clusterSize : clusterSizes)
+  //cluster size of 1 is standard multicolor GS
+  if(clusterSize == 1)
   {
     //cluster size of 1 is standard multicolor GS
-
     if(twostage || classic) {
       // Two-stage or Classical GS
       if (classic) {
@@ -138,9 +135,6 @@ void runGS(string matrixPath, string devName, bool symmetric, bool twostage, boo
     {
       std::cout << "\n\n***** RUNNING CLUSTER SGS, cluster size = " << clusterSize << "\n";
       //this constructor is for cluster (block) coloring
-      //kh.create_gs_handle(KokkosSparse::CLUSTER_CUTHILL_MCKEE, clusterSize);
-      //kh.create_gs_handle(KokkosSparse::CLUSTER_DEFAULT, clusterSize);
-      //kh.create_gs_handle(KokkosSparse::CLUSTER_DO_NOTHING, clusterSize);
       kh.create_gs_handle(KokkosSparse::CLUSTER_BALLOON, clusterSize);
     }
     timer.reset();
@@ -172,16 +166,29 @@ void runGS(string matrixPath, string devName, bool symmetric, bool twostage, boo
     scaledRes.push_back(resnorm / bnorm);
     kh.destroy_gs_handle();
   }
-  string csvName = "gs_perf_" + devName + ".csv";
-  std::cout << "Writing results to " << csvName << "\n";
-  FILE* csvDump = fopen(csvName.c_str(), "w");
-  fprintf(csvDump, "ClusterSize,Symbolic,Numeric,Apply,Residual\n");
-  for(size_t i = 0; i < clusterSizes.size(); i++)
+  else
   {
-    fprintf(csvDump, "%d,%.5e,%.5e,%.5e,%.5e\n",
-        clusterSizes[i], symbolicTimes[i], numericTimes[i], applyTimes[i], scaledRes[i]);
+    std::cout << "\n\n***** RUNNING CLUSTER SGS, cluster size = " << clusterSize << "\n";
+    //this constructor is for cluster (block) coloring
+    kh.create_gs_handle(KokkosSparse::CLUSTER_BALLOON, clusterSize);
   }
-  fclose(csvDump);
+  timer.reset();
+  KokkosSparse::Experimental::gauss_seidel_symbolic
+    (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, symmetric);
+  symbolicTimes.push_back(timer.seconds());
+  std::cout << "\n*** symbolic time: " << symbolicTimes.back() << '\n';
+  timer.reset();
+  KokkosSparse::Experimental::gauss_seidel_numeric
+    (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, symmetric);
+  numericTimes.push_back(timer.seconds());
+  std::cout << "\n*** numeric time: " << numericTimes.back() << '\n';
+  timer.reset();
+  //Last two parameters are damping factor (should be 1) and sweeps
+  KokkosSparse::Experimental::symmetric_gauss_seidel_apply
+    (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, 1);
+  applyTimes.push_back(timer.seconds());
+  std::cout << "\n*** apply time: " << applyTimes.back() << '\n';
+  kh.destroy_gs_handle();
 }
 
 int main(int argc, char** argv)
@@ -197,6 +204,7 @@ int main(int argc, char** argv)
   }
   string device;
   string matrixPath;
+  int clusterSize = 1;
   bool sym = false;
   bool twostage = false;
   bool classic = false;
@@ -216,6 +224,8 @@ int main(int argc, char** argv)
       device = "threads";
     else if(!strcmp(argv[i], "--cuda"))
       device = "cuda";
+    else if(!strcmp(argv[i], "--clusterSize"))
+      clusterSize = atoi(getNextArg(i, argc, argv));
     else
       matrixPath = argv[i];
   }
@@ -246,28 +256,44 @@ int main(int argc, char** argv)
   #ifdef KOKKOS_ENABLE_SERIAL
   if(device == "serial")
   {
+<<<<<<< 83c31bf54673e04bfb45cfa3d40cc5555c6c54be
     runGS<Kokkos::Serial>(matrixPath, device, sym, twostage, classic);
+=======
+    runGS<Kokkos::Serial>(matrixPath, device, clusterSize, sym);
+>>>>>>> Minor GS cleanup
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_OPENMP
   if(device == "openmp")
   {
+<<<<<<< 83c31bf54673e04bfb45cfa3d40cc5555c6c54be
     runGS<Kokkos::OpenMP>(matrixPath, device, sym, twostage, classic);
+=======
+    runGS<Kokkos::OpenMP>(matrixPath, device, clusterSize, sym);
+>>>>>>> Minor GS cleanup
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_THREADS
   if(device == "threads")
   {
+<<<<<<< 83c31bf54673e04bfb45cfa3d40cc5555c6c54be
     runGS<Kokkos::Threads>(matrixPath, device, sym, twostage, classic);
+=======
+    runGS<Kokkos::Threads>(matrixPath, device, clusterSize, sym);
+>>>>>>> Minor GS cleanup
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_CUDA
   if(device == "cuda")
   {
+<<<<<<< 83c31bf54673e04bfb45cfa3d40cc5555c6c54be
     runGS<Kokkos::Cuda>(matrixPath, device, sym, twostage, classic);
+=======
+    runGS<Kokkos::Cuda>(matrixPath, device, clusterSize, sym);
+>>>>>>> Minor GS cleanup
     run = true;
   }
   #endif

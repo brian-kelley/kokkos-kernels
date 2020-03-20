@@ -48,7 +48,6 @@
 #include <Kokkos_Core.hpp>
 #include "KokkosKernels_Handle.hpp"
 #include "KokkosKernels_IOUtils.hpp"
-//#include <Kokkos_Sparse_CrsMatrix.hpp>
 #include <KokkosSparse_spmv.hpp>
 #include <KokkosBlas1_dot.hpp>
 #include <KokkosBlas1_axpby.hpp>
@@ -73,7 +72,6 @@ namespace Test {
 template <typename crsMat_t, typename vector_t, typename const_vector_t, typename device>
 int run_block_gauss_seidel_1(
     crsMat_t input_mat, int block_size,
-    KokkosSparse::GSAlgorithm gs_algorithm,
     vector_t x_vector,
     const_vector_t y_vector,
     bool is_symmetric_graph,
@@ -96,14 +94,12 @@ int run_block_gauss_seidel_1(
       <size_type,lno_t, scalar_t,
       typename device::execution_space, typename device::memory_space,typename device::memory_space > KernelHandle;
   KernelHandle kh;
-  kh.set_team_work_size(16);
   kh.set_shmem_size(shmem_size);
-  kh.set_dynamic_scheduling(true);
-  kh.create_gs_handle(gs_algorithm);
+  kh.create_gs_handle();
 
   const size_t num_rows_1 = input_mat.numRows();
   const size_t num_cols_1 = input_mat.numCols();
-  const int apply_count = 100;
+  const int apply_count = 10;
 
   if (!skip_symbolic){
 	  block_gauss_seidel_symbolic
@@ -133,7 +129,6 @@ int run_block_gauss_seidel_1(
     (&kh, num_rows_1, num_cols_1, block_size, input_mat.graph.row_map, input_mat.graph.entries, input_mat.values, x_vector, y_vector,false, true, omega, apply_count);
     break;
   }
-
 
   kh.destroy_gs_handle();
   return 0;
@@ -231,50 +226,39 @@ void test_block_gauss_seidel_rank1(lno_t numRows, size_type nnz, lno_t bandwidth
   exec_space().fence();
   scalar_view_t y_vector = create_y_vector(crsmat2, solution_x);
   mag_t initial_norm_res = KokkosBlas::nrm2(solution_x);
-#ifdef gauss_seidel_testmore
-  GSAlgorithm gs_algorithms[] ={GS_DEFAULT, GS_TEAM, GS_PERMUTED};
-  int apply_count = 3;
-  for (int ii = 0; ii < 3; ++ii){
-#else
-  int apply_count = 1;
-  GSAlgorithm gs_algorithms[] ={GS_DEFAULT};
-  for (int ii = 0; ii < 1; ++ii){
-#endif
-    GSAlgorithm gs_algorithm = gs_algorithms[ii];
-    scalar_view_t x_vector("x vector", nv);
-    const scalar_t alpha = 1.0;
+  scalar_view_t x_vector("x vector", nv);
+  const scalar_t alpha = 1.0;
 
-    //bool is_symmetric_graph = false;
-    //int apply_type = 0;
-    //bool skip_symbolic = false;
-    //bool skip_numeric = false;
-    scalar_t omega = 0.9;
+  scalar_t omega = 0.9;
 
-    bool is_symmetric_graph = true;
-    size_t shmem_size = 32128;
-    
-    for(int i = 0; i < 2; ++i)
+  bool is_symmetric_graph = true;
+  size_t shmem_size = 32128;
+  
+  for(int apply_type = 0; apply_type < 2; apply_type++)
+  {
+    for(int use_tiny_shmem = 0; use_tiny_shmem < 2; use_tiny_shmem++)
     {
-      if (i == 1) shmem_size = 2008; //make the shmem small on gpus so that it will test 2 level algorithm.
-      for (int apply_type = 0; apply_type < apply_count; ++apply_type){
-        for (int skip_symbolic = 0; skip_symbolic < 2; ++skip_symbolic){
-          for (int skip_numeric = 0; skip_numeric < 2; ++skip_numeric){
+      //test with small shmem to test the 2 level algorithm.
+      if (use_tiny_shmem)
+        shmem_size = 2008; 
+      else
+        shmem_size = 32128;
+      for (int skip_symbolic = 0; skip_symbolic < 2; ++skip_symbolic){
+        for (int skip_numeric = 0; skip_numeric < 2; ++skip_numeric){
 
-            Kokkos::Impl::Timer timer1;
-            //int res =
-            run_block_gauss_seidel_1<crsMat_t, scalar_view_t, typename scalar_view_t::const_type, device>
-              (input_mat, block_size, gs_algorithm, x_vector, y_vector, is_symmetric_graph, apply_type, skip_symbolic, skip_numeric, shmem_size, omega);
-            //double gs = timer1.seconds();
-            //KokkosKernels::Impl::print_1Dview(x_vector);
-            KokkosBlas::axpby(alpha, solution_x, -alpha, x_vector);
-            mag_t result_norm_res = KokkosBlas::nrm2(x_vector);
-            EXPECT_TRUE(( result_norm_res < initial_norm_res ));
-          }
+          Kokkos::Impl::Timer timer1;
+          //int res =
+          run_block_gauss_seidel_1<crsMat_t, scalar_view_t, typename scalar_view_t::const_type, device>
+            (input_mat, block_size, x_vector, y_vector, is_symmetric_graph, apply_type, skip_symbolic, skip_numeric, shmem_size, omega);
+          //double gs = timer1.seconds();
+          //KokkosKernels::Impl::print_1Dview(x_vector);
+          KokkosBlas::axpby(alpha, solution_x, -alpha, x_vector);
+          mag_t result_norm_res = KokkosBlas::nrm2(x_vector);
+          EXPECT_TRUE(( result_norm_res < initial_norm_res ));
         }
       }
     }
   }
-  //device::execution_space::finalize();
 }
 
 template <typename scalar_t, typename lno_t, typename size_type, typename device>
@@ -351,64 +335,57 @@ void test_block_gauss_seidel_rank2(lno_t numRows, size_type nnz, lno_t bandwidth
     initial_norms[i] = Kokkos::Details::ArithTraits<mag_t>::sqrt(
         Kokkos::Details::ArithTraits<scalar_t>::abs(sum));
   }
-#ifdef gauss_seidel_testmore
-  GSAlgorithm gs_algorithms[] ={GS_DEFAULT, GS_TEAM, GS_PERMUTED};
-  int apply_count = 3;
-  for (int ii = 0; ii < 3; ++ii){
-#else
-  int apply_count = 1;
-  GSAlgorithm gs_algorithms[] ={GS_DEFAULT};
-  for (int ii = 0; ii < 1; ++ii){
-#endif
-    GSAlgorithm gs_algorithm = gs_algorithms[ii];
-    scalar_view2d_t x_vector("x vector", nv, numVecs);
-    auto x_host = Kokkos::create_mirror_view(x_vector);
+  scalar_view2d_t x_vector("x vector", nv, numVecs);
+  auto x_host = Kokkos::create_mirror_view(x_vector);
 
-    //bool is_symmetric_graph = false;
-    //int apply_type = 0;
-    //bool skip_symbolic = false;
-    //bool skip_numeric = false;
-    scalar_t omega = 0.9;
+  //bool is_symmetric_graph = false;
+  //int apply_type = 0;
+  //bool skip_symbolic = false;
+  //bool skip_numeric = false;
+  scalar_t omega = 0.9;
 
-    bool is_symmetric_graph = true;
-    size_t shmem_size = 32128;
+  bool is_symmetric_graph = true;
+  size_t shmem_size = 32128;
 
-    scalar_view_t res_norms("Residuals", numVecs);
-    auto h_res_norms = Kokkos::create_mirror_view(res_norms);
-    
-    for(int i = 0; i < 2; ++i)
+  scalar_view_t res_norms("Residuals", numVecs);
+  auto h_res_norms = Kokkos::create_mirror_view(res_norms);
+  
+  for (int apply_type = 0; apply_type < 2; ++apply_type)
+  {
+    for(int use_tiny_shmem = 0; use_tiny_shmem < 2; use_tiny_shmem++)
     {
-      if (i == 1) shmem_size = 2008; //make the shmem small on gpus so that it will test 2 level algorithm.
-      for (int apply_type = 0; apply_type < apply_count; ++apply_type){
-        for (int skip_symbolic = 0; skip_symbolic < 2; ++skip_symbolic){
-          for (int skip_numeric = 0; skip_numeric < 2; ++skip_numeric){
+      //test with small shmem to test the 2 level algorithm.
+      if (use_tiny_shmem)
+        shmem_size = 2008;
+      else
+        shmem_size = 32128;
+      for (int skip_symbolic = 0; skip_symbolic < 2; ++skip_symbolic){
+        for (int skip_numeric = 0; skip_numeric < 2; ++skip_numeric){
 
-            Kokkos::Impl::Timer timer1;
-            //int res =
-            run_block_gauss_seidel_1<crsMat_t, scalar_view2d_t, typename scalar_view2d_t::const_type, device>
-              (input_mat, block_size, gs_algorithm, x_vector, y_vector, is_symmetric_graph, apply_type, skip_symbolic, skip_numeric, shmem_size, omega);
-            //double gs = timer1.seconds();
-            //KokkosKernels::Impl::print_1Dview(x_vector);
-            Kokkos::deep_copy(x_host, x_vector);
-            exec_space().fence();
-            for(lno_t c = 0; c < numVecs; c++)
+          Kokkos::Impl::Timer timer1;
+          //int res =
+          run_block_gauss_seidel_1<crsMat_t, scalar_view2d_t, typename scalar_view2d_t::const_type, device>
+            (input_mat, block_size, x_vector, y_vector, is_symmetric_graph, apply_type, skip_symbolic, skip_numeric, shmem_size, omega);
+          //double gs = timer1.seconds();
+          //KokkosKernels::Impl::print_1Dview(x_vector);
+          Kokkos::deep_copy(x_host, x_vector);
+          exec_space().fence();
+          for(lno_t c = 0; c < numVecs; c++)
+          {
+            scalar_t sum = 0;
+            for(lno_t r = 0; r < nv; r++)
             {
-              scalar_t sum = 0;
-              for(lno_t r = 0; r < nv; r++)
-              {
-                scalar_t diff = x_host(r, c) - solution_host(r, c);
-                sum += diff * diff;
-              }
-              mag_t result_res = Kokkos::Details::ArithTraits<mag_t>::sqrt(
-                  Kokkos::Details::ArithTraits<scalar_t>::abs(sum));
-              EXPECT_TRUE( result_res < initial_norms[c] );
+              scalar_t diff = x_host(r, c) - solution_host(r, c);
+              sum += diff * diff;
             }
+            mag_t result_res = Kokkos::Details::ArithTraits<mag_t>::sqrt(
+                Kokkos::Details::ArithTraits<scalar_t>::abs(sum));
+            EXPECT_TRUE( result_res < initial_norms[c] );
           }
         }
       }
     }
   }
-  //device::execution_space::finalize();
 }
 
 

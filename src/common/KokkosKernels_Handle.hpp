@@ -561,9 +561,11 @@ public:
       throw std::runtime_error("GaussSeidelHandle exists but is not set up for cluster-coloring GS.");
     return cgs;
   }
-  void create_gs_handle(KokkosSparse::GSAlgorithm gs_algorithm = KokkosSparse::GS_DEFAULT) {
+  void create_gs_handle()
+  {
     this->destroy_gs_handle();
     this->is_owner_of_the_gs_handle = true;
+<<<<<<< 83c31bf54673e04bfb45cfa3d40cc5555c6c54be
     // ---------------------------------------- //
     // Two-stage Gauss-Seidel
     if (gs_algorithm == KokkosSparse::GS_TWOSTAGE)
@@ -607,6 +609,7 @@ public:
         this->create_gs_sptrsvU_handle (SPTRSVAlgorithm::SEQLVLSCHD_TP1, nrows);
       }
     }
+    this->gsHandle = new PointGaussSeidelHandleType();
   }
 
   void create_gs_handle(KokkosSparse::ClusteringAlgorithm clusterAlgo, nnz_lno_t hint_verts_per_cluster) {

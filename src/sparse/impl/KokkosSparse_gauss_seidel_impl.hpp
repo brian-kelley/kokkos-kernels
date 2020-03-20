@@ -1448,7 +1448,7 @@ namespace KokkosSparse{
         KokkosKernels::Impl::print_1Dview(Permuted_Yvector,true);
 #endif
 
-        if(gsHandle->get_algorithm_type() == GS_PERMUTED) {
+        if(!gsHandle->use_teams()) {
           PSGS gs(newxadj, newadj, newadj_vals,
                   Permuted_Xvector, Permuted_Yvector, color_adj, omega, permuted_inverse_diagonal);
           this->IterativePSGS(
@@ -1473,8 +1473,6 @@ namespace KokkosSparse{
                               apply_forward,
                               apply_backward);
         }
-
-        //Kokkos::parallel_for( my_exec_space(0,nr), PermuteVector(x_lhs_output_vec, Permuted_Xvector, color_adj));
 
         KokkosKernels::Impl::permute_vector
           <scalar_persistent_work_view2d_t, x_value_array_type, nnz_lno_persistent_work_view_t, MyExecSpace>(

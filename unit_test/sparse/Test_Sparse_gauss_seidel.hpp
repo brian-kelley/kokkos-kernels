@@ -98,8 +98,6 @@ int run_gauss_seidel(
       typename device::execution_space, typename device::memory_space,typename device::memory_space > KernelHandle;
 
   KernelHandle kh;
-  kh.set_team_work_size(16);
-  kh.set_dynamic_scheduling(true);
   if(gs_algorithm == GS_CLUSTER)
     kh.create_gs_handle(clusterAlgo, cluster_size);
   else if(gs_algorithm == GS_TWOSTAGE) {
@@ -108,11 +106,10 @@ int run_gauss_seidel(
     kh.set_gs_twostage(!classic, input_mat.numRows());
   }
   else
-    kh.create_gs_handle(GS_DEFAULT);
+    kh.create_gs_handle();
 
   const size_t num_rows_1 = input_mat.numRows();
   const size_t num_cols_1 = input_mat.numCols();
-  //const int apply_count = 100;
   const int apply_count = 1;
 
   gauss_seidel_symbolic
@@ -366,7 +363,7 @@ void test_gauss_seidel_rank2(lno_t numRows, size_type nnz, lno_t bandwidth, lno_
     //Zero out X before solving
     Kokkos::deep_copy(x_vector, zero);
     run_gauss_seidel<crsMat_t, scalar_view2d_t, device>(
-        input_mat, GS_DEFAULT, x_vector, y_vector, symmetric, apply_type);
+        input_mat, GS_POINT, x_vector, y_vector, symmetric, apply_type);
     Kokkos::deep_copy(x_host, x_vector);
     for(lno_t i = 0; i < numVecs; i++)
     {
@@ -587,7 +584,7 @@ void test_sgs_zero_rows()
       if(doingCluster)
         kh.create_gs_handle(CLUSTER_DEFAULT, 10);
       else
-        kh.create_gs_handle(GS_DEFAULT);
+        kh.create_gs_handle();
       //initialized to 0
       row_map_type rowmap("Rowmap", rowmapLen);
       entries_type entries("Entries", 0);
