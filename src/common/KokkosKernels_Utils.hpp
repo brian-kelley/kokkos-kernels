@@ -1739,18 +1739,32 @@ struct MemStream
     : base(base_), ptr(base)
   {}
 
+  //Just allocate a single element (no dereference)
+  template<typename T>
+  KOKKOS_INLINE_FUNCTION T allocSingle()
+  {
+    this->template getArray<T>(1);
+  }
+
   //Read a single element from stream
   template<typename T>
   KOKKOS_INLINE_FUNCTION T readSingle()
   {
-    T* item = alignPtr<Unit*, T>(ptr);
-    ptr = static_cast<Unit*>(item + 1);
+    T* item = this->template getArray<T>(1);
     return *item;
+  }
+
+  //Write a single element to stream
+  template<typename T>
+  KOKKOS_INLINE_FUNCTION void writeSingle(const T& val)
+  {
+    T* item = this->template getArray<T>(1);
+    *item = val;
   }
 
   //Get an array of T, of length n
   template<typename T>
-  KOKKOS_INLINE_FUNCTION T* readArray(size_t n)
+  KOKKOS_INLINE_FUNCTION T* getArray(size_t n)
   {
     T* item = alignPtr<Unit*, T>(ptr);
     ptr = static_cast<Unit*>(item + n);

@@ -104,11 +104,11 @@ struct ClusterCompression
       lno_t clusterSize = clusterEnd - clusterBegin;
       KokkosKernels::Impl::MemStream<unit_t> block;
       //1. store #rows in cluster
-      block.template readSingle<lno_t>();
+      block.template allocSingle<lno_t>();
       //2. store the list of rows in the cluster
-      block.template readArray<lno_t>(clusterSize);
+      block.template getArray<lno_t>(clusterSize);
       //3. store the number of entries in each row (excluding diagonals)
-      block.template readArray<lno_t>(clusterSize);
+      block.template getArray<lno_t>(clusterSize);
       //4. for each row: inverse diagonal, entries and values per row.
       //                 the first row must be scalar-aligned,
       //                 and each values array is also aligned.
@@ -116,7 +116,7 @@ struct ClusterCompression
       {
         lno_t row = clusterVerts(i);
         //space for the inverse diagonal
-        block.template readSingle<comp_scalar_t>();
+        block.template allocSingle<comp_scalar_t>();
         //count off-diagonal entries to store
         int numOffDiag = 0;
         for(size_type j = rowmap(row); j < rowmap(row + 1); j++)
@@ -168,12 +168,12 @@ struct ClusterCompression
       //lno_t and comp_scalar_t both always have power-of-two sizes,
       //so one size is always a multiple of the other.
       //Simulate the memory layout with a pointer to unit_t.
-      unit_t* storagePtr = &compressed(compressedOffsets(dstC));
+      KokkosKernels::Impl::MemStream<unit_t>
+        block(&compressed(compressedOffsets(dstC)));
       //1. store #rows in cluster
-      *((lno_t*) storagePtr) = clusterSize;
-      storagePtr += unitsPerOrdinal;
+      block.template writeSingle<lno_t>(clusterSize);
       //2. store the list of rows in the cluster
-      lno_t* clusterRows = (lno_t*) storagePtr;
+      lno_t* clusterRows = block.readArray(lno_t*) storagePtr;
       for(lno_t i = 0; i < clusterSize; i++)
       {
         clusterRows[i] = clusterVerts(clusterBegin + i);
