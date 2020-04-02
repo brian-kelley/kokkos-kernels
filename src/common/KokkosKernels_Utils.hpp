@@ -1715,6 +1715,69 @@ KOKKOS_FORCEINLINE_FUNCTION T* alignPtr(InPtr p)
   return reinterpret_cast<T*>((ptrVal + alignof(T) - 1) & (~(alignof(T) - 1)));
 }
 
+//MemStream<Unit> represents a relocatable block of memory that can contain
+//arrays of different types. The arrays are packed as closely together as possible
+//while still being aligned. This improves cache efficiency, especially when the arrays
+//are individually smaller than a cache line.
+//
+//To determine the size in Units of an array sequence, default-construct a MemStream and call
+//the "read" methods, discarding the return values. This allocates the blocks by moving a 'top' pointer.
+//After allocating all arrays, call sizeInUnits with the largest alignment required of any array. This
+//is needed to pack multiple MemStreams into a view of Unit, and guarantee alignment of every array.
+//
+//After allocating the Unit view, create a MemStream with the pointer to the beginning. Then replay
+//the exact sequence of read calls used when determining the size.
+//
+template<typename Unit>
+struct MemStream
+{
+  KOKKOS_INLINE_FUNCTION MemStream()
+    : base(nullptr), ptr(base)
+  {}
+
+  KOKKOS_INLINE_FUNCTION MemStream(Unit* base_)
+    : base(base_), ptr(base)
+  {}
+
+  //Read a single element from stream
+  template<typename T>
+  KOKKOS_INLINE_FUNCTION T readSingle()
+  {
+    T* item = alignPtr<Unit*, T>(ptr);
+    ptr = static_cast<Unit*>(item + 1);
+    return *item;
+  }
+
+  //Get an array of T, of length n
+  template<typename T>
+  KOKKOS_INLINE_FUNCTION T* readArray(size_t n)
+  {
+    T* item = alignPtr<Unit*, T>(ptr);
+    ptr = static_cast<Unit*>(item + n);
+    return item;
+  }
+
+  //Reset stream to the beginning
+  KOKKOS_INLINE_FUNCTION void reset()
+  {
+    ptr = base;
+  }
+
+  //Get the length of the stream, in Units.
+  //Make sure the end of the block is aligned to blockAlign
+  //(this is required for packing blocks consecutively in an array of Unit)
+  KOKKOS_INLINE_FUNCTION size_t sizeInUnits(size_t blockAlign)
+  {
+    std::uintptr_t ptrVal = reinterpret_cast<std::uintptr_t>(ptr);
+    Unit* newEnd = reinterpret_cast<Unit*>((ptrVal + blockAlign - 1) & (~(blockAlign - 1)));
+    return newEnd - base;
+  }
+
+  Unit* base;
+  Unit* ptr;
+  size_t finalAlign;
+};
+
 }
 }
 

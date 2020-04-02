@@ -75,20 +75,14 @@ struct ClusterCompression
   using lno_t = typename entries_t::non_const_value_type;
   using scalar_t = typename values_t::non_const_value_type;
   using comp_scalar_t = typename get_compact_scalar<compactScalar, scalar_t>::type;
-  //Compressed representation measures memory in terms of unit_t
-  //(the smaller of comp_scalar_t and lno_t)
-  //This has the benefit that aligning a unit_t
-  //to at least one of lno_t and comp_scalar_t (possibly both, if same size) is a no-op
-  using unit_t = std::conditional<
-    (sizeof(lno_t) < sizeof(comp_scalar_t)),
-    lno_t, comp_scalar_t>;
+  using unit_t = int;
   using unit_view_t = Kokkos::View<unit_t*, mem_space, Kokkos::MemoryTraits<Kokkos::Aligned>>;
-  //Since the sizes of both lno_t and comp_scalar_t should be powers of two,
-  //their sizes should be exact multiples of unit_t
+  static constexpr size_t memStreamAlign = alignof(lno_t) > alignof(comp_scalar_t) ? alignof(lno_t) : alignof(comp_scalar_t);
+  //The sizes of both lno_t and comp_scalar_t should be multiples of int's size
   static_assert(sizeof(lno_t) % sizeof(unit_t) == 0,
-      "Expect lno_t to have a power-of-two size.");
-  static_assert(sizeof(comp_scalar_t) % sizeof(unit_t) == 0,
-      "Expect lno_t to have a power-of-two size.");
+      "Expect lno_t's size to be a multiple of unit's size.");
+  static_assert(sizeof(comp_scalar_t) % sizeof(int) == 0,
+      "Expect compressed scalar type's size to be a multiple of unit's size.");
 
   //Functor to compute the compressed size of each cluster
   //Also reorders clusters to be grouped by color
@@ -108,27 +102,21 @@ struct ClusterCompression
       lno_t clusterBegin = clusterOffsets(srcC);
       lno_t clusterEnd = clusterOffsets(srcC + 1);
       lno_t clusterSize = clusterEnd - clusterBegin;
-      constexpr int unitsPerOrdinal = sizeof(lno_t) / sizeof(unit_t);
-      constexpr int unitsPerScalar = sizeof(comp_scalar_t) / sizeof(unit_t);
-      //lno_t and comp_scalar_t both always have power-of-two sizes,
-      //so one size is always a multiple of the other.
-      //Simulate the memory layout with a pointer to unit_t.
-      unit_t* storagePtr = nullptr;
+      KokkosKernels::Impl::MemStream<unit_t> block;
       //1. store #rows in cluster
-      storagePtr += unitsPerOrdinal;
+      block.template readSingle<lno_t>();
       //2. store the list of rows in the cluster
-      storagePtr += clusterSize * unitsPerOrdinal;
+      block.template readArray<lno_t>(clusterSize);
       //3. store the number of entries in each row (excluding diagonals)
-      storagePtr += clusterSize * unitsPerOrdinal;
+      block.template readArray<lno_t>(clusterSize);
       //4. for each row: inverse diagonal, entries and values per row.
       //                 the first row must be scalar-aligned,
       //                 and each values array is also aligned.
-      storagePtr = (unit_t*) alignPtr<unit_t*, comp_scalar_t*>(storagePtr);
       for(lno_t i = clusterBegin; i < clusterEnd; i++)
       {
         lno_t row = clusterVerts(i);
         //space for the inverse diagonal
-        storagePtr += unitsPerScalar;
+        block.template readSingle<comp_scalar_t>();
         //count off-diagonal entries to store
         int numOffDiag = 0;
         for(size_type j = rowmap(row); j < rowmap(row + 1); j++)
@@ -137,16 +125,14 @@ struct ClusterCompression
             numOffDiag++;
         }
         //space for entries
-        storagePtr = (unit_t*) alignPtr<unit_t*, lno_t*>(storagePtr);
-        storagePtr += numOffDiag * unitsPerOrdinal;
-        storagePtr = (unit_t*) alignPtr<unit_t*, comp_scalar_t*>(storagePtr);
-        storagePtr += numOffDiag * unitsPerScalar;
+        block.template readArray<lno_t>(numOffDiag);
+        //space for off-diag columns
+        block.template readArray<comp_scalar_t>(numOffDiag);
       }
       //finally, make sure that the storage is aligned to both comp_scalar_t and lno_t
-      //(at least one of these will be a no-op)
-      storagePtr = (unit_t*) alignPtr<unit_t*, lno_t*>(storagePtr);
-      storagePtr = (unit_t*) alignPtr<unit_t*, comp_scalar_t*>(storagePtr);
-      storageSize(dstC) = storagePtr - ((unit_t*) nullptr);
+      storageSize(dstC) = block.sizeInUnits(memStreamAlign);
+      //one thread sets the size of the one-past-end cluster to 0, so that the counts
+      //array doesn't need initialization. Do exclusive prefix sum like with CRS.
       if(dstC == storageSize.extent(0) - 2)
         storageSize(storageSize.extent(0) - 1) = 0;
     }
