@@ -36,7 +36,7 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-// Questions? Contact Siva Rajamanickam (srajama@sandia.gov)
+// Questions? Contact Brian Kelley (bmkelle@sandia.gov)
 //
 // ************************************************************************
 //@HEADER
@@ -48,72 +48,51 @@
 #include "KokkosKernels_Utils.hpp"
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Atomic.hpp>
-#include <impl/Kokkos_Timer.hpp>
+#include <Kokkos_Timer.hpp>
 #include <Kokkos_Bitset.hpp>
 #include <Kokkos_Sort.hpp>
-#include <Kokkos_MemoryTraits.hpp>
 #include "KokkosGraph_Distance1Color.hpp"
 #include "KokkosKernels_BitUtils.hpp"
 #include "KokkosKernels_SimpleUtils.hpp"
 #include "KokkosSparse_partitioning_impl.hpp"
 #include "KokkosGraph_MIS2.hpp"
+#include "KokkosSparse_compressed_cluster_matrix.hpp"
 
-namespace KokkosSparse{
-  namespace Impl{
-
-    template <typename HandleType, typename lno_row_view_t_, typename lno_nnz_view_t_, typename scalar_nnz_view_t_>
-    class ClusterGaussSeidel{
+namespace KokkosSparse
+{
+  namespace Impl
+  {
+    template <typename HandleType, typename in_rowmap_t, typename in_entries_t, typename in_values_t>
+    class ClusterGaussSeidel
+    {
 
     public:
 
-      typedef lno_row_view_t_ in_lno_row_view_t;
-      typedef lno_nnz_view_t_ in_lno_nnz_view_t;
-      typedef scalar_nnz_view_t_ in_scalar_nnz_view_t;
-
-      typedef typename HandleType::HandleExecSpace MyExecSpace;
-      typedef typename HandleType::HandleTempMemorySpace MyTempMemorySpace;
-      typedef typename HandleType::HandlePersistentMemorySpace MyPersistentMemorySpace;
-
-
-      typedef typename in_lno_row_view_t::non_const_value_type row_lno_t;
+      typedef typename HandleType::HandleExecSpace exec_space;
+      typedef typename HandleType::HandlePersistentMemorySpace mem_space;
+      typedef Kokkos::Device<exec_space, mem_space> device_t;
 
       typedef typename HandleType::size_type size_type;
-      typedef typename HandleType::nnz_lno_t nnz_lno_t;
-      typedef typename HandleType::nnz_scalar_t nnz_scalar_t;
+      typedef typename HandleType::nnz_lno_t lno_t;
+      typedef typename HandleType::nnz_scalar_t scalar_t;
 
+      typedef typename HandleType::size_type_persistent_work_view_t rowmap_t;
+      typedef typename HandleType::nnz_lno_persistent_work_view_t entries_t;
+      typedef typename HandleType::nnz_lno_persistent_work_view_t ordinal_view_t;
+      typedef typename HandleType::scalar_persistent_work_view_t values_t;
 
-      typedef typename in_lno_row_view_t::const_type const_lno_row_view_t;
-      typedef typename in_lno_row_view_t::non_const_type non_const_lno_row_view_t;
+      typedef typename HandleType::GraphColoringHandleType::color_t color_t;
+      typedef typename HandleType::GraphColoringHandleType::color_view_t color_view_t;
+      typedef Kokkos::Bitset<exec_space> bitset_t;
+      typedef Kokkos::ConstBitset<exec_space> const_bitset_t;
 
-      typedef typename lno_nnz_view_t_::const_type const_lno_nnz_view_t;
-      typedef typename lno_nnz_view_t_::non_const_type non_const_lno_nnz_view_t;
-
-      typedef typename scalar_nnz_view_t_::const_type const_scalar_nnz_view_t;
-      typedef typename scalar_nnz_view_t_::non_const_type non_const_scalar_nnz_view_t;
-
-      typedef typename HandleType::row_lno_temp_work_view_t row_lno_temp_work_view_t;
-      typedef typename HandleType::row_lno_persistent_work_view_t row_lno_persistent_work_view_t;
-      typedef typename HandleType::row_lno_persistent_work_host_view_t row_lno_persistent_work_host_view_t; //Host view type
-
-      typedef typename HandleType::nnz_lno_temp_work_view_t nnz_lno_temp_work_view_t;
-      typedef typename HandleType::nnz_lno_persistent_work_view_t nnz_lno_persistent_work_view_t;
-      typedef typename HandleType::nnz_lno_persistent_work_host_view_t nnz_lno_persistent_work_host_view_t; //Host view type
-
-      typedef typename HandleType::scalar_temp_work_view_t scalar_temp_work_view_t;
-      typedef typename HandleType::scalar_persistent_work_view_t scalar_persistent_work_view_t;
-
-      typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
-      typedef nnz_lno_t color_t;
-      typedef Kokkos::View<color_t *, MyTempMemorySpace> color_view_t;
-      typedef Kokkos::Bitset<MyExecSpace> bitset_t;
-      typedef Kokkos::ConstBitset<MyExecSpace> const_bitset_t;
-
-      typedef Kokkos::TeamPolicy<MyExecSpace> team_policy_t ;
+      typedef Kokkos::RangePolicy<device_t> range_policy_t;
+      typedef Kokkos::TeamPolicy<device_t> team_policy_t;
       typedef typename team_policy_t::member_type team_member_t ;
 
-      using KAT = Kokkos::Details::ArithTraits<nnz_scalar_t>;
+      using KAT = Kokkos::Details::ArithTraits<scalar_t>;
       using mag_t = typename KAT::mag_type;
-      using mag_view_t = Kokkos::View<mag_t*, MyPersistentMemorySpace>;
+      using mag_view_t = Kokkos::View<mag_t*, mem_space>;
 
     private:
       HandleType *handle;
@@ -129,18 +108,11 @@ namespace KokkosSparse{
         return gsHandle;
       }
 
-      nnz_lno_t num_rows, num_cols;
-
-      const_lno_row_view_t row_map;
-      const_lno_nnz_view_t entries;
-      const_scalar_nnz_view_t values;
-
-      const_scalar_nnz_view_t given_inverse_diagonal;
-
-      bool have_diagonal_given;
-      bool is_symmetric;
-
-      static constexpr nnz_lno_t apply_batch_size = 16;
+      lno_t num_rows;
+      lno_t num_cols;
+      in_rowmap_t row_map;
+      in_entries_t entries;
+      in_values_t values;
 
     public:
 
@@ -151,21 +123,21 @@ namespace KokkosSparse{
       struct PSGS
       {
         // CSR storage of the matrix.
-        const_lno_row_view_t _xadj;
-        const_lno_nnz_view_t _adj;     
-        const_scalar_nnz_view_t _adj_vals;
+        in_rowmap_t _rowmap;
+        in_colinds_t _entries;     
+        in_values_t _values;
 
         //Input/output vectors, as in Ax = y
-        x_value_array_type             _Xvector;
-        y_value_array_type             _Yvector;
-        nnz_lno_persistent_work_view_t _color_adj;
-        nnz_lno_persistent_work_view_t _cluster_offsets;
-        nnz_lno_persistent_work_view_t _cluster_verts;
-        scalar_persistent_work_view_t  _inverse_diagonal;
-        nnz_scalar_t                   _omega;
+        x_value_array_type  _Xvector;
+        y_value_array_type  _Yvector;
+        entries_t           _color_adj;
+        entries_t           _cluster_offsets;
+        entries_t           _cluster_verts;
+        values_t            _inverse_diagonal;
+        scalar_t            _omega;
 
-        nnz_lno_t _color_set_begin;
-        nnz_lno_t _color_set_end;
+        lno_t _color_set_begin;
+        lno_t _color_set_end;
         bool _forward_direction;
 
         PSGS(const_lno_row_view_t xadj_, const_lno_nnz_view_t adj_, const_scalar_nnz_view_t adj_vals_,
@@ -191,24 +163,24 @@ namespace KokkosSparse{
         {}
 
         KOKKOS_FORCEINLINE_FUNCTION
-        void rowApply(nnz_scalar_t* sum, const nnz_lno_t row) const
+        void rowApply(comp_scalar_t invDiag, lno_t row, lno_t rowSize, lno_t* rowCols, comp_scalar_t* rowVals) const
         {
-          size_type row_begin = _xadj(row);
-          size_type row_end = _xadj(row + 1);
-          nnz_lno_t num_vecs = _Xvector.extent(1);
-          for(nnz_lno_t batch_start = 0; batch_start < num_vecs; batch_start += apply_batch_size)
+          lno_t num_vecs = x.extent(1);
+          constexpr colBatchSize = 8;
+          scalar_t accum[colBatchSize];
+          for(nnz_lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
           {
-            nnz_lno_t this_batch_size = apply_batch_size;
-            if(batch_start + this_batch_size >= num_vecs)
-              this_batch_size = num_vecs - batch_start;
+            nnz_lno_t batch = colBatchSize;
+            if(batch_start + batch > num_vecs)
+              batch = num_vecs - batch_start;
             //the current batch of columns given by: batch_start, this_batch_size
-            for(nnz_lno_t i = 0; i < this_batch_size; i++)
+            for(nnz_lno_t i = 0; i < batch; i++)
               sum[i] = _Yvector(row, batch_start + i);
             for(size_type adjind = row_begin; adjind < row_end; ++adjind)
             {
               nnz_lno_t col = _adj(adjind);
               nnz_scalar_t val = _adj_vals(adjind);
-              for(nnz_lno_t i = 0; i < this_batch_size; i++)
+              for(nnz_lno_t i = 0; i < batch; i++)
                 sum[i] -= val * _Xvector(col, batch_start + i);
             }
             nnz_scalar_t invDiagonalVal = _inverse_diagonal(row);
@@ -995,8 +967,7 @@ namespace KokkosSparse{
 
       //FlowOrderFunctor: greedily reorder vertices within a cluster to maximize
       //convergence in the forward direction.
-      //
-      //IMPORTANT TODO (performance): lots of nested loops, really needs to be a TeamPolicy
+
       struct FlowOrderFunctor
       {
         using nnz_view_t = nnz_lno_persistent_work_view_t;
@@ -1179,6 +1150,7 @@ namespace KokkosSparse{
               fofTeamSize = avgClusterSize;
           }
           Kokkos::parallel_for(team_policy_t(numClusters, fofTeamSize, suggested_vector_size), fof);
+          //Compute the compressed size of each cluster
         }
         gsHandle->set_call_numeric(true);
         MyExecSpace().fence();

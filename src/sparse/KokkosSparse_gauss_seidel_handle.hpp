@@ -233,10 +233,6 @@ namespace KokkosSparse{
 
       }
     }
-
-    void choose_policy_type()
-    {
-    }
   };
 
   template <class size_type_, class lno_t_, class scalar_t_,
@@ -498,6 +494,7 @@ namespace KokkosSparse{
     nnz_lno_persistent_work_view_t cluster_adj;
     //vert_clusters(i) is the cluster that vertex i belongs to
     nnz_lno_persistent_work_view_t vert_clusters;
+
 
   public:
 
