@@ -57,7 +57,8 @@ namespace KokkosSparse{
 
   enum GSAlgorithm{GS_POINT, GS_CLUSTER, GS_TWOSTAGE};
   enum GSDirection{GS_FORWARD, GS_BACKWARD, GS_SYMMETRIC};
-  enum ClusteringAlgorithm{CLUSTER_DEFAULT, CLUSTER_MIS2, CLUSTER_BALLOON, NUM_CLUSTERING_ALGORITHMS};
+  enum CoarseningAlgorithm{CLUSTER_DEFAULT, CLUSTER_MIS2, CLUSTER_BALLOON, NUM_CLUSTERING_ALGORITHMS};
+  enum CGSAlgorithm{CGS_DEFAULT, CGS_RANGE, CGS_TEAM, CGS_PERMUTED_RANGE, CGS_PERMUTED_TEAM, CGS_SHARED};
 
   inline const char* getClusterAlgoName(ClusteringAlgorithm ca)
   {
@@ -450,51 +451,54 @@ namespace KokkosSparse{
   {
   public:
     typedef GaussSeidelHandle<size_type_, lno_t_, scalar_t_, ExecutionSpace, TemporaryMemorySpace, PersistentMemorySpace> GSHandle;
-    typedef ExecutionSpace HandleExecSpace;
-    typedef TemporaryMemorySpace HandleTempMemorySpace;
-    typedef PersistentMemorySpace HandlePersistentMemorySpace;
+    typedef ExecutionSpace exec_space;
+    typedef TemporaryMemorySpace mem_space;
 
-    typedef typename std::remove_const<size_type_>::type  size_type;
-    typedef const size_type const_size_type;
+    typedef typename std::remove_const<size_type_>::type size_type;
 
-    typedef typename std::remove_const<lno_t_>::type  nnz_lno_t;
-    typedef const nnz_lno_t const_nnz_lno_t;
+    typedef typename std::remove_const<lno_t_>::type lno_t;
 
-    typedef typename std::remove_const<scalar_t_>::type  nnz_scalar_t;
-    typedef const nnz_scalar_t const_nnz_scalar_t;
+    typedef typename std::remove_const<scalar_t_>::type scalar_t;
 
-    typedef typename Kokkos::View<size_type *, HandleTempMemorySpace> row_lno_temp_work_view_t;
-    typedef typename Kokkos::View<size_type *, HandlePersistentMemorySpace> row_lno_persistent_work_view_t;
-    typedef typename row_lno_persistent_work_view_t::HostMirror row_lno_persistent_work_host_view_t; //Host view type
+    typedef Kokkos::View<size_type*, mem_space> offset_view_t;
+    typedef typename offset_view_t::HostMirror host_offset_view_T;
 
-    typedef typename Kokkos::View<nnz_scalar_t *, HandleTempMemorySpace> scalar_temp_work_view_t;
-    typedef typename Kokkos::View<nnz_scalar_t *, HandlePersistentMemorySpace> scalar_persistent_work_view_t;
-    typedef typename scalar_persistent_work_view_t::HostMirror scalar_persistent_work_host_view_t; //Host view type
+    typedef Kokkos::View<lno_t*, mem_space> ordinal_view_t;
+    typedef typename ordinal_view_t::HostMirror host_ordinal_view_t;
 
-    typedef typename Kokkos::View<nnz_lno_t *, HandleTempMemorySpace> nnz_lno_temp_work_view_t;
-    typedef typename Kokkos::View<nnz_lno_t *, HandlePersistentMemorySpace> nnz_lno_persistent_work_view_t;
-    typedef typename nnz_lno_persistent_work_view_t::HostMirror nnz_lno_persistent_work_host_view_t; //Host view type
+    typedef Kokkos::View<scalar_t*, mem_space> scalar_view_t;
+    typedef typename scalar_view_t::HostMirror host_scalar_view_t;
+
+    //The memory unit type used for the compact memory stream
+    typedef int unit_t;
+    typedef Kokkos::View<unit_t*, mem_space, Kokkos::MemoryTraits<Kokkos::Aligned>> unit_view_t;
 
   private:
 
-    ClusteringAlgorithm cluster_algo;
+    CoarseningAlgorithm coarseAlgo;
+    CGSAlgorithm applyAlgo;
 
     //This is the user-configurable target cluster size.
     //Some clusters may be slightly larger or smaller,
     //but cluster_xadj always has the exact size of each.
-    nnz_lno_t cluster_size;
+    lno_t cluster_size;
 
     int suggested_vector_size;
     int suggested_team_size;
 
-    scalar_persistent_work_view_t inverse_diagonal;
-
     //cluster_xadj and cluster_adj encode the vertices in each cluster
-    nnz_lno_persistent_work_view_t cluster_xadj;
-    nnz_lno_persistent_work_view_t cluster_adj;
+    ordinal_view_t cluster_xadj;
+    ordinal_view_t cluster_adj;
     //vert_clusters(i) is the cluster that vertex i belongs to
-    nnz_lno_persistent_work_view_t vert_clusters;
+    ordinal_view_t vert_clusters;
 
+    //offsets of compact and reordered matrix,
+    //and the actual data (units) that the offsets index into
+    offset_view_t stream_offsets;
+    unit_view_t stream_data;
+
+    //whether to use a lower-precision version of the matrix (32-bit instead of 64-bit)
+    bool use_compact_scalars;
 
   public:
 
@@ -503,53 +507,61 @@ namespace KokkosSparse{
      */
 
     //Constructor for cluster-coloring based GS and SGS
-    ClusterGaussSeidelHandle(ClusteringAlgorithm cluster_algo_, nnz_lno_t cluster_size_)
+    ClusterGaussSeidelHandle(ClusteringAlgorithm cluster_algo_, lno_t cluster_size_, bool force_single_precision = true)
       : GSHandle(GS_CLUSTER), cluster_algo(cluster_algo_), cluster_size(cluster_size_),
-      inverse_diagonal(), cluster_xadj(), cluster_adj(), vert_clusters()
+      cluster_xadj(), cluster_adj(), vert_clusters(), use_compact_scalars(force_single_precision)
     {}
 
     GSAlgorithm get_algorithm_type() const {return GS_CLUSTER;}
     ClusteringAlgorithm get_clustering_algo() const {return this->cluster_algo;}
 
-    void set_cluster_size(nnz_lno_t cs) {this->cluster_size = cs;}
-    nnz_lno_t get_cluster_size() const {return this->cluster_size;}
+    void set_cluster_size(lno_t cs) {this->cluster_size = cs;}
+    lno_t get_cluster_size() const {return this->cluster_size;}
 
-    void set_vert_clusters(nnz_lno_persistent_work_view_t& vert_clusters_) {
+    void set_vert_clusters(const ordinal_view_t& vert_clusters_) {
       this->vert_clusters = vert_clusters_;
     }
-    void set_cluster_xadj(nnz_lno_persistent_work_view_t& cluster_xadj_) {
-      this->cluster_xadj = cluster_xadj_;
-    }
-    void set_cluster_adj(nnz_lno_persistent_work_view_t& cluster_adj_) {
-      this->cluster_adj = cluster_adj_;
-    }
-
-    nnz_lno_persistent_work_view_t get_vert_clusters() const {
+    ordinal_view_t get_vert_clusters() const {
       if(!this->is_symbolic_called())
         throw std::runtime_error("vert_clusters does not exist until after symbolic setup.");
       return vert_clusters;
     }
 
-    nnz_lno_persistent_work_view_t get_cluster_xadj() const {
+    void set_cluster_xadj(const ordinal_view_t& cluster_xadj_) {
+      this->cluster_xadj = cluster_xadj_;
+    }
+    ordinal_view_t get_cluster_xadj() const {
       if(!this->is_symbolic_called())
         throw std::runtime_error("cluster_xadj does not exist until after symbolic setup.");
       return cluster_xadj;
     }
 
-    nnz_lno_persistent_work_view_t get_cluster_adj() const {
+    void set_cluster_adj(const ordinal_view_t& cluster_adj_) {
+      this->cluster_adj = cluster_adj_;
+    }
+    ordinal_view_t get_cluster_adj() const {
       if(!this->is_symbolic_called())
         throw std::runtime_error("cluster_adj does not exist until after symbolic setup.");
       return cluster_adj;
     }
 
-    void set_inverse_diagonal(scalar_persistent_work_view_t& inv_diag) {
-      this->inverse_diagonal = inv_diag;
+    void set_stream_offsets(const offset_view_t& offsets) {
+      this->stream_offsets = offsets;
+    }
+    offset_view_t get_stream_offsets() const {
+      return this->stream_offsets;
     }
 
-    scalar_persistent_work_view_t get_inverse_diagonal() const {
-      if(!this->is_symbolic_called())
-        throw std::runtime_error("inverse diagonal does not exist until after numeric setup.");
-      return inverse_diagonal;
+    void set_stream_data(const unit_view_t& data) {
+      this->stream_data = data;
+    }
+    unit_view_t get_stream_data() const {
+      return this->stream_data;
+    }
+
+    //note: no setter for use_compact_scalars. It can't be changed after the first setup.
+    bool using_compact_scalars() const {
+      return this->use_compact_scalars;
     }
   };
 

@@ -67,7 +67,7 @@ struct get_compact_scalar<true, Kokkos::complex<double>>
   using type = Kokkos::complex<float>;
 }
 
-template <bool compactScalar, typename HandleType, typename rowmap_t, typename entries_t, typename values_t>
+template <bool compactScalar, typename HandleType, typename rowmap_t, typename entries_t, typename values_t, typename unit_t>
 struct ClusterCompression
 {
   using mem_space = typename HandleType::HandlePersistentMemorySpace;
@@ -75,8 +75,8 @@ struct ClusterCompression
   using lno_t = typename entries_t::non_const_value_type;
   using scalar_t = typename values_t::non_const_value_type;
   using comp_scalar_t = typename get_compact_scalar<compactScalar, scalar_t>::type;
-  using unit_t = int;
   using unit_view_t = Kokkos::View<unit_t*, mem_space, Kokkos::MemoryTraits<Kokkos::Aligned>>;
+  using offset_view_t = Kokkos::View<size_type*, mem_space>;
   static constexpr size_t memStreamAlign = alignof(lno_t) > alignof(comp_scalar_t) ? alignof(lno_t) : alignof(comp_scalar_t);
   //The sizes of both lno_t and comp_scalar_t should be multiples of int's size
   static_assert(sizeof(lno_t) % sizeof(unit_t) == 0,
@@ -91,8 +91,9 @@ struct ClusterCompression
     CompressedSizeFunctor(
         const rowmap_t& rowmap_, const entries_t& entries_,
         const entries_t& clusterOffsets_, const entries_t& clusterVerts_,
-        const entries_t& storageSize_)
-      : rowmap(rowmap_), entries(entries_), clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_), storageSize(storageSize_)
+        const entries_t& colorSets_,
+        const offset_view_t& storageSize_)
+      : rowmap(rowmap_), entries(entries_), clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_), colorSets(colorSets_), storageSize(storageSize_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t dstC) const
@@ -125,9 +126,9 @@ struct ClusterCompression
             numOffDiag++;
         }
         //space for entries
-        block.template readArray<lno_t>(numOffDiag);
+        block.template getArray<lno_t>(numOffDiag);
         //space for off-diag columns
-        block.template readArray<comp_scalar_t>(numOffDiag);
+        block.template getArray<comp_scalar_t>(numOffDiag);
       }
       //finally, make sure that the storage is aligned to both comp_scalar_t and lno_t
       storageSize(dstC) = block.sizeInUnits(memStreamAlign);
@@ -141,8 +142,8 @@ struct ClusterCompression
     entries_t entries;
     entries_t clusterOffsets;
     entries_t clusterVerts;
-    entries_t colorSets;      //aka color_adj
-    rowmap_t storageSize;     //output: the number of unit_t needed to store each cluster
+    entries_t colorSets;        //aka color_adj
+    offset_view_t storageSize;    //output: the number of unit_t needed to store each cluster
   };
 
   //Functor to compute the compressed representation of clusters
@@ -151,9 +152,11 @@ struct ClusterCompression
     CompressFunctor(
         const rowmap_t& rowmap_, const entries_t& entries_, const values_t& values_,
         const entries_t& clusterOffsets_, const entries_t& clusterVerts_,
-        const rowmap_t& compressedOffsets_, const unit_view_t& compressed_)
+        const entries_t& colorSets_,
+        const offset_view_t& compressedOffsets_, const unit_view_t& compressed_)
       : rowmap(rowmap_), entries(entries_), values(values_),
-      clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_), compressedOffsets(compressedOffsets_), compressed(compressed_)
+      clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_),
+      colorSets(colorSets_), compressedOffsets(compressedOffsets_), compressed(compressed_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t dstC) const
@@ -163,8 +166,6 @@ struct ClusterCompression
       lno_t clusterBegin = clusterOffsets(srcC);
       lno_t clusterEnd = clusterOffsets(srcC + 1);
       lno_t clusterSize = clusterEnd - clusterBegin;
-      constexpr int unitsPerOrdinal = sizeof(lno_t) / sizeof(unit_t);
-      constexpr int unitsPerScalar = sizeof(comp_scalar_t) / sizeof(unit_t);
       //lno_t and comp_scalar_t both always have power-of-two sizes,
       //so one size is always a multiple of the other.
       //Simulate the memory layout with a pointer to unit_t.
@@ -173,14 +174,13 @@ struct ClusterCompression
       //1. store #rows in cluster
       block.template writeSingle<lno_t>(clusterSize);
       //2. store the list of rows in the cluster
-      lno_t* clusterRows = block.readArray(lno_t*) storagePtr;
+      lno_t* clusterRows = block.template getArray<lno_t>(clusterSize);
       for(lno_t i = 0; i < clusterSize; i++)
       {
         clusterRows[i] = clusterVerts(clusterBegin + i);
       }
-      storagePtr += clusterSize * unitsPerOrdinal;
       //3. store the number of entries in each row (excluding diagonals)
-      lno_t* rowSizes = clusterRows + clusterSize;
+      lno_t* rowSizes = block.template getArray<lno_t>(clusterSize);
       for(lno_t i = 0; i < clusterSize; i++)
       {
         int numOffDiag = 0;
@@ -191,24 +191,17 @@ struct ClusterCompression
         }
         rowSizes[i] = numOffDiag;
       }
-      storagePtr += clusterSize * unitsPerOrdinal;
       //4. for each row: inverse diagonal, entries and values per row.
       //                 the first row must be scalar-aligned,
       //                 and each values array is also aligned.
-      storagePtr = (unit_t*) alignPtr<unit_t*, comp_scalar_t*>(storagePtr);
       for(lno_t i = 0; i < clusterSize; i++)
       {
-        lno_t row = clusterVerts(clusterBegin + i);
+        lno_t row = clusterRows[i];
         //divide up storage for the row:
         //determine where diag^-1, entries, values will go
-        comp_scalar_t* invDiag = (comp_scalar_t*) storagePtr;
-        storagePtr += unitsPerScalar;
-        storagePtr = (unit_t*) alignPtr<unit_t*, lno_t*>(storagePtr);
-        lno_t* rowEntries = (lno_t*) storagePtr;
-        storagePtr += rowSizes[i] * unitsPerOrdinal;
-        storagePtr = (unit_t*) alignPtr<unit_t*, comp_scalar_t*>(storagePtr);
-        comp_scalar_t* rowValues = (comp_scalar_t*) storagePtr;
-        storagePtr += rowSizes[i] * unitsPerScalar;
+        comp_scalar_t* invDiag = block.template getArray<comp_scalar_t>(1);
+        lno_t* rowEntries = block.template getArray<lno_t>(rowSizes[i]);
+        comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSizes[i]);
         int numOffDiag = 0;
         for(size_type j = rowmap(row); j < rowmap(row + 1); j++)
         {
@@ -232,14 +225,15 @@ struct ClusterCompression
     values_t values;
     entries_t clusterOffsets;
     entries_t clusterVerts;
+    entries_t colorSets;
     //offset of each cluster in compressed
-    rowmap_t compressedOffsets;
+    offset_view_t compressedOffsets;
     //output: the compact representation of all clusters
     unit_view_t compressed;
   };
 }
 
-template <bool compactScalar, typename HandleType, typename rowmap_t, typename entries_t, typename values_t, typename X_t, typename Y_t>
+template <bool compactScalar, typename HandleType, typename rowmap_t, typename entries_t, typename values_t, typename X_t_, typename Y_t_>
 struct CompressedClusterApply
 {
   using mem_space = typename HandleType::HandlePersistentMemorySpace;
@@ -247,6 +241,9 @@ struct CompressedClusterApply
   using lno_t = typename entries_t::non_const_value_type;
   using scalar_t = typename values_t::non_const_value_type;
   using comp_scalar_t = typename get_compact_scalar<compactScalar, scalar_t>::type;
+  //These are just so that X_t and Y_T are available as member typedefs
+  using X_t = X_t_;
+  using Y_t = Y_t_;
   //Compressed representation measures memory in terms of unit_t
   //(the smaller of comp_scalar_t and lno_t)
   //This has the benefit that aligning a unit_t
@@ -255,11 +252,12 @@ struct CompressedClusterApply
     (sizeof(lno_t) < sizeof(comp_scalar_t)),
     lno_t, comp_scalar_t>;
   using unit_view_t = Kokkos::View<unit_t*, mem_space, Kokkos::MemoryTraits<Kokkos::Aligned>>;
+  using offset_view_t = Kokkos::View<size_type*, mem_space>;
 
   struct ApplyFunctor
   {
     ApplyFunctor(
-        const rowmap_t& compressedOffsets_, const unit_view_t& compressed_,
+        const offset_view_t& compressedOffsets_, const unit_view_t& compressed_,
         const X_t& x_, const Y_t& y_, scalar_t omega_)
       : compressedOffsets(compressedOffsets_), compressed(compressed_), x(x_), y(y_), omega(omega_)
     {}
@@ -296,45 +294,34 @@ struct CompressedClusterApply
 
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t c) const
     {
-      constexpr int unitsPerOrdinal = sizeof(lno_t) / sizeof(unit_t);
-      constexpr int unitsPerScalar = sizeof(comp_scalar_t) / sizeof(unit_t);
-      //lno_t and comp_scalar_t both always have power-of-two sizes,
-      //so one size is always a multiple of the other.
-      //Simulate the memory layout with a pointer to unit_t.
-      unit_t* storagePtr = &compressed(compressedOffsets(c));
+      //compressed layout is contiguous, and range policy will just be over the
+      //color set, so no need to map the work-item index to a cluster.
+      KokkosKernels::Impl::MemStream<unit_t>
+        block(&compressed(compressedOffsets(c)));
       //1. get #rows in cluster
-      lno_t clusterSize = *((lno_t*) storagePtr);
-      storagePtr += unitsPerOrdinal;
+      lno_t clusterSize = block.template readSingle<lno_t>();
       //2. get the list of rows in the cluster
-      lno_t* clusterRows = (lno_t*) storagePtr;
-      storagePtr += clusterSize * unitsPerOrdinal;
+      lno_t* clusterRows = block.template getArray<lno_t>(clusterSize);
       //3. store the number of entries in each row (excluding diagonals)
-      lno_t* rowSizes = clusterRows + clusterSize;
-      storagePtr += clusterSize * unitsPerOrdinal;
+      lno_t* rowSizes = block.template getArray<lno_t>(clusterSize);
       //4. for each row: inverse diagonal, entries and values per row.
       //                 the first row must be scalar-aligned,
       //                 and each values array is also aligned.
-      storagePtr = (unit_t*) alignPtr<unit_t*, comp_scalar_t*>(storagePtr);
       for(lno_t i = 0; i < clusterSize; i++)
       {
-        lno_t row = clusterVerts(clusterBegin + i);
+        lno_t row = clusterRows[i];
         lno_t rowSize = rowSizes[i];
         //divide up storage for the row:
         //determine where diag^-1, entries, values will go
-        comp_scalar_t invDiag = *((comp_scalar_t*) storagePtr);
-        storagePtr += unitsPerScalar;
-        storagePtr = (unit_t*) alignPtr<unit_t*, lno_t*>(storagePtr);
-        lno_t* rowEntries = (lno_t*) storagePtr;
-        storagePtr += rowSize * unitsPerOrdinal;
-        storagePtr = (unit_t*) alignPtr<unit_t*, comp_scalar_t*>(storagePtr);
-        comp_scalar_t* rowValues = (comp_scalar_t*) storagePtr;
-        storagePtr += rowSize * unitsPerScalar;
-        rowApply(invDiag, row, rowSize, rowEntries, rowValues);
+        comp_scalar_t invDiag = block.template readSingle<comp_scalar_t>();
+        lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
+        comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
+        this->rowApply(invDiag, row, rowSize, rowEntries, rowValues);
       }
     }
 
     //offset of each cluster in compressed
-    rowmap_t compressedOffsets;
+    offset_view_t compressedOffsets;
     //output: the compact representation of all clusters
     unit_view_t compressed;
     X_t x;
