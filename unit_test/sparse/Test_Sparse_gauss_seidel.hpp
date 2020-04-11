@@ -78,6 +78,28 @@ mag_t column_norm(const vec_t& vec, int col, typename std::enable_if<vec_t::rank
   return KokkosBlas::nrm2(Kokkos::subview(vec, Kokkos::ALL(), col));
 }
 
+template<typename crsMat_t, typename vec_t>
+vec_t compute_residual(const crsMat_t& A, const vec_t& x, const vec_t& y, typename std::enable_if<vec_t::rank == 1>::type* = nullptr)
+{
+  auto one = Kokkos::ArithTraits<typename crsMat_t::value_type>::one();
+  //Now compute the new residuals using SPMV
+  vec_t res(Kokkos::ViewAllocateWithoutInitializing("Residuals"), y.extent(0));
+  Kokkos::deep_copy(res, y);
+  KokkosSparse::spmv("N", one, A, x, -one, res);
+  return res;
+}
+
+template<typename crsMat_t, typename vec_t>
+vec_t compute_residual(const crsMat_t& A, const vec_t& x, const vec_t& y, typename std::enable_if<vec_t::rank == 2>::type* = nullptr)
+{
+  auto one = Kokkos::ArithTraits<typename crsMat_t::value_type>::one();
+  //Now compute the new residuals using SPMV
+  vec_t res(Kokkos::ViewAllocateWithoutInitializing("Residuals"), y.extent(0), y.extent(1));
+  Kokkos::deep_copy(res, y);
+  KokkosSparse::spmv("N", one, A, x, -one, res);
+  return res;
+}
+
 //Innermost function for testing:
 //Run symbolic, numeric, and 2 apply sweeps.
 //Then verify that res norm decreased.
@@ -131,16 +153,18 @@ void run_and_verify(
   default:
     throw std::logic_error("Logic error in test: direction should be between 0 and 2 inclusive");
   }
-  //Now compute the new residuals using SPMV
-  vec_t res(Kokkos::ViewAllocateWithoutInitializing("Residuals"), numRows, num_vecs);
-  Kokkos::deep_copy(res, y);
-  KokkosSparse::spmv("N", one, A, x, -one, res);
-  for(lno_t i = 0; i < num_vecs; i++)
+  //if zero rows, just getting through it
+  //without crashing is success.
+  if(numRows > 0)
   {
-    //using abs to get a real number,
-    //so it works if scalar_t is real or complex
-    auto resNorm = column_norm<mag_t, vec_t>(res, i);
-    EXPECT_LT(resNorm, 0.5 * initial_norms[i]);
+    vec_t res = compute_residual(A, x, y);
+    for(lno_t i = 0; i < num_vecs; i++)
+    {
+      //using abs to get a real number,
+      //so it works if scalar_t is real or complex
+      mag_t resNorm = column_norm<mag_t, vec_t>(res, i);
+      EXPECT_LT(resNorm, 0.5 * initial_norms[i]);
+    }
   }
 }
 
@@ -160,12 +184,9 @@ vec_t create_x_vector(vec_t& kok_x, double max_value = 10.0) {
   return kok_x;
 }
 
-template <typename crsMat_t, typename vector_t>
-vector_t create_y_vector(crsMat_t crsMat, vector_t x_vector){
-  vector_t y_vector (Kokkos::ViewAllocateWithoutInitializing("Y VECTOR"),
-      crsMat.numRows());
-  KokkosSparse::spmv("N", 1, crsMat, x_vector, 0, y_vector);
-  return y_vector;
+template <typename crsMat_t, typename vec_t>
+void create_y_vector(const crsMat_t& A, const vec_t& x, const vec_t& y){
+  KokkosSparse::spmv("N", 1, A, x, 0, y);
 }
 
 //Create a strictly diag dominant linear system, with x as
@@ -173,17 +194,53 @@ vector_t create_y_vector(crsMat_t crsMat, vector_t x_vector){
 //A, x and y are all output arguments and don't need to
 //be initialized or allocated.
 template<typename crsMat_t, typename vec_t>
-void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_t& x, vec_t& y)
+void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_t& x, vec_t& y, typename std::enable_if<vec_t::rank == 1>::type* = nullptr)
 {
   using size_type = typename crsMat_t::size_type;
+  //For rank-1, num_vecs should always be 1
+  EXPECT_EQ(num_vecs, 1);
+  if(numRows == 0)
+  {
+    A = crsMat_t("A (empty)", 0, 0, 0, nullptr, nullptr, nullptr);
+    x = vec_t("x (empty)", 0);
+    y = vec_t("y (empty)", 0);
+    return;
+  }
   srand(234);
-  //Add a few columns to represent ghosted entries:
-  //important to test this for Ifpack2
-  int numCols = numRows * 1.1;
   int nnzPerRow = 13;
   int nnzVariation = 4;
   size_type nnz = nnzPerRow * numRows;
-  A = KokkosKernels::Impl::kk_generate_diagonally_dominant_sparse_matrix<crsMat_t>(numRows, numCols, nnz, nnzVariation, numRows / 10);
+  A = KokkosKernels::Impl::kk_generate_diagonally_dominant_sparse_matrix<crsMat_t>(numRows, numRows, nnz, nnzVariation, numRows / 10);
+  if(symmetric)
+  {
+    //Symmetrize on host, rather than relying on the parallel versions (those can be tested for symmetric=false)
+    crsMat_t A_trans = KokkosKernels::Impl::transpose_matrix(A);
+    A = KokkosSparse::Experimental::spadd(A, A_trans);
+  }
+  //Create random LHS vector (x)
+  x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols());
+  create_x_vector(x);
+  //do a SPMV to find the RHS vector (y)
+  y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols());
+  create_y_vector(A, x, y);
+}
+
+template<typename crsMat_t, typename vec_t>
+void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_t& x, vec_t& y, typename std::enable_if<vec_t::rank == 2>::type* = nullptr)
+{
+  using size_type = typename crsMat_t::size_type;
+  if(numRows == 0)
+  {
+    A = crsMat_t("A (empty)", 0, 0, 0, nullptr, nullptr, nullptr);
+    x = vec_t("x (empty)", 0);
+    y = vec_t("y (empty)", 0);
+    return;
+  }
+  srand(234);
+  int nnzPerRow = 13;
+  int nnzVariation = 4;
+  size_type nnz = nnzPerRow * numRows;
+  A = KokkosKernels::Impl::kk_generate_diagonally_dominant_sparse_matrix<crsMat_t>(numRows, numRows, nnz, nnzVariation, numRows / 10);
   if(symmetric)
   {
     //Symmetrize on host, rather than relying on the parallel versions (those can be tested for symmetric=false)
@@ -194,7 +251,8 @@ void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_
   x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols(), num_vecs);
   create_x_vector(x);
   //do a SPMV to find the RHS vector (y)
-  y = create_y_vector(A, x);
+  y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols(), num_vecs);
+  create_y_vector(A, x, y);
 }
 
 template <typename scalar_t, typename lno_t, typename size_type, typename device, int rank>
@@ -332,7 +390,8 @@ void test_sequential_sor(lno_t numRows, size_type nnz, lno_t bandwidth, lno_t ro
   //record the correct solution, to compare against at the end
   vector_t xgold("X gold", numRows);
   Kokkos::deep_copy(xgold, x);
-  vector_t y = create_y_vector(input_mat, x);
+  vector_t y("Y", numRows);
+  create_y_vector(input_mat, x, y);
   exec_space().fence();
   auto y_host = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), y);
   //initial solution is zero

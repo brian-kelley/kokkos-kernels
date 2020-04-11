@@ -413,11 +413,13 @@ namespace KokkosSparse{
       return this->num_big_rows;
     }
 
+#ifdef KOKKOS_ENABLE_DEPRECATED_CODE
     nnz_lno_t get_max_nnz() const {
       if(max_nnz_input_row == static_cast<nnz_lno_t>(-1))
         throw std::runtime_error("Requested max nnz per input row, but this has not been set in the PointGS handle.");
       return this->max_nnz_input_row;
     }
+#endif
 
     void set_max_nnz(nnz_lno_t num_result_nnz_) {
       this->max_nnz_input_row = num_result_nnz_;
