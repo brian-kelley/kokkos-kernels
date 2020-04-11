@@ -65,6 +65,19 @@ using namespace KokkosKernels::Experimental;
 using namespace KokkosSparse;
 using namespace KokkosSparse::Experimental;
 
+template<typename mag_t, typename vec_t>
+mag_t column_norm(const vec_t& vec, int col, typename std::enable_if<vec_t::rank == 1>::type* = nullptr)
+{
+  EXPECT_EQ(col, 0);
+  return KokkosBlas::nrm2(vec);
+}
+
+template<typename mag_t, typename vec_t>
+mag_t column_norm(const vec_t& vec, int col, typename std::enable_if<vec_t::rank == 2>::type* = nullptr)
+{
+  return KokkosBlas::nrm2(Kokkos::subview(vec, Kokkos::ALL(), col));
+}
+
 //Innermost function for testing:
 //Run symbolic, numeric, and 2 apply sweeps.
 //Then verify that res norm decreased.
@@ -80,7 +93,7 @@ void run_and_verify(
     int direction = 0)
 {
   using lno_t = typename Handle::nnz_lno_t;
-  using scalar_t = typename Handle::scalar_t;
+  using scalar_t = typename Handle::nnz_scalar_t;
   using KAT = Kokkos::ArithTraits<scalar_t>;
   using mag_t = typename KAT::mag_type;
   const scalar_t one = KAT::one();
@@ -93,8 +106,7 @@ void run_and_verify(
   {
     //using abs to get a real number,
     //so it works if scalar_t is real or complex
-    auto ycol = Kokkos::subview(y, Kokkos::ALL(), i);
-    initial_norms.push_back(KAT::abs(KokkosBlas::dot(ycol, ycol)));
+    initial_norms.push_back(column_norm<mag_t, vec_t>(y, i));
   }
   lno_t numRows = A.numRows();
   lno_t numCols = A.numCols();
@@ -127,8 +139,7 @@ void run_and_verify(
   {
     //using abs to get a real number,
     //so it works if scalar_t is real or complex
-    auto resCol = Kokkos::subview(res, Kokkos::ALL(), i);
-    mag_t resNorm = KAT::abs(KokkosBlas::dot(resCol, resCol));
+    auto resNorm = column_norm<mag_t, vec_t>(res, i);
     EXPECT_LT(resNorm, 0.5 * initial_norms[i]);
   }
 }
@@ -193,8 +204,8 @@ void test_point(int numRows, bool symmetric)
   using Handle = KokkosKernelsHandle<size_type, lno_t, scalar_t, typename device::execution_space, mem_space, mem_space>;
   using crsMat_t = KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type>;
   using vec_t = typename std::conditional<rank == 2,
-        Kokkos::View<scalar_t**, mem_space>,
-        Kokkos::View<scalar_t*, mem_space>>::type;
+        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, mem_space>,
+        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, mem_space>>::type;
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;
@@ -218,8 +229,8 @@ void test_cluster(int numRows, bool symmetric)
   using Handle = KokkosKernelsHandle<size_type, lno_t, scalar_t, typename device::execution_space, mem_space, mem_space>;
   using crsMat_t = KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type>;
   using vec_t = typename std::conditional<rank == 2,
-        Kokkos::View<scalar_t**, mem_space>,
-        Kokkos::View<scalar_t*, mem_space>>::type;
+        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, mem_space>,
+        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, mem_space>>::type;
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;
@@ -235,7 +246,7 @@ void test_cluster(int numRows, bool symmetric)
         for(int mixed_prec = 0; mixed_prec < 2; mixed_prec++)
         {
           Handle kh;
-          kh.create_gs_handle(apply_algo, CLUSTER_BALLOON, mixed_prec, clusterSize);
+          kh.create_gs_handle((CGSAlgorithm) apply_algo, CLUSTER_BALLOON, mixed_prec, clusterSize);
           run_and_verify<Handle, crsMat_t, vec_t>(&kh, A, x, y, symmetric, direction);
           kh.destroy_gs_handle();
         }
@@ -252,8 +263,8 @@ void test_classic(int numRows, bool symmetric)
   using Handle = KokkosKernelsHandle<size_type, lno_t, scalar_t, typename device::execution_space, mem_space, mem_space>;
   using crsMat_t = KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type>;
   using vec_t = typename std::conditional<rank == 2,
-        Kokkos::View<scalar_t**, mem_space>,
-        Kokkos::View<scalar_t*, mem_space>>::type;
+        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, mem_space>,
+        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, mem_space>>::type;
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;
@@ -278,8 +289,8 @@ void test_twostage(int numRows, bool symmetric)
   using Handle = KokkosKernelsHandle<size_type, lno_t, scalar_t, typename device::execution_space, mem_space, mem_space>;
   using crsMat_t = KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type>;
   using vec_t = typename std::conditional<rank == 2,
-        Kokkos::View<scalar_t**, mem_space>,
-        Kokkos::View<scalar_t*, mem_space>>::type;
+        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, mem_space>,
+        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, mem_space>>::type;
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;

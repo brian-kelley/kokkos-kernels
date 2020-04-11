@@ -501,8 +501,8 @@ namespace KokkosSparse{
 
   private:
 
-    CoarseningAlgorithm coarse_algo;
     CGSAlgorithm apply_algo;
+    CoarseningAlgorithm coarse_algo;
 
     //This is the user-configurable target cluster size.
     //Some clusters may be slightly larger or smaller,
@@ -534,7 +534,7 @@ namespace KokkosSparse{
 
     //Constructor for cluster-coloring based GS and SGS
     ClusterGaussSeidelHandle(CGSAlgorithm apply_algo_, CoarseningAlgorithm coarse_algo_, lno_t cluster_size_, bool force_single_precision = true)
-      : GSHandle(GS_CLUSTER), apply_algo(apply_algo_), coarse_algo(coarse_algo), cluster_size(cluster_size_),
+      : GSHandle(GS_CLUSTER), apply_algo(apply_algo_), coarse_algo(coarse_algo_), cluster_size(cluster_size_),
       cluster_xadj(), cluster_adj(), vert_clusters(), use_compact_scalars(force_single_precision)
     {}
 
@@ -642,6 +642,8 @@ namespace KokkosSparse{
     two_stage (true),
     num_inner_sweeps (1)
     {}
+
+    GSAlgorithm get_algorithm_type() const override {return GS_TWOSTAGE;}
 
     // Sweep direction
     void setSweepDirection (GSDirection direction_) {

@@ -569,10 +569,18 @@ public:
     this->is_owner_of_the_gs_handle = true;
     // ---------------------------------------- //
     // Two-stage Gauss-Seidel
-    if (gs_algorithm == KokkosSparse::GS_TWOSTAGE)
-      this->gsHandle = new TwoStageGaussSeidelHandleType();
-    else
-      this->gsHandle = new PointGaussSeidelHandleType(gs_algorithm);
+    switch(gs_algorithm)
+    {
+      case KokkosSparse::GS_POINT:
+        this->gsHandle = new PointGaussSeidelHandleType();
+        break;
+      case KokkosSparse::GS_TWOSTAGE:
+        this->gsHandle = new TwoStageGaussSeidelHandleType();
+        break;
+      case KokkosSparse::GS_CLUSTER:
+        throw std::logic_error("Algorithm GS_CLUSTER requires more parameters.\nPlease use other overload of create_gs_handle().");
+      default:;
+    }
   }
   void create_gs_handle(
       KokkosSparse::CGSAlgorithm apply_algo,
