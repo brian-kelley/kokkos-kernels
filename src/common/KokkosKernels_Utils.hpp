@@ -1703,7 +1703,7 @@ template<typename InPtr, typename T>
 KOKKOS_FORCEINLINE_FUNCTION T* alignPtr(InPtr p)
 {
   //by forcing inline, this branch can always be eliminated
-  if(alignof(decltype(*InPtr)) >= alignof(T))
+  if(alignof(decltype(*p)) >= alignof(T))
   {
     //InPtr already has sufficient alignment
     return (T*) p;
@@ -1741,7 +1741,7 @@ struct MemStream
 
   //Just allocate a single element (no dereference)
   template<typename T>
-  KOKKOS_INLINE_FUNCTION T allocSingle()
+  KOKKOS_INLINE_FUNCTION void allocSingle()
   {
     this->template getArray<T>(1);
   }
@@ -1767,7 +1767,7 @@ struct MemStream
   KOKKOS_INLINE_FUNCTION T* getArray(size_t n)
   {
     T* item = alignPtr<Unit*, T>(ptr);
-    ptr = static_cast<Unit*>(item + n);
+    ptr = reinterpret_cast<Unit*>(item + n);
     return item;
   }
 

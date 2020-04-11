@@ -55,12 +55,12 @@
 
 namespace KokkosSparse{
 
-  enum GSAlgorithm{GS_POINT, GS_CLUSTER, GS_TWOSTAGE};
+  enum GSAlgorithm{GS_DEFAULT, GS_POINT, GS_CLUSTER, GS_TWOSTAGE, NUM_GS_ALGORITHMS};
   enum GSDirection{GS_FORWARD, GS_BACKWARD, GS_SYMMETRIC};
   enum CoarseningAlgorithm{CLUSTER_DEFAULT, CLUSTER_MIS2, CLUSTER_BALLOON, NUM_CLUSTERING_ALGORITHMS};
   enum CGSAlgorithm{CGS_DEFAULT, CGS_RANGE, CGS_TEAM, CGS_PERMUTED_RANGE, CGS_PERMUTED_TEAM, CGS_SHARED};
 
-  inline const char* getClusterAlgoName(ClusteringAlgorithm ca)
+  inline const char* getCoarseningAlgoName(CoarseningAlgorithm ca)
   {
     switch(ca)
     {
@@ -71,6 +71,27 @@ namespace KokkosSparse{
       default:;
     }
     return "INVALID CLUSTERING ALGORITHM";
+  }
+
+  inline const char* getCGSAlgoName(CGSAlgorithm a)
+  {
+    switch(a)
+    {
+      case CGS_DEFAULT:
+        return "Default";
+      case CGS_RANGE:
+        return "Range";
+      case CGS_TEAM:
+        return "Team";
+      case CGS_PERMUTED_RANGE:
+        return "Permuted,Range";
+      case CGS_PERMUTED_TEAM:
+        return "Permuted,Team";
+      case CGS_SHARED:
+        return "Shared";
+      default:;
+    }
+    return "INVALID CGS ALGORITHM";
   }
 
   template <class size_type_, class lno_t_, class scalar_t_,
@@ -304,7 +325,7 @@ namespace KokkosSparse{
       owner_of_coloring(false)
     {}
 
-    GSAlgorithm get_algorithm_type() const {return GS_POINT;}
+    GSAlgorithm get_algorithm_type() const override {return GS_POINT;}
 
     bool is_owner_of_coloring() const override {return this->owner_of_coloring;}
     void set_owner_of_coloring(bool owner = true) {this->owner_of_coloring = owner;}
@@ -450,33 +471,38 @@ namespace KokkosSparse{
   : public GaussSeidelHandle<size_type_, lno_t_, scalar_t_, ExecutionSpace, TemporaryMemorySpace, PersistentMemorySpace>
   {
   public:
-    typedef GaussSeidelHandle<size_type_, lno_t_, scalar_t_, ExecutionSpace, TemporaryMemorySpace, PersistentMemorySpace> GSHandle;
-    typedef ExecutionSpace exec_space;
-    typedef TemporaryMemorySpace mem_space;
+    using GSHandle = GaussSeidelHandle<size_type_, lno_t_, scalar_t_, ExecutionSpace, TemporaryMemorySpace, PersistentMemorySpace>;
+    using exec_space = ExecutionSpace;
+    using mem_space = TemporaryMemorySpace;
 
-    typedef typename std::remove_const<size_type_>::type size_type;
+    using size_type = typename std::remove_const<size_type_>::type;
+    using lno_t = typename std::remove_const<lno_t_>::type;
+    using scalar_t = typename std::remove_const<scalar_t_>::type;
 
-    typedef typename std::remove_const<lno_t_>::type lno_t;
+    using offset_view_t = Kokkos::View<size_type*, mem_space>;
+    using host_offset_view_t = typename offset_view_t::HostMirror;
 
-    typedef typename std::remove_const<scalar_t_>::type scalar_t;
+    using ordinal_view_t = Kokkos::View<lno_t*, mem_space>;
+    using host_ordinal_view_t = typename ordinal_view_t::HostMirror;
 
-    typedef Kokkos::View<size_type*, mem_space> offset_view_t;
-    typedef typename offset_view_t::HostMirror host_offset_view_T;
+    using scalar_view_t = Kokkos::View<scalar_t*, mem_space> ;
+    using host_scalar_view_t = typename scalar_view_t::HostMirror;
 
-    typedef Kokkos::View<lno_t*, mem_space> ordinal_view_t;
-    typedef typename ordinal_view_t::HostMirror host_ordinal_view_t;
-
-    typedef Kokkos::View<scalar_t*, mem_space> scalar_view_t;
-    typedef typename scalar_view_t::HostMirror host_scalar_view_t;
+    //Const versions for viewing the input matrix
+    using const_rowmap_t = typename offset_view_t::const_type;
+    using const_entries_t = typename ordinal_view_t::const_type;
+    using const_values_t = typename scalar_view_t::const_type;
 
     //The memory unit type used for the compact memory stream
-    typedef int unit_t;
+    //This type's size should be as big as possible, while evenly dividing the sizes of both lno_t and scalar_t.
+    //Unless we start supporting fp16/bfloat or short as ordinal, 32 bits is the correct choice.
+    typedef int32_t unit_t;
     typedef Kokkos::View<unit_t*, mem_space, Kokkos::MemoryTraits<Kokkos::Aligned>> unit_view_t;
 
   private:
 
-    CoarseningAlgorithm coarseAlgo;
-    CGSAlgorithm applyAlgo;
+    CoarseningAlgorithm coarse_algo;
+    CGSAlgorithm apply_algo;
 
     //This is the user-configurable target cluster size.
     //Some clusters may be slightly larger or smaller,
@@ -507,13 +533,14 @@ namespace KokkosSparse{
      */
 
     //Constructor for cluster-coloring based GS and SGS
-    ClusterGaussSeidelHandle(ClusteringAlgorithm cluster_algo_, lno_t cluster_size_, bool force_single_precision = true)
-      : GSHandle(GS_CLUSTER), cluster_algo(cluster_algo_), cluster_size(cluster_size_),
+    ClusterGaussSeidelHandle(CGSAlgorithm apply_algo_, CoarseningAlgorithm coarse_algo_, lno_t cluster_size_, bool force_single_precision = true)
+      : GSHandle(GS_CLUSTER), apply_algo(apply_algo_), coarse_algo(coarse_algo), cluster_size(cluster_size_),
       cluster_xadj(), cluster_adj(), vert_clusters(), use_compact_scalars(force_single_precision)
     {}
 
     GSAlgorithm get_algorithm_type() const {return GS_CLUSTER;}
-    ClusteringAlgorithm get_clustering_algo() const {return this->cluster_algo;}
+    CGSAlgorithm get_cgs_algorithm() const {return this->apply_algo;}
+    CoarseningAlgorithm get_clustering_algo() const {return this->coarse_algo;}
 
     void set_cluster_size(lno_t cs) {this->cluster_size = cs;}
     lno_t get_cluster_size() const {return this->cluster_size;}

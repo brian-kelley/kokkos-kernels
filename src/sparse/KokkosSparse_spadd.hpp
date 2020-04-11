@@ -769,6 +769,26 @@ void spadd_numeric(KernelHandle* handle, const AScalar alpha, const AMatrix& A,
       C.graph.entries, C.values);
 }
 
+//Simple interface to compute matrix sum.
+template<typename crsMat_t>
+crsMat_t spadd(const crsMat_t& A, const crsMat_t& B,
+    bool bothSorted = false,
+    typename crsMat_t::value_type alpha = Kokkos::ArithTraits<typename crsMat_t::value_type>::one(),
+    typename crsMat_t::value_type beta = Kokkos::ArithTraits<typename crsMat_t::value_type>::one())
+{
+  using exec_space = typename crsMat_t::execution_space;
+  using mem_space = typename crsMat_t::memory_space;
+  using scalar_t = typename crsMat_t::value_type;
+  using size_type = typename crsMat_t::size_type;
+  using lno_t = typename crsMat_t::ordinal_type;
+  using KernelHandle = KokkosKernels::Experimental::KokkosKernelsHandle<size_type, lno_t, scalar_t, exec_space, mem_space, mem_space>;
+  KernelHandle kh;
+  kh.create_spadd_handle(bothSorted);
+  spadd_symbolic(&kh, A, B, C);
+  spadd_numeric(&kh, alpha, A, beta, B, C);
+  return C;
+}
+
 }  // namespace KokkosSparse
 
 #undef SAME_TYPE

@@ -68,24 +68,16 @@ namespace KokkosSparse
     public:
 
       using CGSHandle       = typename HandleType::ClusterGaussSeidelHandleType;
+      using GCHandle        = typename HandleType::GraphColoringHandleType;
 
       //Primitve types
-      using KAT             = Kokkos::Details::ArithTraits<scalar_t>;
       using size_type       = typename CGSHandle::size_type;
       using lno_t           = typename CGSHandle::lno_t;
       using scalar_t        = typename CGSHandle::scalar_t;
+      using KAT             = Kokkos::Details::ArithTraits<scalar_t>;
       using mag_t           = typename KAT::mag_type;
       using unit_t          = typename CGSHandle::unit_t;
       using color_t         = typename HandleType::GraphColoringHandleType::color_t;
-
-      //Views and containers
-      using offset_view_t   = typename CGSHandle::offset_view_t;
-      using ordinal_view_t  = typename CGSHandle::ordinal_view_t;
-      using scalar_view_t   = typename CGSHandle::scalar_view_t;
-      using mag_view_t      = Kokkos::View<mag_t*, mem_space>;
-      using color_view_t    = typename HandleType::GraphColoringHandleType::color_view_t;
-      using bitset_t        = Kokkos::Bitset<exec_space>;
-      using const_bitset_t  = Kokkos::ConstBitset<exec_space>;
 
       //Device types
       using exec_space      = typename CGSHandle::exec_space;
@@ -95,8 +87,31 @@ namespace KokkosSparse
       using team_policy_t   = Kokkos::TeamPolicy<exec_space>;
       using team_member_t   = typename team_policy_t::member_type;
 
+      //Views and containers
+      using offset_view_t       = typename CGSHandle::offset_view_t;
+      using ordinal_view_t      = typename CGSHandle::ordinal_view_t;
+      using scalar_view_t       = typename CGSHandle::scalar_view_t;
+      //the next 3 are const-valued views for viewing the input matrix
+      using const_rowmap_t      = typename offset_view_t::const_type;
+      using const_entries_t     = typename ordinal_view_t::const_type;
+      using const_values_t      = typename scalar_view_t::const_type;
+      using host_ordinal_view_t = typename CGSHandle::host_ordinal_view_t;
+      using unit_view_t         = typename CGSHandle::unit_view_t;
+      using mag_view_t          = Kokkos::View<mag_t*, mem_space>;
+      using color_view_t        = typename HandleType::GraphColoringHandleType::color_view_t;
+      using bitset_t            = Kokkos::Bitset<exec_space>;
+      using const_bitset_t      = Kokkos::ConstBitset<exec_space>;
+
     private:
       HandleType *handle;
+      //Whether the square part of the input matrix (1...#rows, 1...#rows) is symmetric
+      bool is_symmetric;
+
+      lno_t num_rows;
+      lno_t num_cols;
+      const_rowmap_t row_map;
+      const_entries_t entries;
+      const_values_t values;  //during symbolic, is empty
 
       //Get the specialized ClusterGaussSeidel handle from the main handle
       CGSHandle* get_gs_handle()
@@ -109,12 +124,6 @@ namespace KokkosSparse
         return gsHandle;
       }
 
-      lno_t num_rows;
-      lno_t num_cols;
-      in_rowmap_t row_map;
-      in_entries_t entries;
-      in_values_t values;
-
     public:
 
       /**
@@ -124,27 +133,25 @@ namespace KokkosSparse
       ClusterGaussSeidel(HandleType *handle_,
                   lno_t num_rows_,
                   lno_t num_cols_,
-                  const_lno_row_view_t row_map_,
-                  const_lno_nnz_view_t entries_,
-                  const_scalar_nnz_view_t values_):
+                  const const_rowmap_t& row_map_,
+                  const const_entries_t& entries_,
+                  const const_values_t& values_):
         handle(handle_), num_rows(num_rows_), num_cols(num_cols_),
         row_map(row_map_), entries(entries_), values(values_),
-        have_diagonal_given(false),
         is_symmetric(true)
       {}
 
       ClusterGaussSeidel(HandleType *handle_,
                   lno_t num_rows_,
                   lno_t num_cols_,
-                  const_lno_row_view_t row_map_,
-                  const_lno_nnz_view_t entries_,
+                  const const_rowmap_t& row_map_,
+                  const const_entries_t& entries_,
                   bool is_symmetric_ = true):
         handle(handle_),
         num_rows(num_rows_), num_cols(num_cols_),
         row_map(row_map_),
         entries(entries_),
         values(),
-        have_diagonal_given(false),
         is_symmetric(is_symmetric_)
       {}
 
@@ -154,31 +161,13 @@ namespace KokkosSparse
       ClusterGaussSeidel(HandleType *handle_,
                   lno_t num_rows_,
                   lno_t num_cols_,
-                  const_lno_row_view_t row_map_,
-                  const_lno_nnz_view_t entries_,
-                  const_scalar_nnz_view_t values_,
+                  const const_rowmap_t& row_map_,
+                  const const_entries_t& entries_,
+                  const const_values_t& values_,
                   bool is_symmetric_):
         handle(handle_),
         num_rows(num_rows_), num_cols(num_cols_),
         row_map(row_map_), entries(entries_), values(values_),
-        have_diagonal_given(false),
-        is_symmetric(is_symmetric_)
-      {}
-
-      ClusterGaussSeidel(
-                  HandleType *handle_,
-                  lno_t num_rows_,
-                  lno_t num_cols_,
-                  const_lno_row_view_t row_map_,
-                  const_lno_nnz_view_t entries_,
-                  const_scalar_nnz_view_t values_,
-                  const_scalar_nnz_view_t given_inverse_diagonal_,
-                  bool is_symmetric_):
-        handle(handle_),
-        num_rows(num_rows_), num_cols(num_cols_),
-        row_map(row_map_), entries(entries_), values(values_),
-        given_inverse_diagonal(given_inverse_diagonal_),
-        have_diagonal_given(true),
         is_symmetric(is_symmetric_)
       {}
 
@@ -188,11 +177,7 @@ namespace KokkosSparse
       //since that value is needed the entire time this is running.
       struct ClusterColorRelabelFunctor
       {
-        typedef typename HandleType::GraphColoringHandleType GCHandle;
-        typedef typename GCHandle::color_view_t ColorView;
-        typedef Kokkos::View<row_lno_t*, MyTempMemorySpace> RowmapView;
-        typedef Kokkos::View<lno_t*, MyTempMemorySpace> EntriesView;
-        ClusterColorRelabelFunctor(ColorView& colors_, color_t numClusterColors_, lno_t numClusters_)
+        ClusterColorRelabelFunctor(const color_view_t& colors_, color_t numClusterColors_, lno_t numClusters_)
           : colors(colors_), numClusterColors(numClusterColors_), numClusters(numClusters_)
         {}
 
@@ -204,7 +189,7 @@ namespace KokkosSparse
             colors(i) = numClusterColors;
         }
 
-        ColorView colors;
+        color_view_t colors;
         color_t numClusterColors;
         lno_t numClusters;
       };
@@ -213,10 +198,7 @@ namespace KokkosSparse
       //Call with a one-element range policy.
       struct RelabelLastColorFunctor
       {
-        typedef typename HandleType::GraphColoringHandleType GCHandle;
-        typedef typename GCHandle::color_view_t ColorView;
-
-        RelabelLastColorFunctor(ColorView& colors_, color_t numClusterColors_, lno_t numClusters_)
+        RelabelLastColorFunctor(const color_view_t& colors_, color_t numClusterColors_, lno_t numClusters_)
           : colors(colors_), numClusterColors(numClusterColors_), numClusters(numClusters_)
         {}
 
@@ -225,17 +207,14 @@ namespace KokkosSparse
           colors(numClusters - 1) = numClusterColors;
         }
         
-        ColorView colors;
+        color_view_t colors;
         color_t numClusterColors;
         lno_t numClusters;
       };
 
       struct ClusterToVertexColoring
       {
-        typedef typename HandleType::GraphColoringHandleType GCHandle;
-        typedef typename GCHandle::color_view_t ColorView;
-
-        ClusterToVertexColoring(ColorView& clusterColors_, ColorView& vertexColors_, lno_t numRows_, lno_t numClusters_, lno_t clusterSize_)
+        ClusterToVertexColoring(const color_view_t& clusterColors_, const color_view_t& vertexColors_, lno_t numRows_, lno_t numClusters_, lno_t clusterSize_)
           : clusterColors(clusterColors_), vertexColors(vertexColors_), numRows(numRows_), numClusters(numClusters_), clusterSize(clusterSize_)
         {}
 
@@ -246,31 +225,29 @@ namespace KokkosSparse
           vertexColors(i) = ((clusterColors(cluster) - 1) * clusterSize) + clusterOffset + 1;
         }
 
-        ColorView clusterColors;
-        ColorView vertexColors;
+        color_view_t clusterColors;
+        color_view_t vertexColors;
         lno_t numRows;
         lno_t numClusters;
         lno_t clusterSize;
       };
 
-      template<typename nnz_view_t>
       struct ClusterSizeFunctor
       {
-        ClusterSizeFunctor(nnz_view_t& counts_, nnz_view_t& vertClusters_)
+        ClusterSizeFunctor(const ordinal_view_t& counts_, const ordinal_view_t& vertClusters_)
           : counts(counts_), vertClusters(vertClusters_)
         {}
         KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
         {
           Kokkos::atomic_increment(&counts(vertClusters(i)));
         }
-        nnz_view_t counts;
-        nnz_view_t vertClusters;
+        ordinal_view_t counts;
+        ordinal_view_t vertClusters;
       };
 
-      template<typename nnz_view_t>
       struct FillClusterVertsFunctor
       {
-        FillClusterVertsFunctor(nnz_view_t& clusterOffsets_, nnz_view_t& clusterVerts_, nnz_view_t& vertClusters_, nnz_view_t& insertCounts_)
+        FillClusterVertsFunctor(const ordinal_view_t& clusterOffsets_, const ordinal_view_t& clusterVerts_, const ordinal_view_t& vertClusters_, const ordinal_view_t& insertCounts_)
           : clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_), vertClusters(vertClusters_), insertCounts(insertCounts_)
         {}
         KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
@@ -279,16 +256,15 @@ namespace KokkosSparse
           lno_t offset = clusterOffsets(cluster) + Kokkos::atomic_fetch_add(&insertCounts(cluster), 1);
           clusterVerts(offset) = i;
         }
-        nnz_view_t clusterOffsets;
-        nnz_view_t clusterVerts;
-        nnz_view_t vertClusters;
-        nnz_view_t insertCounts;
+        ordinal_view_t clusterOffsets;
+        ordinal_view_t clusterVerts;
+        ordinal_view_t vertClusters;
+        ordinal_view_t insertCounts;
       };
 
-      template<typename Rowmap, typename Colinds, typename nnz_view_t>
       struct BuildCrossClusterMaskFunctor
       {
-        BuildCrossClusterMaskFunctor(Rowmap& rowmap_, Colinds& colinds_, nnz_view_t& clusterOffsets_, nnz_view_t& clusterVerts_, nnz_view_t& vertClusters_, bitset_t& mask_)
+        BuildCrossClusterMaskFunctor(const const_rowmap_t& rowmap_, const const_entries_t& colinds_, const ordinal_view_t& clusterOffsets_, const ordinal_view_t& clusterVerts_, const ordinal_view_t& vertClusters_, const bitset_t& mask_)
           : numRows(rowmap_.extent(0) - 1), rowmap(rowmap_), colinds(colinds_), clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_), vertClusters(vertClusters_), mask(mask_)
         {}
 
@@ -386,19 +362,18 @@ namespace KokkosSparse
         }
 
         lno_t numRows;
-        Rowmap rowmap;
-        Colinds colinds;
-        nnz_view_t clusterOffsets;
-        nnz_view_t clusterVerts;
-        nnz_view_t vertClusters;
+        const_rowmap_t rowmap;
+        const_entries_t colinds;
+        ordinal_view_t clusterOffsets;
+        ordinal_view_t clusterVerts;
+        ordinal_view_t vertClusters;
         bitset_t mask;
       };
 
-      template<typename Rowmap, typename Colinds, typename nnz_view_t>
       struct FillClusterEntriesFunctor
       {
         FillClusterEntriesFunctor(
-            Rowmap& rowmap_, Colinds& colinds_, nnz_view_t& clusterRowmap_, nnz_view_t& clusterEntries_, nnz_view_t& clusterOffsets_, nnz_view_t& clusterVerts_, nnz_view_t& vertClusters_, bitset_t& edgeMask_)
+            const const_rowmap_t& rowmap_, const const_entries_t& colinds_, const ordinal_view_t& clusterRowmap_, const ordinal_view_t& clusterEntries_, const ordinal_view_t& clusterOffsets_, const ordinal_view_t& clusterVerts_, const ordinal_view_t& vertClusters_, const bitset_t& edgeMask_)
           : rowmap(rowmap_), colinds(colinds_), clusterRowmap(clusterRowmap_), clusterEntries(clusterEntries_), clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_), vertClusters(vertClusters_), edgeMask(edgeMask_)
         {}
         //Run this scan over entries in clusterVerts (reordered point rows)
@@ -445,22 +420,21 @@ namespace KokkosSparse
             clusterRowmap(clusterRowmap.extent(0) - 1) = lcount;
           }
         }
-        Rowmap rowmap;
-        Colinds colinds;
-        nnz_view_t clusterRowmap;
-        nnz_view_t clusterEntries;
-        nnz_view_t clusterOffsets;
-        nnz_view_t clusterVerts;
-        nnz_view_t vertClusters;
+        const_rowmap_t rowmap;
+        const_entries_t colinds;
+        ordinal_view_t clusterRowmap;
+        ordinal_view_t clusterEntries;
+        ordinal_view_t clusterOffsets;
+        ordinal_view_t clusterVerts;
+        ordinal_view_t vertClusters;
         const_bitset_t edgeMask;
       };
 
       //Assign cluster labels to vertices, given that the vertices are naturally
       //ordered so that contiguous groups of vertices form decent clusters.
-      template<typename View>
       struct NopVertClusteringFunctor
       {
-        NopVertClusteringFunctor(View& vertClusters_, lno_t clusterSize_) :
+        NopVertClusteringFunctor(const ordinal_view_t& vertClusters_, lno_t clusterSize_) :
             vertClusters(vertClusters_),
             numRows(vertClusters.extent(0)),
             clusterSize(clusterSize_)
@@ -469,15 +443,14 @@ namespace KokkosSparse
         {
           vertClusters(i) = i / clusterSize;
         }
-        View vertClusters;
+        ordinal_view_t vertClusters;
         lno_t numRows;
         lno_t clusterSize;
       };
 
-      template<typename View>
       struct ReorderedClusteringFunctor
       {
-        ReorderedClusteringFunctor(View& vertClusters_, View& ordering_, lno_t clusterSize_) :
+        ReorderedClusteringFunctor(const ordinal_view_t& vertClusters_, const ordinal_view_t& ordering_, lno_t clusterSize_) :
             vertClusters(vertClusters_),
             ordering(ordering_),
             numRows(vertClusters.extent(0)),
@@ -487,17 +460,14 @@ namespace KokkosSparse
         {
           vertClusters(i) = ordering(i) / clusterSize;
         }
-        View vertClusters;
-        View ordering;
+        ordinal_view_t vertClusters;
+        ordinal_view_t ordering;
         lno_t numRows;
         lno_t clusterSize;
       };
 
-
       void initialize_symbolic()
       {
-        using raw_rowmap_t = Kokkos::View<const size_type*, mem_space, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
-        using raw_colinds_t = Kokkos::View<const lno_t*, mem_space, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
         CGSHandle* gsHandle = get_gs_handle();
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
         Kokkos::Impl::Timer timer;
@@ -511,8 +481,12 @@ namespace KokkosSparse
         if(!this->is_symmetric)
         {
           KokkosKernels::Impl::symmetrize_graph_symbolic_hashmap
-            <in_rowmap_t, in_colinds_t, offset_view_t, ordinal_view_t, exec_space>
-            (num_rows, this->row_map, this->entries, sym_xadj, sym_adj);
+            <const_rowmap_t, const_entries_t, offset_view_t, ordinal_view_t, exec_space>
+            (this->num_rows, this->row_map, this->entries, sym_xadj, sym_adj);
+          //no longer need the original graph
+          //this is a mutable -> const conversion
+          this->row_map = sym_xadj;
+          this->entries = sym_adj;
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
           std::cout << "SYMMETRIZING TIME: " << timer.seconds() << std::endl;
           timer.reset();
@@ -520,21 +494,9 @@ namespace KokkosSparse
         }
         //Now that a symmetric graph is available, build the cluster graph (also symmetric)
         lno_t clusterSize = gsHandle->get_cluster_size();
-        lno_t numClusters = (num_rows + clusterSize - 1) / clusterSize;
+        lno_t numClusters = (this->num_rows + clusterSize - 1) / clusterSize;
         ordinal_view_t clusterOffsets("Cluster offsets", numClusters + 1);
-        ordinal_view_t clusterVerts("Cluster -> vertices", num_rows);
-        raw_rowmap_t raw_sym_xadj;
-        raw_colinds_t raw_sym_adj;
-        if(this->is_symmetric)
-        {
-          raw_sym_xadj = raw_rowmap_t(this->row_map.data(), this->row_map.extent(0));
-          raw_sym_adj = raw_colinds_t(this->entries.data(), this->entries.extent(0));
-        }
-        else
-        {
-          raw_sym_xadj = raw_rowmap_t(sym_xadj.data(), sym_xadj.extent(0));
-          raw_sym_adj = raw_colinds_t(sym_adj.data(), sym_adj.extent(0));
-        }
+        ordinal_view_t clusterVerts("Cluster -> vertices", this->num_rows);
         ordinal_view_t vertClusters;
         auto clusterAlgo = gsHandle->get_clustering_algo();
         if(clusterAlgo == CLUSTER_DEFAULT)
@@ -549,13 +511,14 @@ namespace KokkosSparse
           }
           case CLUSTER_BALLOON:
           {
-            BalloonClustering<HandleType, raw_rowmap_t, raw_colinds_t> balloon(num_rows, raw_sym_xadj, raw_sym_adj);
+            BalloonClustering<HandleType, const_rowmap_t, const_entries_t>
+              balloon(this->num_rows, this->row_map, this->entries);
             vertClusters = balloon.run(clusterSize);
             break;
           }
           case CLUSTER_DEFAULT:
           {
-            throw std::logic_error("Logic to choose default clustering algorithm is incorrect");
+            throw std::logic_error("Logic to choose default clustering algorithm never got called");
           }
           default:
             throw std::runtime_error("Clustering algo " + std::to_string((int) clusterAlgo) + " is not implemented");
@@ -565,11 +528,11 @@ namespace KokkosSparse
         timer.reset();
 #endif
         //Construct the cluster offset and vertex array. These allow fast iteration over all vertices in a given cluster.
-        Kokkos::parallel_for(range_policy_t(0, num_rows), ClusterSizeFunctor<nnz_view_t>(clusterOffsets, vertClusters));
-        KokkosKernels::Impl::exclusive_parallel_prefix_sum<nnz_view_t, MyExecSpace>(numClusters + 1, clusterOffsets);
+        Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterOffsets, vertClusters));
+        KokkosKernels::Impl::exclusive_parallel_prefix_sum<ordinal_view_t, exec_space>(numClusters + 1, clusterOffsets);
         {
-          nnz_view_t tempInsertCounts("Temporary cluster insert counts", numClusters);
-          Kokkos::parallel_for(range_policy_t(0, num_rows), FillClusterVertsFunctor<nnz_view_t>(clusterOffsets, clusterVerts, vertClusters, tempInsertCounts));
+          ordinal_view_t tempInsertCounts("Temporary cluster insert counts", numClusters);
+          Kokkos::parallel_for(range_policy_t(0, this->num_rows), FillClusterVertsFunctor(clusterOffsets, clusterVerts, vertClusters, tempInsertCounts));
         }
 #if KOKKOSSPARSE_IMPL_PRINTDEBUG
         {
@@ -589,21 +552,24 @@ namespace KokkosSparse
         }
 #endif
         //Determine the set of edges (in the point graph) that cross between two distinct clusters
-        int vectorSize = this->handle->get_suggested_vector_size(num_rows, raw_sym_adj.extent(0));
-        bitset_t crossClusterEdgeMask(raw_sym_adj.extent(0));
+        size_type nnz = this->entries.extent(0);
+        int vectorSize = this->handle->get_suggested_vector_size(this->num_rows, nnz);
+        bitset_t crossClusterEdgeMask(nnz);
         size_type numClusterEdges;
         {
-          BuildCrossClusterMaskFunctor<raw_rowmap_t, raw_colinds_t, ordinal_view_t>
-            buildEdgeMask(raw_sym_xadj, raw_sym_adj, clusterOffsets, clusterVerts, vertClusters, crossClusterEdgeMask);
+          BuildCrossClusterMaskFunctor buildEdgeMask(this->row_map, this->entries,
+              clusterOffsets, clusterVerts, vertClusters, crossClusterEdgeMask);
           int sharedPerTeam = buildEdgeMask.team_shmem_size(0); //using team-size = 0 for since no per-thread shared is used.
-          int teamSize = KokkosKernels::Impl::get_suggested_team_size<team_policy_t>(buildEdgeMask, vectorSize, sharedPerTeam, 0);
-          Kokkos::parallel_for(team_policy_t(numClusters, teamSize, vectorSize).set_scratch_size(0, Kokkos::PerTeam(sharedPerTeam)), buildEdgeMask);
+          int teamSize = KokkosKernels::Impl::get_suggested_team_size<team_policy_t>(
+              buildEdgeMask, vectorSize, sharedPerTeam, 0);
+          Kokkos::parallel_for(team_policy_t(numClusters, teamSize, vectorSize)
+              .set_scratch_size(0, Kokkos::PerTeam(sharedPerTeam)), buildEdgeMask);
           numClusterEdges = crossClusterEdgeMask.count();
         }
-        ordinal_view_t clusterRowmap = nnz_view_t("Cluster graph rowmap", numClusters + 1);
-        ordinal_view_t clusterEntries = nnz_view_t("Cluster graph colinds", numClusterEdges);
-        Kokkos::parallel_scan(range_policy_t(0, num_rows), FillClusterEntriesFunctor<raw_rowmap_t, raw_colinds_t, ordinal_view_t>
-            (raw_sym_xadj, raw_sym_adj, clusterRowmap, clusterEntries, clusterOffsets, clusterVerts, vertClusters, crossClusterEdgeMask));
+        ordinal_view_t clusterRowmap = ordinal_view_t(Kokkos::ViewAllocateWithoutInitializing("Cluster graph rowmap"), numClusters + 1);
+        ordinal_view_t clusterEntries = ordinal_view_t(Kokkos::ViewAllocateWithoutInitializing("Cluster graph colinds"), numClusterEdges);
+        Kokkos::parallel_scan(range_policy_t(0, this->num_rows), FillClusterEntriesFunctor
+            (this->row_map, this->entries, clusterRowmap, clusterEntries, clusterOffsets, clusterVerts, vertClusters, crossClusterEdgeMask));
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
         std::cout << "Building explicit cluster graph: " << timer.seconds() << '\n';
         timer.reset();
@@ -662,7 +628,7 @@ namespace KokkosSparse
         std::cout << "CREATE_REVERSE_MAP:" << timer.seconds() << std::endl;
         timer.reset();
 #endif
-        nnz_lno_persistent_work_host_view_t color_xadj_host(Kokkos::ViewAllocateWithoutInitializing("Color xadj"), color_xadj.extent(0));
+        host_ordinal_view_t color_xadj_host(Kokkos::ViewAllocateWithoutInitializing("Color xadj"), color_xadj.extent(0));
         Kokkos::deep_copy(color_xadj_host, color_xadj);
         gsHandle->set_color_xadj(color_xadj_host);
         gsHandle->set_color_adj(color_adj);
@@ -682,9 +648,9 @@ namespace KokkosSparse
             const ordinal_view_t& clusterOffsets_,
             const ordinal_view_t& clusterVerts_,
             const ordinal_view_t& vertClusters_,
-            const in_rowmap_t& rowmap_,
-            const in_entries_t& colinds_,
-            const in_values_t& values_,
+            const const_rowmap_t& rowmap_,
+            const const_entries_t& colinds_,
+            const const_values_t& values_,
             const lno_t& numRows_,
             const mag_view_t& weights_) :
           clusterOffsets(clusterOffsets_),
@@ -789,9 +755,9 @@ namespace KokkosSparse
         ordinal_view_t clusterVerts;
         ordinal_view_t vertClusters;
         //Input matrix
-        in_rowmap_t rowmap;
-        in_entries_t colinds;
-        in_values_t values;
+        const_rowmap_t rowmap;
+        const_entries_t colinds;
+        const_values_t values;
         lno_t numRows;
         //Intra-cluster absolute sum of edge weights, per vertex
         mag_view_t weights;
@@ -810,25 +776,25 @@ namespace KokkosSparse
 #endif
         size_type nnz = this->entries.extent(0);
 
-        int suggested_vector_size = this->handle->get_suggested_vector_size(num_rows, nnz);
+        int suggested_vector_size = this->handle->get_suggested_vector_size(this->num_rows, nnz);
         int suggested_team_size = this->handle->get_suggested_team_size(suggested_vector_size);
 
-        lno_t rows_per_team = this->handle->get_team_work_size(suggested_team_size, exec_space::concurrency(), num_rows);
+        lno_t rows_per_team = this->handle->get_team_work_size(suggested_team_size, exec_space::concurrency(), this->num_rows);
 
         //Get the clusters back from handle
         ordinal_view_t clusterOffsets = gsHandle->get_cluster_xadj();
         ordinal_view_t clusterVerts = gsHandle->get_cluster_adj();
         ordinal_view_t vertClusters = gsHandle->get_vert_clusters();
         lno_t numClusters = clusterOffsets.extent(0) - 1;
-        mag_view_t intraClusterWeights("Intra-cluster weights", num_rows);
-        if(num_rows)
+        mag_view_t intraClusterWeights("Intra-cluster weights", this->num_rows);
+        if(this->num_rows)
         {
-          FlowOrderFunctor fof(clusterOffsets, clusterVerts, vertClusters, this->row_map, this->entries, this->values, num_rows, intraClusterWeights);
+          FlowOrderFunctor fof(clusterOffsets, clusterVerts, vertClusters, this->row_map, this->entries, this->values, this->num_rows, intraClusterWeights);
           lno_t fofTeamSize;
           {
             team_policy_t temp(numClusters, Kokkos::AUTO(), suggested_vector_size);
             fofTeamSize = temp.template team_size_recommended<FlowOrderFunctor>(fof, Kokkos::ParallelForTag());
-            lno_t avgClusterSize = (num_rows + numClusters - 1) / numClusters;
+            lno_t avgClusterSize = (this->num_rows + numClusters - 1) / numClusters;
             if(fofTeamSize > avgClusterSize)
               fofTeamSize = avgClusterSize;
           }
@@ -838,15 +804,15 @@ namespace KokkosSparse
         offset_view_t streamOffsets(Kokkos::ViewAllocateWithoutInitializing("Matrix stream cluster offsets"), numClusters + 1);
         if(gsHandle->using_compact_scalars())
         {
-          using Compression = ClusterCompression<true, HandleType, in_rowmap_t, in_entries_t, in_values_t, unit_t>;
-          Kokkos::parallel_for(range_policy_t(0, numClusters), Compression::CompressedSizeFunctor(
+          using Compression = ClusterCompression<true, CGSHandle>;
+          Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::CompressedSizeFunctor(
                 this->row_map, this->entries, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), streamOffsets));
           KokkosKernels::Impl::kk_exclusive_parallel_prefix_sum<offset_view_t, exec_space>(numClusters + 1, streamOffsets);
         }
         else
         {
-          using Compression = ClusterCompression<false, HandleType, in_rowmap_t, in_entries_t, in_values_t, unit_t>;
-          Kokkos::parallel_for(range_policy_t(0, numClusters), Compression::CompressedSizeFunctor(
+          using Compression = ClusterCompression<false, CGSHandle>;
+          Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::CompressedSizeFunctor(
                 this->row_map, this->entries, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), streamOffsets));
           KokkosKernels::Impl::kk_exclusive_parallel_prefix_sum<offset_view_t, exec_space>(numClusters + 1, streamOffsets);
         }
@@ -855,14 +821,14 @@ namespace KokkosSparse
         unit_view_t streamData(Kokkos::ViewAllocateWithoutInitializing("Matrix stream data"), compressedSizeHost());
         if(gsHandle->using_compact_scalars())
         {
-          using Compression = ClusterCompression<true, HandleType, in_rowmap_t, in_entries_t, in_values_t, unit_t>;
-          Kokkos::parallel_for(range_policy_t(0, numClusters), Compression::CompressFunctor(
+          using Compression = ClusterCompression<true, CGSHandle>;
+          Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::CompressFunctor(
                 this->row_map, this->entries, this->values, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), streamOffsets, streamData));
         }
         else
         {
-          using Compression = ClusterCompression<false, HandleType, in_rowmap_t, in_entries_t, in_values_t, unit_t>;
-          Kokkos::parallel_for(range_policy_t(0, numClusters), Compression::CompressFunctor(
+          using Compression = ClusterCompression<false, CGSHandle>;
+          Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::CompressFunctor(
                 this->row_map, this->entries, this->values, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), streamOffsets, streamData));
         }
         //Store compressed format in handle
@@ -875,25 +841,32 @@ namespace KokkosSparse
 #endif
       }
 
-      //Non-permute apply using range policy
+      //Non-permuted forward apply using range policy
       template<typename CompressionApply>
-      void applyColorSetRange(
+      void applyRange(
+          color_t numColors, const host_ordinal_view_t& colorOffsets,
           const offset_view_t& streamOffsets, const unit_view_t& streamData,
           const typename CompressionApply::X_t& x,
           const typename CompressionApply::Y_t& y,
-          lno_t colorSetBegin, lno_t colorSetEnd)
+          bool isForward,
+          scalar_t omega)
       {
-        Kokkos::parallel_for(range_policy_t(colorSetBegin, colorSetEnd),
-            typename CompressionApply::ApplyFunctor(streamOffsets, streamData, x, y, this->omega));
+        for(color_t i = 0; i < numColors; i++)
+        {
+          color_t c = isForward ? i : (numColors - 1 - i);
+          Kokkos::parallel_for(
+              range_policy_t(colorOffsets(c), colorOffsets(c + 1)),
+              typename CompressionApply::ApplyFunctor(streamOffsets, streamData, x, y, omega));
+        }
       }
 
-      template <typename x_value_array_type, typename y_value_array_type>
+      template <typename X_t, typename Y_t>
       void apply(
-          x_value_array_type x_lhs_output_vec,
-          y_value_array_type y_rhs_input_vec,
+          X_t x,
+          Y_t y,
           bool init_zero_x_vector = false,
           int numIter = 1,
-          nnz_scalar_t omega = Kokkos::Details::ArithTraits<scalar_t>::one(),
+          scalar_t omega = KAT::one(),
           bool apply_forward = true,
           bool apply_backward = true,
           bool update_y_vector = true)
@@ -901,151 +874,65 @@ namespace KokkosSparse
         auto gsHandle = get_gs_handle();
 
         size_type nnz = entries.extent(0);
-        ordinal_view_t color_adj = gsHandle->get_color_adj();
         host_ordinal_view_t h_color_xadj = gsHandle->get_color_xadj();
 
         color_t numColors = gsHandle->get_num_colors();
 
         //TODO: for permuted X/Y algorithms, do the permutations here.
         //If zeroing out X, only need to do that to the permuted version, not the original
-        if(init_zero_x_vector){
-          KokkosKernels::Impl::zero_vector<x_value_array_type, exec_space>(num_cols, x_lhs_output_vec);
-        }
+        Kokkos::deep_copy(x, KAT::zero());
 
         if(update_y_vector)
         {
           //TODO: permute
         }
-        //TODO: figure out if this is correct heuristic for team dimensions
+        //TODO: figure out if this is the best heuristic for team dimensions
 /*
-        int suggested_vector_size = this->handle->get_suggested_vector_size(num_rows, nnz);
+        int suggested_vector_size = this->handle->get_suggested_vector_size(this->num_rows, nnz);
         int suggested_team_size = this->handle->get_suggested_team_size(suggested_vector_size);
 
-          lno_t rows_per_team = this->handle->get_team_work_size(suggested_team_size, MyExecSpace::concurrency(), num_rows);
+          lno_t rows_per_team = this->handle->get_team_work_size(suggested_team_size, MyExecSpace::concurrency(), this->num_rows);
           //Get clusters per team. Round down to favor finer granularity, since this is sensitive to load imbalance
           lno_t clusters_per_team = rows_per_team / gsHandle->get_cluster_size();
           if(clusters_per_team == 0)
             clusters_per_team = 1;
         */
+
+        auto streamOffsets = gsHandle->get_stream_offsets();
+        auto streamData = gsHandle->get_stream_data();
         
-        if(gsHandle->using_compact_scalars())
+        for(int iter = 0; iter < numIter; iter++)
         {
-          using 
-        }
-        else
-        {
-        }
-
-template <bool compactScalar, typename HandleType, typename rowmap_t, typename entries_t, typename values_t, typename X_t, typename Y_t>
-struct CompressedClusterApply
-        if (apply_forward)
-        {
-          gs._is_backward = false;
-          for (color_t i = 0; i < numColors; ++i){
-            lno_t color_index_begin = h_color_xadj(i);
-            lno_t color_index_end = h_color_xadj(i + 1);
-            int overall_work = color_index_end - color_index_begin;// /256 + 1;
-            gs._color_set_begin = color_index_begin;
-            gs._color_set_end = color_index_end;
-            Kokkos::parallel_for("KokkosSparse::GaussSeidel::Team_PSGS::forward",
-                                 team_policy_t((overall_work + gs._clusters_per_team - 1) / gs._clusters_per_team, team_size, vec_size),
-                                 gs);
-            MyExecSpace().fence();
-          }
-        }
-        if (apply_backward)
-        {
-          gs._is_backward = true;
-          if (numColors > 0)
-            for (color_t i = numColors - 1; ; --i) {
-              lno_t color_index_begin = h_color_xadj(i);
-              lno_t color_index_end = h_color_xadj(i + 1);
-              lno_t overall_work = color_index_end - color_index_begin;// /256 + 1;
-              gs._color_set_begin = color_index_begin;
-              gs._color_set_end = color_index_end;
-              Kokkos::parallel_for("KokkosSparse::GaussSeidel::Team_PSGS::forward",
-                                   team_policy_t((overall_work + gs._clusters_per_team - 1) / gs._clusters_per_team, team_size, vec_size),
-                                   gs);
-              MyExecSpace().fence();
-              if (i == 0){
-                break;
-              }
+          if(gsHandle->using_compact_scalars())
+          {
+            using CompApply = CompressedClusterApply<true, CGSHandle, X_t, Y_t>;
+            if(apply_forward)
+            {
+              this->template applyRange<CompApply>(
+                  numColors, h_color_xadj, streamOffsets, streamData, x, y, true, omega);
             }
-        }
-        MyExecSpace().fence();
-      }
-
-      template<typename TPSGS>
-      void IterativeTeamPSGS(
-          TPSGS& gs,
-          color_t numColors,
-          nnz_lno_persistent_work_host_view_t h_color_xadj,
-          lno_t team_size,
-          lno_t vec_size,
-          int num_iteration,
-          bool apply_forward,
-          bool apply_backward)
-      {
-        for (int i = 0; i < num_iteration; ++i)
-          this->DoTeamPSGS(gs, numColors, h_color_xadj, team_size, vec_size, apply_forward, apply_backward);
-      }
-
-      template<typename TPSGS>
-      void DoTeamPSGS(
-          TPSGS& gs, color_t numColors, nnz_lno_persistent_work_host_view_t h_color_xadj,
-          lno_t team_size, lno_t vec_size,
-          bool apply_forward,
-          bool apply_backward)
-      {
-      }
-
-      template<typename PSGS>
-      void IterativePSGS(
-          PSGS& gs,
-          color_t numColors,
-          nnz_lno_persistent_work_host_view_t h_color_xadj,
-          int num_iteration,
-          bool apply_forward,
-          bool apply_backward)
-      {
-        for (int i = 0; i < num_iteration; ++i){
-          this->DoPSGS(gs, numColors, h_color_xadj, apply_forward, apply_backward);
-        }
-      }
-
-      template<typename PSGS>
-      void DoPSGS(
-          PSGS &gs, color_t numColors, nnz_lno_persistent_work_host_view_t h_color_xadj,
-          bool apply_forward,
-          bool apply_backward)
-      {
-        if (apply_forward){
-          for (color_t i = 0; i < numColors; ++i){
-            lno_t color_index_begin = h_color_xadj(i);
-            lno_t color_index_end = h_color_xadj(i + 1);
-            gs._color_set_begin = color_index_begin;
-            gs._color_set_end = color_index_end;
-            Kokkos::parallel_for ("KokkosSparse::GaussSeidel::PSGS::forward",
-                Kokkos::RangePolicy<MyExecSpace, PSGS_ForwardTag>
-                (0, color_index_end - color_index_begin), gs);
-            MyExecSpace().fence();
+            if(apply_backward)
+            {
+              this->template applyRange<CompApply>(
+                  numColors, h_color_xadj, streamOffsets, streamData, x, y, false, omega);
+            }
           }
-        }
-        if (apply_backward && numColors){
-          for (size_type i = numColors - 1; ; --i){
-            lno_t color_index_begin = h_color_xadj(i);
-            lno_t color_index_end = h_color_xadj(i + 1);
-            gs._color_set_begin = color_index_begin;
-            gs._color_set_end = color_index_end;
-            Kokkos::parallel_for ("KokkosSparse::GaussSeidel::PSGS::backward",
-                Kokkos::RangePolicy<MyExecSpace, PSGS_BackwardTag>
-                (0, color_index_end - color_index_begin), gs);
-            MyExecSpace().fence();
-            if (i == 0){
-              break;
+          else
+          {
+            using CompApply = CompressedClusterApply<false, CGSHandle, X_t, Y_t>;
+            if(apply_forward)
+            {
+              this->template applyRange<CompApply>(
+                  numColors, h_color_xadj, streamOffsets, streamData, x, y, true, omega);
+            }
+            if(apply_backward)
+            {
+              this->template applyRange<CompApply>(
+                  numColors, h_color_xadj, streamOffsets, streamData, x, y, false, omega);
             }
           }
         }
+        exec_space().fence();
       }
     }; //class ClusterGaussSeidel
   } //namespace Impl

@@ -561,11 +561,12 @@ public:
       throw std::runtime_error("GaussSeidelHandle exists but is not set up for cluster-coloring GS.");
     return cgs;
   }
-  void create_gs_handle()
-  {
+  void create_gs_handle(KokkosSparse::GSAlgorithm gs_algorithm = KokkosSparse::GS_DEFAULT) {
+    // Use point multicolor as the default
+    if(gs_algorithm == KokkosSparse::GS_DEFAULT)
+      gs_algorithm = KokkosSparse::GS_POINT;
     this->destroy_gs_handle();
     this->is_owner_of_the_gs_handle = true;
-<<<<<<< 83c31bf54673e04bfb45cfa3d40cc5555c6c54be
     // ---------------------------------------- //
     // Two-stage Gauss-Seidel
     if (gs_algorithm == KokkosSparse::GS_TWOSTAGE)
@@ -573,6 +574,26 @@ public:
     else
       this->gsHandle = new PointGaussSeidelHandleType(gs_algorithm);
   }
+  void create_gs_handle(
+      KokkosSparse::CGSAlgorithm apply_algo,
+      KokkosSparse::CoarseningAlgorithm coarse_algo,
+      bool force_single_precision,
+      nnz_lno_t verts_per_cluster) {
+    this->destroy_gs_handle();
+    this->is_owner_of_the_gs_handle = true;
+    this->gsHandle = new ClusterGaussSeidelHandleType(apply_algo, coarse_algo, verts_per_cluster, force_single_precision);
+  }
+  void destroy_gs_handle(){
+    if (is_owner_of_the_gs_handle && this->gsHandle != NULL){
+      if (this->gsHandle->is_owner_of_coloring()){
+        this->destroy_graph_coloring_handle();
+      }
+      delete this->gsHandle;
+      this->gsHandle = NULL;
+    }
+  }
+
+
   // ---------------------------------------- //
   // Two-stage Gauss-Seidel handle
   TwoStageGaussSeidelHandleType *get_twostage_gs_handle() {
@@ -612,23 +633,6 @@ public:
     this->gsHandle = new PointGaussSeidelHandleType();
   }
 
-  void create_gs_handle(KokkosSparse::ClusteringAlgorithm clusterAlgo, nnz_lno_t hint_verts_per_cluster) {
-    this->destroy_gs_handle();
-    this->is_owner_of_the_gs_handle = true;
-    this->gsHandle = new ClusterGaussSeidelHandleType(clusterAlgo, hint_verts_per_cluster);
-  }
-  void destroy_gs_handle(){
-    if (is_owner_of_the_gs_handle && this->gsHandle != NULL){
-      if (this->gsHandle->is_owner_of_coloring()){
-        this->destroy_graph_coloring_handle();
-      }
-      delete this->gsHandle;
-      this->gsHandle = NULL;
-    }
-  }
-
-
-  // ---------------------------------------- //
   // Handles for Classical GS (inner SpTRSV)
   TwoStageGaussSeidelSPTRSVHandleType *get_gs_sptrsvL_handle(){
     return this->gs_sptrsvLHandle;

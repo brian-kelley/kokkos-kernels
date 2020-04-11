@@ -59,30 +59,36 @@ template<>
 struct get_compact_scalar<true, double>
 {
   using type = float;
-}
+};
 
 template<>
 struct get_compact_scalar<true, Kokkos::complex<double>>
 {
   using type = Kokkos::complex<float>;
-}
+};
 
-template <bool compactScalar, typename HandleType, typename rowmap_t, typename entries_t, typename values_t, typename unit_t>
+template <bool compactScalar, typename CGSHandle>
 struct ClusterCompression
 {
-  using mem_space = typename HandleType::HandlePersistentMemorySpace;
-  using size_type = typename rowmap_t::non_const_value_type;
-  using lno_t = typename entries_t::non_const_value_type;
-  using scalar_t = typename values_t::non_const_value_type;
+  using mem_space = typename CGSHandle::mem_space;
+  using size_type = typename CGSHandle::size_type;
+  using lno_t = typename CGSHandle::lno_t;
+  using scalar_t = typename CGSHandle::scalar_t;
   using comp_scalar_t = typename get_compact_scalar<compactScalar, scalar_t>::type;
-  using unit_view_t = Kokkos::View<unit_t*, mem_space, Kokkos::MemoryTraits<Kokkos::Aligned>>;
-  using offset_view_t = Kokkos::View<size_type*, mem_space>;
+  using unit_t = typename CGSHandle::unit_t;
+  using unit_view_t = typename CGSHandle::unit_view_t;
+  using offset_view_t = typename CGSHandle::offset_view_t; 
+  //the input matrix to compress is accessed through const-valued views
+  using rowmap_t = typename CGSHandle::const_rowmap_t;
+  using entries_t = typename CGSHandle::const_entries_t;
+  using values_t = typename CGSHandle::const_values_t;
+  //will pad each overall cluster to this alignment
   static constexpr size_t memStreamAlign = alignof(lno_t) > alignof(comp_scalar_t) ? alignof(lno_t) : alignof(comp_scalar_t);
-  //The sizes of both lno_t and comp_scalar_t should be multiples of int's size
+  //The sizes of both lno_t and comp_scalar_t should be multiples of unit_t's size
   static_assert(sizeof(lno_t) % sizeof(unit_t) == 0,
-      "Expect lno_t's size to be a multiple of unit's size.");
-  static_assert(sizeof(comp_scalar_t) % sizeof(int) == 0,
-      "Expect compressed scalar type's size to be a multiple of unit's size.");
+      "Expect lno_t's size to be a multiple of unit's size. Make ClusterGaussSeidelHandle::unit_t a smaller integer type.");
+  static_assert(sizeof(comp_scalar_t) % sizeof(unit_t) == 0,
+      "Expect compressed scalar type's size to be a multiple of unit's size. Make ClusterGaussSeidelHandle::unit_t a smaller integer type.");
 
   //Functor to compute the compressed size of each cluster
   //Also reorders clusters to be grouped by color
@@ -183,6 +189,7 @@ struct ClusterCompression
       lno_t* rowSizes = block.template getArray<lno_t>(clusterSize);
       for(lno_t i = 0; i < clusterSize; i++)
       {
+        lno_t row = clusterRows[i];
         int numOffDiag = 0;
         for(size_type j = rowmap(row); j < rowmap(row + 1); j++)
         {
@@ -231,28 +238,26 @@ struct ClusterCompression
     //output: the compact representation of all clusters
     unit_view_t compressed;
   };
-}
+};
 
-template <bool compactScalar, typename HandleType, typename rowmap_t, typename entries_t, typename values_t, typename X_t_, typename Y_t_>
+template <bool compactScalar, typename CGSHandle, typename X_t_, typename Y_t_>
 struct CompressedClusterApply
 {
-  using mem_space = typename HandleType::HandlePersistentMemorySpace;
-  using size_type = typename rowmap_t::non_const_value_type;
-  using lno_t = typename entries_t::non_const_value_type;
-  using scalar_t = typename values_t::non_const_value_type;
+  using mem_space = typename CGSHandle::mem_space;
+  using size_type = typename CGSHandle::size_type;
+  using lno_t = typename CGSHandle::lno_t;
+  using scalar_t = typename CGSHandle::scalar_t;
   using comp_scalar_t = typename get_compact_scalar<compactScalar, scalar_t>::type;
+  using unit_t = typename CGSHandle::unit_t;
+  using unit_view_t = typename CGSHandle::unit_view_t;
+  using offset_view_t = typename CGSHandle::offset_view_t; 
+  //the input matrix to compress is accessed through const-valued views
+  using rowmap_t = typename CGSHandle::const_rowmap_t;
+  using entries_t = typename CGSHandle::const_entries_t;
+  using values_t = typename CGSHandle::const_values_t;
   //These are just so that X_t and Y_T are available as member typedefs
   using X_t = X_t_;
   using Y_t = Y_t_;
-  //Compressed representation measures memory in terms of unit_t
-  //(the smaller of comp_scalar_t and lno_t)
-  //This has the benefit that aligning a unit_t
-  //to at least one of lno_t and comp_scalar_t (possibly both, if same size) is a no-op
-  using unit_t = std::conditional<
-    (sizeof(lno_t) < sizeof(comp_scalar_t)),
-    lno_t, comp_scalar_t>;
-  using unit_view_t = Kokkos::View<unit_t*, mem_space, Kokkos::MemoryTraits<Kokkos::Aligned>>;
-  using offset_view_t = Kokkos::View<size_type*, mem_space>;
 
   struct ApplyFunctor
   {
@@ -266,7 +271,7 @@ struct CompressedClusterApply
     void rowApply(comp_scalar_t invDiag, lno_t row, lno_t rowSize, lno_t* rowCols, comp_scalar_t* rowVals) const
     {
       lno_t num_vecs = x.extent(1);
-      constexpr colBatchSize = 8;
+      constexpr lno_t colBatchSize = 8;
       scalar_t accum[colBatchSize];
       scalar_t k = omega * invDiag;
       for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
@@ -287,7 +292,7 @@ struct CompressedClusterApply
         for(lno_t i = 0; i < batch; i++)
         {
           x(row, batch_start + i) *= (Kokkos::ArithTraits<scalar_t>::one() - omega);
-          x(row, batch_start + i) += k * sum[i];
+          x(row, batch_start + i) += k * accum[i];
         }
       }
     }

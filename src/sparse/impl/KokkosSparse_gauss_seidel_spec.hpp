@@ -321,7 +321,8 @@ namespace KokkosSparse {
         {
           using SGS = typename Impl::ClusterGaussSeidel
             <KernelHandle,a_size_view_t_, a_lno_view_t,a_scalar_view_t>;
-          SGS sgs(handle, num_rows, num_cols, row_map, entries, values, given_inverse_diagonal, is_graph_symmetric);
+          //CGS doesn't use the given inverse diagonal (currently)
+          SGS sgs(handle, num_rows, num_cols, row_map, entries, values, is_graph_symmetric);
           sgs.initialize_numeric();
         }
         else if(gsHandle->get_algorithm_type() == GS_TWOSTAGE)

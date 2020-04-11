@@ -57,11 +57,6 @@
 #include <complex>
 #include "KokkosSparse_gauss_seidel.hpp"
 
-#ifndef kokkos_complex_double
-#define kokkos_complex_double Kokkos::complex<double>
-#define kokkos_complex_float Kokkos::complex<float>
-#endif
-
 using namespace KokkosKernels;
 using namespace KokkosKernels::Experimental;
 using namespace KokkosSparse;
@@ -450,49 +445,49 @@ TEST_F( TestCategory, sparse ## _ ## block_gauss_seidel_rank2 ## _ ## SCALAR ## 
 #if (defined (KOKKOSKERNELS_INST_KOKKOS_COMPLEX_DOUBLE_) \
  && defined (KOKKOSKERNELS_INST_ORDINAL_INT) \
  && defined (KOKKOSKERNELS_INST_OFFSET_INT) ) || (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
- EXECUTE_TEST(kokkos_complex_double, int, int, TestExecSpace)
+ EXECUTE_TEST(Kokkos::complex<double>, int, int, TestExecSpace)
 #endif
 
 #if (defined (KOKKOSKERNELS_INST_KOKKOS_COMPLEX_DOUBLE_) \
  && defined (KOKKOSKERNELS_INST_ORDINAL_INT64_T) \
  && defined (KOKKOSKERNELS_INST_OFFSET_INT) ) || (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
- EXECUTE_TEST(kokkos_complex_double, int64_t, int, TestExecSpace)
+ EXECUTE_TEST(Kokkos::complex<double>, int64_t, int, TestExecSpace)
 #endif
 
 #if (defined (KOKKOSKERNELS_INST_KOKKOS_COMPLEX_DOUBLE_) \
  && defined (KOKKOSKERNELS_INST_ORDINAL_INT) \
  && defined (KOKKOSKERNELS_INST_OFFSET_SIZE_T) ) || (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
- EXECUTE_TEST(kokkos_complex_double, int, size_t, TestExecSpace)
+ EXECUTE_TEST(Kokkos::complex<double>, int, size_t, TestExecSpace)
 #endif
 
 #if (defined (KOKKOSKERNELS_INST_KOKKOS_COMPLEX_DOUBLE_) \
  && defined (KOKKOSKERNELS_INST_ORDINAL_INT64_T) \
  && defined (KOKKOSKERNELS_INST_OFFSET_SIZE_T) ) || (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
- EXECUTE_TEST(kokkos_complex_double, int64_t, size_t, TestExecSpace)
+ EXECUTE_TEST(Kokkos::complex<double>, int64_t, size_t, TestExecSpace)
 #endif
 
 #if (defined (KOKKOSKERNELS_INST_KOKKOS_COMPLEX_FLOAT_) \
  && defined (KOKKOSKERNELS_INST_ORDINAL_INT) \
  && defined (KOKKOSKERNELS_INST_OFFSET_INT) ) || (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
- EXECUTE_TEST(kokkos_complex_float, int, int, TestExecSpace)
+ EXECUTE_TEST(Kokkos::complex<float>, int, int, TestExecSpace)
 #endif
 
 #if (defined (KOKKOSKERNELS_INST_KOKKOS_COMPLEX_FLOAT_) \
  && defined (KOKKOSKERNELS_INST_ORDINAL_INT64_T) \
  && defined (KOKKOSKERNELS_INST_OFFSET_INT) ) || (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
- EXECUTE_TEST(kokkos_complex_float, int64_t, int, TestExecSpace)
+ EXECUTE_TEST(Kokkos::complex<float>, int64_t, int, TestExecSpace)
 #endif
 
 #if (defined (KOKKOSKERNELS_INST_KOKKOS_COMPLEX_FLOAT_) \
  && defined (KOKKOSKERNELS_INST_ORDINAL_INT) \
  && defined (KOKKOSKERNELS_INST_OFFSET_SIZE_T) ) || (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
- EXECUTE_TEST(kokkos_complex_float, int, size_t, TestExecSpace)
+ EXECUTE_TEST(Kokkos::complex<float>, int, size_t, TestExecSpace)
 #endif
 
 #if (defined (KOKKOSKERNELS_INST_KOKKOS_COMPLEX_FLOAT_) \
  && defined (KOKKOSKERNELS_INST_ORDINAL_INT64_T) \
  && defined (KOKKOSKERNELS_INST_OFFSET_SIZE_T) ) || (!defined(KOKKOSKERNELS_ETI_ONLY) && !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
- EXECUTE_TEST(kokkos_complex_float, int64_t, size_t, TestExecSpace)
+ EXECUTE_TEST(Kokkos::complex<float>, int64_t, size_t, TestExecSpace)
 #endif
 
 
