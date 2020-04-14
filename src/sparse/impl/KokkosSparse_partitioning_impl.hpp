@@ -73,6 +73,222 @@ struct IotaFunctor
   View v;
 };
 
+template<typename Ordinal, typename View, typename Rowmap>
+struct FindMinDegreeInLevel
+{
+  using Reducer = Kokkos::MinLoc<Ordinal, Ordinal>;
+  using Reduction = typename Reducer::value_type;
+
+  FindMinDegreeInLevel(const Rowmap& rowmap_, const View& vertexList_)
+    : rowmap(rowmap_), vertexList(vertexList_)
+  {}
+
+  KOKKOS_INLINE_FUNCTION void operator()(Ordinal i, Reduction& lmin) const
+  {
+    Ordinal v = vertexList(i);
+    Ordinal thisDegree = rowmap(v + 1) - rowmap(v);
+    if(thisDegree < lmin.val)
+    {
+      lmin.val = thisDegree;
+      lmin.loc = v;
+    }
+  }
+
+  Rowmap rowmap;
+  View vertexList;
+};
+
+
+//Breadth-first search applications:
+//  * single-source shortest path (unweighted only for now)
+//  * building level sets
+//  * computing RCM order
+//  * growing clusters from roots
+
+template <typename HandleType>
+struct BreadthFirstSearch
+{
+  using ExecSpace = typename HandleType::HandleExecSpace;
+  using MemSpace = typename HandleType::HandlePersistentMemorySpace;
+  using Offset = typename HandleType::size_type;
+  using Ordinal = typedef typename HandleType::nnz_lno_t;
+  using OrdinalView = Kokkos::View<Ordinal*, MemSpace>;
+  using OrdinalView2D = Kokkos::View<Ordinal**, Kokkos::LayoutLeft, MemSpace>;
+  using Rowmap = typename HandleType::lno_row_view_t;
+  using Colinds = typename HandleType::lno_nnz_view_t;
+
+  BreadthFirstSearch(const Rowmap& rowmap_, const Colinds& colinds_)
+    : rowmap(rowmap_), colinds(colinds_)
+  {
+    if(rowmap.extent(0) == 0)
+      nv = 0;
+    else
+      nv = rowmap.extent(0) - 1;
+  }
+
+  /*
+  template<typename Scalar, typename WeightView>
+  void sssp(Ordinal source, const OrdinalView& distances, const WeightView& weights)
+  {
+    //Pseudocode:
+    //  Run core BFS algorithm from source, also building frontiers one at a time using scan
+    //  Instead of including all unvisited neighbors in next frontier, just include all neighbors
+    //    But when including a neighbor, only include it if self->neighbor is the last edge on the best known path from source to neighbor.
+    //    Need to compute what that path cost would be and compare it to neighbor's current cost.
+    //TODO!
+  }
+  */
+
+  //Do breadth-first search from source, and store level sets as offsets and lists of vertices.
+  //Return the number of levels.
+  int levelSets(Ordinal source, const OrdinalView& levelOffsets, const OrdinalView& levelVerts)
+  {
+    //Pseudocode:
+    //  levelOffsets(i+1) = levelOffsets(i) + len(worklist)
+    //  append the current worklist to levelVerts (using a deep-copy from subview to subview)
+    //  Run a BFS step to advance to frontier i+1, and produce nextWorklist
+    //  worklist = nextWorklist
+  }
+
+  void rcm(const OrdinalView& ordering)
+  {
+    //Pseudocode:
+    //  Find pseudoperipheral
+    //  Construct level sets rooted at pseudoperipheral
+    //  In parallel, sort each level set ascending by degree
+    //  Then reverse the order
+  }
+
+  //The fundamental BFS functor: just builds worklist each iteration
+  template<typename Ordinal, typename Offset, typename Rowmap, typename Colinds, typename OrdinalView, typename Worklist>
+  struct BfsFunctor
+  {
+    KOKKOS_INLINE_FUNCTION void operator()(const Ordinal i, Ordinal& lcount, bool finalPass) const
+    {
+      //TODO: copy from level-set version when that is known to be correct
+    }
+
+    Ordinal nv;
+    Rowmap rowmap;
+    Colinds colinds;
+    OrdinalView pred;  //Initially all nv, pred(i) marks the predecessor used to bring vert i into a frontier.
+    Worklist worklist; //an nx2 array
+    int w;             //selects the current column of worklist
+  };
+
+  //The BFS functor, with explicit level sets
+  //Level set format is like CRS:
+  //  if v = levelVerts(j) is in level L, levelOffsets(L) <= j < levelOffsets(L+1)
+  //The root is the only vertex in level 0.
+  template<typename Ordinal, typename Offset, typename Rowmap, typename Colinds, typename OrdinalView, typename Worklist>
+  struct BfsLevelSetFunctor
+  {
+    KOKKOS_INLINE_FUNCTION void operator()(const Ordinal i, Ordinal& lcount, bool finalPass) const
+    {
+      Ordinal v = worklist(i, w);
+      Offset rowBegin = rowmap(v);
+      Offset rowEnd = rowmap(v + 1);
+      for(Offset j = rowBegin; j < rowEnd; j++)
+      {
+        Ordinal nei = colinds(j);
+        if(v == nei)
+          continue;
+        bool isPred = false;
+        if(pred(nei) == v)
+        {
+          lcount++;
+          isPred = true;
+        }
+        else if(pred(nei) == nv)
+        {
+          //This neighbor has not been assigned a predecessor yet,
+          //so attempt to use this vertex
+          if(nv == Kokkos::atomic_compare_exchange(&pred(nei), nv, v))
+          {
+            //cmp-xchg uniquely succeeded for this vertex, so v is predecssor to nei
+            lcount++;
+            isPred = true;
+          }
+        }
+        if(finalPass && isPred)
+        {
+          //v is the unique predecessor of nei, and v is in the current frontier.
+          //Therefore nei is in the next frontier, and lcount gives the index to insert it.
+          worklist(lcount, 1 - w) = nei;
+          levelVerts(
+        }
+      }
+      if(finalPass && lcount == nv)
+      {
+        //unique case: 
+      }
+    }
+
+    Ordinal nv;
+    Ordinal level;
+    Ordinal levelSetOffset; //This value is updated on host after each level set is constructed.
+    OrdinalView levelOffsets;
+    OrdinalView levelVerts;
+    Rowmap rowmap;
+    Colinds colinds;
+    OrdinalView pred;  //Initially all nv, pred(i) marks the predecessor used to bring vert i into a frontier.
+    Worklist worklist; //an nx2 array
+    int w;             //selects the current column of worklist
+  };
+
+  void expandClusters(const OrdinalView& vertClusters, const OrdinalView& distances, const OrdinalView& rootList)
+  {
+    OrdinalView2D worklist(Kokkos::ViewAllocateWithoutInitializing("Cluster BFS Worklist"), nv, 2);
+    //Initial worklist length is the root list
+    Ordinal worklistLen = rootList.extent(0);
+    Kokkos::deep_copy(Kokkos::subview(worklist, std::make_pair((Ordinal) 0, worklistLen), 0),
+        rootList);
+    //Create functor that 
+    asdf funct(...);
+    //Until worklist is empty...
+    while(worklistLen)
+    {
+      //Run a scan that populates the next worklist with the next frontier
+      //The final scan result is the length
+      Kokkos::parallel_scan(range_policy_t(0, worklistLen), funct, worklistLen);
+      //Flip worklist buffers
+      funct.w = 1 - funct.w;
+    }
+  }
+
+  nnz_lno_t pseudoperipheral(nnz_lno_t start)
+  {
+    OrdinalView levelOffsets("Level set offsets", nv);
+    OrdinalView levelVerts("Level set vertices", nv);
+    auto last2Offsets = Kokkos::subview(levelOffsets, std::make_pair(nlevels - 1, nlevels));
+    auto last2OffsetsHost = Kokkos::create_mirror_view(last2Offsets);
+    //Number of repetitions of BFS: Zoltan also does 2.
+    //Other algorithms like GPS and George-Liu do MANY more level set constructions
+    //than 2, but 2 is almost certainly good enough for here
+    const int numBFS = 2;
+    for(int iter; iter < numBFS; iter++)
+    {
+      //compute rooted level structure from start
+      int nlevels = levelSets(start, levelOffsets, levelVerts);
+      Kokkos::deep_copy(last2OffsetsHost, last2Offsets);
+      //get the range of the last level
+      typename Kokkos::MinLoc<Ordinal, Ordinal>::value_type minLocReduction;
+      Kokkos::parallel_reduce(
+          range_policy_t(last2OffsetsHost(0), last2OffsetsHost(1)),
+          FindMinDegreeInLevel<Ordinal, OrdinalView, Rowmap>(rowmap, levelVerts), minLocReduction);
+      //the "location" stored in the reduction is just a vertex, not an index into levelVerts
+      start = minLocReduction.loc;
+    }
+    return start;
+  }
+
+private:
+
+  Rowmap rowmap;
+  Colinds colinds;
+  Ordinal nv;
+};
+
 template <typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t>
 struct RCM
 {
@@ -142,120 +358,9 @@ struct RCM
     return maxDeg;
   }
 
-  //radix sort keys according to their corresponding values ascending.
-  //keys are NOT preserved since the use of this in RCM doesn't care about degree after sorting
-  template<typename size_type, typename KeyType, typename ValueType, typename IndexType, typename member_t>
-  KOKKOS_INLINE_FUNCTION static void
-  radixSortKeysAndValues(KeyType* keys, KeyType* keysAux, ValueType* values, ValueType* valuesAux, IndexType n, const member_t& mem)
-  {
-    if(n <= 1)
-      return;
-    //sort 4 bits at a time
-    KeyType mask = 0xF;
-    bool inAux = false;
-    //maskPos counts the low bit index of mask (0, 4, 8, ...)
-    IndexType maskPos = 0;
-    IndexType sortBits = 0;
-    KeyType minKey = Kokkos::ArithTraits<KeyType>::max();
-    KeyType maxKey = 0;
-    Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(mem, n),
-    [=](size_type i, KeyType& lminkey)
-    {
-      if(keys[i] < lminkey)
-        lminkey = keys[i];
-    }, Kokkos::Min<KeyType>(minKey));
-    Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(mem, n),
-    [=](size_type i, KeyType& lmaxkey)
-    {
-      if(keys[i] > lmaxkey)
-        lmaxkey = keys[i];
-    }, Kokkos::Max<KeyType>(maxKey));
-    //apply a bias so that key range always starts at 0
-    //also invert key values here for a descending sort
-    Kokkos::parallel_for(Kokkos::ThreadVectorRange(mem, n),
-    [=](size_type i)
-    {
-      keys[i] -= minKey;
-    });
-    KeyType upperBound = maxKey - minKey;
-    while(upperBound)
-    {
-      upperBound >>= 1;
-      sortBits++;
-    }
-    for(IndexType s = 0; s < (sortBits + 3) / 4; s++)
-    {
-      //Count the number of elements in each bucket
-      IndexType count[16] = {0};
-      IndexType offset[17];
-      if(!inAux)
-      {
-        for(IndexType i = 0; i < n; i++)
-        {
-          count[(keys[i] & mask) >> maskPos]++;
-        }
-      }
-      else
-      {
-        for(IndexType i = 0; i < n; i++)
-        {
-          count[(keysAux[i] & mask) >> maskPos]++;
-        }
-      }
-      offset[0] = 0;
-      //get offset as the prefix sum for count
-      for(IndexType i = 0; i < 16; i++)
-      {
-        offset[i + 1] = offset[i] + count[i];
-      }
-      //now for each element in [lo, hi), move it to its offset in the other buffer
-      //this branch should be ok because whichBuf is the same on all threads
-      if(!inAux)
-      {
-        //copy from *Over to *Aux
-        for(IndexType i = 0; i < n; i++)
-        {
-          IndexType bucket = (keys[i] & mask) >> maskPos;
-          keysAux[offset[bucket + 1] - count[bucket]] = keys[i];
-          valuesAux[offset[bucket + 1] - count[bucket]] = values[i];
-          count[bucket]--;
-        }
-      }
-      else
-      {
-        //copy from *Aux to *Over
-        for(IndexType i = 0; i < n; i++)
-        {
-          IndexType bucket = (keysAux[i] & mask) >> maskPos;
-          keys[offset[bucket + 1] - count[bucket]] = keysAux[i];
-          values[offset[bucket + 1] - count[bucket]] = valuesAux[i];
-          count[bucket]--;
-        }
-      }
-      inAux = !inAux;
-      mask = mask << 4;
-      maskPos += 4;
-    }
-    //move keys/values back from aux if they are currently in aux,
-    //and remove bias
-    if(inAux)
-    {
-      Kokkos::parallel_for(Kokkos::ThreadVectorRange(mem, n),
-      [=](size_type i)
-      {
-        //TODO: when everything works, is safe to remove next line
-        //since keys (BFS visit scores) will never be needed again
-        keys[i] = keysAux[i];
-        values[i] = valuesAux[i];
-      });
-    }
-  }
-
   //Functor that does breadth-first search on a sparse graph.
   struct BfsFunctor
   {
-    typedef Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryTraits<0>> WorkView;
-
     BfsFunctor(const WorkView& workQueue_, const WorkView& scratch_, const nnz_view_t& visit_, const const_lno_row_view_t& rowmap_, const const_lno_nnz_view_t& colinds_, const single_view_t& numLevels_, const nnz_view_t& threadNeighborCounts_, nnz_lno_t start_, nnz_lno_t numRows_)
       : workQueue(workQueue_), scratch(scratch_), visit(visit_), rowmap(rowmap_), colinds(colinds_), numLevels(numLevels_), threadNeighborCounts(threadNeighborCounts_), start(start_), numRows(numRows_)
     {}
@@ -448,7 +553,7 @@ struct RCM
         //the scores is approx. numRows * maxDegree, which should be representable
         nnz_lno_t workStart = tid * levelSize / nthreads;
         nnz_lno_t workEnd = (tid + 1) * levelSize / nthreads;
-        for(nnz_lno_t i = workStart; i < workEnd; i++)
+       for(nnz_lno_t i = workStart; i < workEnd; i++)
         {
           nnz_lno_t process = adj(levelOffset + i);
           nnz_lno_t minNeighbor = LNO_MAX;
@@ -623,6 +728,76 @@ struct RCM
 };
 
 template <typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t>
+struct BFS
+{
+  typedef typename HandleType::HandleExecSpace ExecSpace;
+  typedef typename HandleType::HandlePersistentMemorySpace MemorySpace;
+
+  typedef typename HandleType::size_type size_type;
+  typedef typename HandleType::nnz_lno_t nnz_lno_t;
+
+  typedef typename lno_row_view_t::value_type offset_t;
+
+  typedef typename HandleType::row_lno_temp_work_view_t row_lno_temp_work_view_t;
+  typedef typename HandleType::row_lno_persistent_work_view_t row_lno_persistent_work_view_t;
+  typedef typename HandleType::row_lno_persistent_work_host_view_t row_lno_persistent_work_host_view_t; //Host view type
+
+  typedef typename HandleType::nnz_lno_temp_work_view_t nnz_lno_temp_work_view_t;
+  typedef typename HandleType::nnz_lno_persistent_work_view_t nnz_lno_persistent_work_view_t;
+  typedef typename HandleType::nnz_lno_persistent_work_host_view_t nnz_lno_persistent_work_host_view_t; //Host view type
+
+  typedef nnz_lno_persistent_work_view_t nnz_view_t;
+  typedef Kokkos::Bitset<MyExecSpace> bitset_t;
+
+  typedef Kokkos::RangePolicy<MyExecSpace> range_policy_t;
+  typedef Kokkos::TeamPolicy<MyExecSpace> team_policy_t;
+  typedef typename team_policy_t::member_type team_member_t;
+
+  // TBD: MemoryUnmanaged should be the default for shared memory space.
+  using SharedStack = Kokkos::View<nnz_lno_t*, typename ExecSpace::scratch_memory_space, Kokkos::MemoryUnmanaged>;
+
+  //IMPORTANT: use this with vector length = 1 only, since each work item needs its own stack
+  KOKKOS_INLINE_FUNCTION void operator()(team_member_t t) const
+  {
+    SharedStack vertStack(t.thread_scratch(0), maxDepth);
+    SharedStack offsetStack(t.thread_scratch(0), maxDepth);
+    nnz_lno_t workID = t.league_rank() * t.team_size() + t.team_rank();
+    vertStack(0) = rootList(workID);
+    offsetStack(0) = 0;
+    //index of the stack top - always in [0, maxDepth)
+    int top = 0;
+    while(top >= 0)
+    {
+      //fetch the next neighbor of the stack top
+      nnz_lno_t v = vertStack(top);
+      if(rowmap(v + 1) - rowmap(v) == offsetStack(top))
+      {
+        //done with v, pop
+        top--;
+      }
+      nnz_lno_t nei = colinds(rowmap(v) + offsetStack(top)++);
+      if(nei == v)
+        continue;
+    }
+  }
+
+  size_t team_shmem_size(int teamSize) const
+  {
+    return 2 * maxDepth * teamSize;
+  }
+
+  int maxDepth;
+};
+
+template<typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t>
+void multiSourceDFS(
+    const lno_row_view_t& rowptrs, const lno_nnz_view_t& colinds,
+    const lno_nnz_view_t& vertClusters, const lno_nnz_view_t& rootList)
+{
+
+}
+
+template <typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t>
 struct BalloonClustering
 {
   typedef typename HandleType::HandleExecSpace MyExecSpace;
@@ -644,15 +819,13 @@ struct BalloonClustering
 
   typedef nnz_lno_persistent_work_view_t nnz_view_t;
   typedef Kokkos::View<float*, MyPersistentMemorySpace> float_view_t;
-  //typedef Kokkos::View<nnz_lno_t, MyTempMemorySpace, Kokkos::MemoryTraits<0>> single_view_t;
-  //typedef Kokkos::View<nnz_lno_t, Kokkos::HostSpace, Kokkos::MemoryTraits<0>> single_view_host_t;
 
   typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
   typedef Kokkos::Bitset<MyExecSpace> bitset_t;
 
-  typedef Kokkos::RangePolicy<MyExecSpace> range_policy_t ;
-  typedef Kokkos::TeamPolicy<MyExecSpace> team_policy_t ;
-  typedef typename team_policy_t::member_type team_member_t ;
+  typedef Kokkos::RangePolicy<MyExecSpace> range_policy_t;
+  typedef Kokkos::TeamPolicy<MyExecSpace> team_policy_t;
+  typedef typename team_policy_t::member_type team_member_t;
 
   BalloonClustering(size_type numRows_, const lno_row_view_t& rowmap_, const lno_nnz_view_t& colinds_)
     : numRows(numRows_), rowmap(rowmap_), colinds(colinds_), randPool(0xDEADBEEF)
@@ -666,6 +839,9 @@ struct BalloonClustering
   RandPool randPool;
 
   struct InitRootsTag {};   //select roots; set their distances to 0
+  struct InitialBFSTag {};  //do breadth-first search from roots. Only mark cluster verts if the distance-to-root improves.
+  struct BuildBFSListTag {};//par-scan that builds the worklist for next iteration of BFS
+  struct InitialDFSTag {};  //do depth-first search from roots, out to a fixed distance. Only mark cluster verts if the distance-to-root improves.
   struct RandomFillTag {};  //assign non-roots to random clusters, and assign large random distances
   struct UpdatePressureTag {};
   struct BalloonTag {};     //run the "balloon" procedure, where each cluster tries to inflate up to clusterSize
@@ -682,6 +858,20 @@ struct BalloonClustering
 
     //Run init version over the number of clusters.
     KOKKOS_INLINE_FUNCTION void operator()(const InitRootsTag, const nnz_lno_t i) const
+    {
+      nnz_lno_t root;
+      auto state = randPool.get_state();
+      do
+      {
+        root = state.rand(numRows);
+      }
+      while(!Kokkos::atomic_compare_exchange_strong(&vertClusters(root), numClusters, i));
+      randPool.free_state(state);
+      distances(root) = 0;
+      pressure(root) = 1;
+    }
+
+    KOKKOS_INLINE_FUNCTION void operator()(const InitialBFSTag, const nnz_lno_t i) const
     {
       nnz_lno_t root;
       auto state = randPool.get_state();

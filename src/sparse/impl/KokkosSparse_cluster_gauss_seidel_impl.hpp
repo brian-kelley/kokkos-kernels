@@ -813,6 +813,45 @@ namespace KokkosSparse{
           default:
             throw std::runtime_error("Clustering algo " + std::to_string((int) clusterAlgo) + " is not implemented");
         }
+
+        /* WORK IN PROGRESS: compute cluster quality metrics */
+        std::cout << "Cluster quality metrics:\n";
+        auto rowmapHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), raw_sym_xadj);
+        auto colindsHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), raw_sym_adj);
+        auto vertClustersHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), vertClusters);
+        std::vector<nnz_lno_t> clusterSizes(numClusters);
+        for(nnz_lno_t i = 0; i < num_rows; i++)
+        {
+          clusterSizes[vertClustersHost(i)]++;
+        }
+        double meanClusterSize = double(num_rows) / numClusters;
+        double stddev = 0;
+        for(nnz_lno_t i = 0; i < numClusters; i++)
+        {
+          double diff = meanClusterSize - clusterSizes[i];
+          stddev += diff * diff;
+        }
+        stddev = sqrt(stddev / numClusters);
+        std::cout << "  Cluster size stddev (lower = better): " << stddev << '\n';
+        //Compute proportion of (undirected) cut edges
+        size_type cutEdges = 0;
+        size_type totalEdges = 0;
+        for(nnz_lno_t row = 0; row < num_rows; row++)
+        {
+          for(size_type j = rowmapHost(row); j < rowmapHost(row + 1); j++)
+          {
+            nnz_lno_t col = colindsHost(j);
+            if(col < row)
+            {
+              if(vertClustersHost(row) != vertClustersHost(col))
+                cutEdges++;
+              totalEdges++;
+            }
+          }
+        }
+        std::cout << "  Cut edge proportion (lower = better): " << (double(cutEdges) / totalEdges) << '\n';
+        /* END WORK IN PROGRESS */
+
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
         std::cout << "Graph clustering: " << timer.seconds() << '\n';
         timer.reset();

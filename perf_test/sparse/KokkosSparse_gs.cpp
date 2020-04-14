@@ -74,7 +74,7 @@ using std::string;
 #endif
 
 template<typename size_type, typename lno_t, typename device_t>
-void runGS(string matrixPath, string devName, bool symmetric)
+void runGS(string matrixPath, string devName, bool symmetric, KokkosSparse::ClusteringAlgorithm clusterAlgo)
 {
   typedef double scalar_t;
   typedef typename device_t::execution_space exec_space;
@@ -139,10 +139,7 @@ void runGS(string matrixPath, string devName, bool symmetric)
     {
       std::cout << "\n\n***** RUNNING CLUSTER SGS, cluster size = " << clusterSize << "\n";
       //this constructor is for cluster (block) coloring
-      //kh.create_gs_handle(KokkosSparse::CLUSTER_CUTHILL_MCKEE, clusterSize);
-      //kh.create_gs_handle(KokkosSparse::CLUSTER_DEFAULT, clusterSize);
-      //kh.create_gs_handle(KokkosSparse::CLUSTER_DO_NOTHING, clusterSize);
-      kh.create_gs_handle(KokkosSparse::CLUSTER_BALLOON, clusterSize);
+      kh.create_gs_handle(clusterAlgo, clusterSize);
     }
     timer.reset();
     KokkosSparse::Experimental::gauss_seidel_symbolic//<KernelHandle, lno_view_t, lno_nnz_view_t>
@@ -187,8 +184,7 @@ void runGS(string matrixPath, string devName, bool symmetric)
 
 int main(int argc, char** argv)
 {
-  //Expect two args: matrix name and device flag.
-  if(argc != 3 && argc != 4)
+  if(argc == 1 || !strcmp(argv[1], "-h") || !strcmp(argv[1], "--help"))
   {
     std::cout << "Usage: ./sparse_gs matrix.mtx [--device] [--symmetric]\n\n";
     std::cout << "device can be \"serial\", \"openmp\", \"cuda\" or \"threads\".\n";
@@ -198,6 +194,7 @@ int main(int argc, char** argv)
   }
   string device;
   string matrixPath;
+  KokkosSparse::ClusteringAlgorithm algo = KokkosSparse::CLUSTER_DEFAULT;
   bool sym = false;
   for(int i = 1; i < argc; i++)
   {
@@ -211,27 +208,33 @@ int main(int argc, char** argv)
       device = "threads";
     else if(!strcmp(argv[i], "--cuda"))
       device = "cuda";
+    else if(!strcmp(argv[i], "--balloon"))
+      algo = KokkosSparse::CLUSTER_BALLOON;
+    else if(!strcmp(argv[i], "--cm") || !strcmp(argv[i], "--rcm"))
+      algo = KokkosSparse::CLUSTER_CUTHILL_MCKEE;
+    else if(!strcmp(argv[i], "--nop-clustering"))
+      algo = KokkosSparse::CLUSTER_DO_NOTHING;
     else
       matrixPath = argv[i];
   }
   //No device given, so use the default one
   if(!device.length())
   {
-    #ifdef KOKKOS_ENABLE_SERIAL
-    if(std::is_same<Kokkos::DefaultExecutionSpace, Kokkos::Serial>::value)
-      device = "serial";
+    #ifdef KOKKOS_ENABLE_CUDA
+    if(std::is_same<Kokkos::DefaultExecutionSpace, Kokkos::Cuda>::value)
+      device = "cuda";
     #endif
     #ifdef KOKKOS_ENABLE_OPENMP
     if(std::is_same<Kokkos::DefaultExecutionSpace, Kokkos::OpenMP>::value)
       device = "openmp";
     #endif
-    #ifdef KOKKOS_ENABLE_CUDA
-    if(std::is_same<Kokkos::DefaultExecutionSpace, Kokkos::Cuda>::value)
-      device = "cuda";
-    #endif
     #ifdef KOKKOS_ENABLE_THREADS
     if(std::is_same<Kokkos::DefaultExecutionSpace, Kokkos::Threads>::value)
       device = "threads";
+    #endif
+    #ifdef KOKKOS_ENABLE_SERIAL
+    if(std::is_same<Kokkos::DefaultExecutionSpace, Kokkos::Serial>::value)
+      device = "serial";
     #endif
   }
   Kokkos::initialize();
@@ -239,28 +242,28 @@ int main(int argc, char** argv)
   #ifdef KOKKOS_ENABLE_SERIAL
   if(device == "serial")
   {
-    runGS<default_size_type, default_lno_t, Kokkos::Serial>(matrixPath, device, sym);
+    runGS<default_size_type, default_lno_t, Kokkos::Serial>(matrixPath, device, sym, algo);
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_OPENMP
   if(device == "openmp")
   {
-    runGS<default_size_type, default_lno_t, Kokkos::OpenMP>(matrixPath, device, sym);
+    runGS<default_size_type, default_lno_t, Kokkos::OpenMP>(matrixPath, device, sym, algo);
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_THREADS
   if(device == "threads")
   {
-    runGS<default_size_type, default_lno_t, Kokkos::Threads>(matrixPath, device, sym);
+    runGS<default_size_type, default_lno_t, Kokkos::Threads>(matrixPath, device, sym, algo);
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_CUDA
   if(device == "cuda")
   {
-    runGS<default_size_type, default_lno_t, Kokkos::Cuda>(matrixPath, device, sym);
+    runGS<default_size_type, default_lno_t, Kokkos::Cuda>(matrixPath, device, sym, algo);
     run = true;
   }
   #endif
