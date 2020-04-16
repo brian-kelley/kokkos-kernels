@@ -104,14 +104,14 @@ namespace KokkosSparse
 
     private:
       HandleType *handle;
-      //Whether the square part of the input matrix (1...#rows, 1...#rows) is symmetric
-      bool is_symmetric;
 
       lno_t num_rows;
       lno_t num_cols;
       const_rowmap_t row_map;
       const_entries_t entries;
       const_values_t values;  //during symbolic, is empty
+      //Whether the square part of the input matrix (1...#rows, 1...#rows) is symmetric
+      bool is_symmetric;
 
       //Get the specialized ClusterGaussSeidel handle from the main handle
       CGSHandle* get_gs_handle()
@@ -592,7 +592,7 @@ namespace KokkosSparse
         }
 #endif
         //Get the coloring of the cluster graph.
-        typename HandleType::GraphColoringHandleType::color_view_t colors;
+        color_view_t colors;
         color_t numColors;
 #if KOKKOSSPARSE_IMPL_RUNSEQUENTIAL
         numColors = numClusters;
@@ -777,10 +777,9 @@ namespace KokkosSparse
         size_type nnz = this->entries.extent(0);
 
         int suggested_vector_size = this->handle->get_suggested_vector_size(this->num_rows, nnz);
-        int suggested_team_size = this->handle->get_suggested_team_size(suggested_vector_size);
+        //int suggested_team_size = this->handle->get_suggested_team_size(suggested_vector_size);
 
-        lno_t rows_per_team = this->handle->get_team_work_size(suggested_team_size, exec_space::concurrency(), this->num_rows);
-
+        //lno_t rows_per_team = this->handle->get_team_work_size(suggested_team_size, exec_space::concurrency(), this->num_rows);
         //Get the clusters back from handle
         ordinal_view_t clusterOffsets = gsHandle->get_cluster_xadj();
         ordinal_view_t clusterVerts = gsHandle->get_cluster_adj();
@@ -873,14 +872,15 @@ namespace KokkosSparse
       {
         auto gsHandle = get_gs_handle();
 
-        size_type nnz = entries.extent(0);
+        //size_type nnz = entries.extent(0);
         host_ordinal_view_t h_color_xadj = gsHandle->get_color_xadj();
 
         color_t numColors = gsHandle->get_num_colors();
 
         //TODO: for permuted X/Y algorithms, do the permutations here.
         //If zeroing out X, only need to do that to the permuted version, not the original
-        Kokkos::deep_copy(x, KAT::zero());
+        if(init_zero_x_vector)
+          Kokkos::deep_copy(x, KAT::zero());
 
         if(update_y_vector)
         {

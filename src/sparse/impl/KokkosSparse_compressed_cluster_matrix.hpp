@@ -140,7 +140,7 @@ struct ClusterCompression
       storageSize(dstC) = block.sizeInUnits(memStreamAlign);
       //one thread sets the size of the one-past-end cluster to 0, so that the counts
       //array doesn't need initialization. Do exclusive prefix sum like with CRS.
-      if(dstC == storageSize.extent(0) - 2)
+      if(dstC == lno_t(storageSize.extent(0) - 2))
         storageSize(storageSize.extent(0) - 1) = 0;
     }
 

@@ -68,7 +68,8 @@ using namespace KokkosSparse::Experimental;
 template<typename mag_t, typename vec_t>
 mag_t column_norm(const vec_t& vec, int col, typename std::enable_if<vec_t::rank == 1>::type* = nullptr)
 {
-  EXPECT_EQ(col, 0);
+  if(col != 0)
+    throw std::invalid_argument("Tried to ask for norm of column other than 0, in a rank-1 vector");
   return KokkosBlas::nrm2(vec);
 }
 
@@ -83,7 +84,8 @@ vec_t compute_residual(const crsMat_t& A, const vec_t& x, const vec_t& y, typena
 {
   auto one = Kokkos::ArithTraits<typename crsMat_t::value_type>::one();
   //Now compute the new residuals using SPMV
-  vec_t res(Kokkos::ViewAllocateWithoutInitializing("Residuals"), y.extent(0));
+  //vec_t res(Kokkos::ViewAllocateWithoutInitializing("Residuals"), y.extent(0));
+  vec_t res("Residuals", y.extent(0));
   Kokkos::deep_copy(res, y);
   KokkosSparse::spmv("N", one, A, x, -one, res);
   return res;
@@ -94,7 +96,8 @@ vec_t compute_residual(const crsMat_t& A, const vec_t& x, const vec_t& y, typena
 {
   auto one = Kokkos::ArithTraits<typename crsMat_t::value_type>::one();
   //Now compute the new residuals using SPMV
-  vec_t res(Kokkos::ViewAllocateWithoutInitializing("Residuals"), y.extent(0), y.extent(1));
+  //vec_t res(Kokkos::ViewAllocateWithoutInitializing("Residuals"), y.extent(0), y.extent(1));
+  vec_t res("Residuals", y.extent(0), y.extent(1));
   Kokkos::deep_copy(res, y);
   KokkosSparse::spmv("N", one, A, x, -one, res);
   return res;
@@ -151,7 +154,7 @@ void run_and_verify(
       (kh, numRows, numCols, A.graph.row_map, A.graph.entries, A.values, x, y, true, true, one, iters);
     break;
   default:
-    throw std::logic_error("Logic error in test: direction should be between 0 and 2 inclusive");
+    throw std::logic_error("Logic error in test: direction should be 0, 1 or 2");
   }
   //if zero rows, just getting through it
   //without crashing is success.
@@ -168,25 +171,44 @@ void run_and_verify(
   }
 }
 
+template<typename scalar_t>
+scalar_t getRandomScalar(typename Kokkos::ArithTraits<scalar_t>::mag_type max_value = 10.0)
+{
+  return max_value * rand() / RAND_MAX;
+}
+
+template<>
+Kokkos::complex<float> getRandomScalar<Kokkos::complex<float>>(float max_value)
+{
+  float real = max_value * rand() / RAND_MAX;
+  float imag = max_value * rand() / RAND_MAX;
+  return Kokkos::complex<float>(real, imag);
+}
+
+template<>
+Kokkos::complex<double> getRandomScalar<Kokkos::complex<double>>(double max_value)
+{
+  float real = max_value * rand() / RAND_MAX;
+  float imag = max_value * rand() / RAND_MAX;
+  return Kokkos::complex<double>(real, imag);
+}
+
 template<typename vec_t>
-vec_t create_x_vector(vec_t& kok_x, double max_value = 10.0) {
+void create_x_vector(const vec_t& kok_x, double max_value = 10.0) {
   typedef typename vec_t::value_type scalar_t;
   auto h_x = Kokkos::create_mirror_view (kok_x);
   for (size_t j = 0; j < h_x.extent(1); ++j){
     for (size_t i = 0; i < h_x.extent(0); ++i){
-      scalar_t r =
-          static_cast <scalar_t> (rand()) /
-          static_cast <scalar_t> (RAND_MAX / max_value);
-      h_x.access(i, j) = r;
+      h_x.access(i, j) = getRandomScalar<scalar_t>(max_value);
     }
   }
   Kokkos::deep_copy (kok_x, h_x);
-  return kok_x;
 }
 
 template <typename crsMat_t, typename vec_t>
 void create_y_vector(const crsMat_t& A, const vec_t& x, const vec_t& y){
-  KokkosSparse::spmv("N", 1, A, x, 0, y);
+  Kokkos::deep_copy(y, Kokkos::ArithTraits<typename vec_t::non_const_value_type>::one());
+  //KokkosSparse::spmv("N", 1, A, x, 0, y);
 }
 
 //Create a strictly diag dominant linear system, with x as
@@ -218,11 +240,15 @@ void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_
     A = KokkosSparse::Experimental::spadd(A, A_trans);
   }
   //Create random LHS vector (x)
-  x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols());
+  //x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols());
+  x = vec_t("X", A.numCols());
   create_x_vector(x);
   //do a SPMV to find the RHS vector (y)
-  y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols());
+  //y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols());
+  y = vec_t("Y", A.numCols());
   create_y_vector(A, x, y);
+  std::cout << "Here is Y (rank-1):\n";
+  KokkosKernels::Impl::print_1Dview(std::cout, y);
 }
 
 template<typename crsMat_t, typename vec_t>
@@ -248,11 +274,20 @@ void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_
     A = KokkosSparse::Experimental::spadd(A, A_trans);
   }
   //Create random LHS vector (x)
-  x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols(), num_vecs);
+  //x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols(), num_vecs);
+  x = vec_t("X", A.numCols(), num_vecs);
   create_x_vector(x);
   //do a SPMV to find the RHS vector (y)
-  y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols(), num_vecs);
+  //y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols(), num_vecs);
+  y = vec_t("Y", A.numCols(), num_vecs);
   create_y_vector(A, x, y);
+  std::cout << "Here is Y, col by col (rank-2):\n";
+  for(int i = 0; i < y.extent(1); i++)
+  {
+    KokkosKernels::Impl::print_1Dview(std::cout, Kokkos::subview(y, Kokkos::ALL(), i));
+    std::cout << '\n';
+  }
+
 }
 
 template <typename scalar_t, typename lno_t, typename size_type, typename device, int rank>
@@ -262,13 +297,15 @@ void test_point(int numRows, bool symmetric)
   using Handle = KokkosKernelsHandle<size_type, lno_t, scalar_t, typename device::execution_space, mem_space, mem_space>;
   using crsMat_t = KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type>;
   using vec_t = typename std::conditional<rank == 2,
-        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, mem_space>,
-        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, mem_space>>::type;
+        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device>,
+        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, device>>::type;
+  std::cout << "Testing point GS.";
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;
   vec_t y;
   create_problem(numRows, num_vecs, symmetric, A, x, y);
+  std::cout << "Created problem. A has " << A.nnz() << " entries, x is " << x.extent(0) << 'x' << x.extent(1) << ", and y is " << y.extent(0) << 'x' << y.extent(1) << '\n';
   //Just run for each apply direction
   //(there are no other options available for GS_POINT)
   for(int direction = 0; direction < 3; direction++)
@@ -287,8 +324,9 @@ void test_cluster(int numRows, bool symmetric)
   using Handle = KokkosKernelsHandle<size_type, lno_t, scalar_t, typename device::execution_space, mem_space, mem_space>;
   using crsMat_t = KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type>;
   using vec_t = typename std::conditional<rank == 2,
-        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, mem_space>,
-        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, mem_space>>::type;
+        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device>,
+        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, device>>::type;
+  std::cout << "Testing cluster GS.";
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;
@@ -321,8 +359,9 @@ void test_classic(int numRows, bool symmetric)
   using Handle = KokkosKernelsHandle<size_type, lno_t, scalar_t, typename device::execution_space, mem_space, mem_space>;
   using crsMat_t = KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type>;
   using vec_t = typename std::conditional<rank == 2,
-        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, mem_space>,
-        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, mem_space>>::type;
+        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device>,
+        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, device>>::type;
+  std::cout << "Testing classic GS.";
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;
@@ -347,8 +386,9 @@ void test_twostage(int numRows, bool symmetric)
   using Handle = KokkosKernelsHandle<size_type, lno_t, scalar_t, typename device::execution_space, mem_space, mem_space>;
   using crsMat_t = KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type>;
   using vec_t = typename std::conditional<rank == 2,
-        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, mem_space>,
-        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, mem_space>>::type;
+        Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device>,
+        Kokkos::View<scalar_t*, Kokkos::LayoutLeft, device>>::type;
+  std::cout << "Testing twostage GS.";
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;
