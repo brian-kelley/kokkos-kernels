@@ -364,45 +364,52 @@ namespace KokkosSparse {
       {
         Kokkos::Profiling::pushRegion("KokkosSparse::Impl::gauss_seidel_apply");
         auto gsHandle = handle->get_gs_handle();
-        if(gsHandle->get_algorithm_type() == GS_CLUSTER)
+        switch(gsHandle->get_algorithm_type())
         {
-          using SGS = typename Impl::ClusterGaussSeidel <KernelHandle, a_size_view_t_, a_lno_view_t, a_scalar_view_t>;
-          SGS sgs(handle, num_rows, num_cols, row_map, entries, values);
-          sgs.apply(
-                    x_lhs_output_vec,
-                    y_rhs_input_vec,
-                    init_zero_x_vector,
-                    numIter,
-                    omega,
-                    apply_forward,
-                    apply_backward, update_y_vector);
-        }
-        else if(gsHandle->get_algorithm_type() == GS_TWOSTAGE)
-        {
-          using SGS = typename Impl::TwostageGaussSeidel
-            <KernelHandle, a_size_view_t_, a_lno_view_t,a_scalar_view_t>;
-          SGS sgs(handle, num_rows, num_cols, row_map, entries, values);
-          sgs.apply(
-                    x_lhs_output_vec,
-                    y_rhs_input_vec,
-                    init_zero_x_vector,
-                    numIter,
-                    omega,
-                    apply_forward,
-                    apply_backward, update_y_vector);
-        }
-        else
-        {
-          using SGS = typename Impl::PointGaussSeidel <KernelHandle, a_size_view_t_, a_lno_view_t, a_scalar_view_t>;
-          SGS sgs(handle, num_rows, num_cols, row_map, entries, values);
-          sgs.apply(
-                    x_lhs_output_vec,
-                    y_rhs_input_vec,
-                    init_zero_x_vector,
-                    numIter,
-                    omega,
-                    apply_forward,
-                    apply_backward, update_y_vector);
+          case GS_POINT:
+          {
+            using SGS = typename Impl::PointGaussSeidel <KernelHandle, a_size_view_t_, a_lno_view_t, a_scalar_view_t>;
+            SGS sgs(handle, num_rows, num_cols, row_map, entries, values);
+            sgs.apply(
+                      x_lhs_output_vec,
+                      y_rhs_input_vec,
+                      init_zero_x_vector,
+                      numIter,
+                      omega,
+                      apply_forward,
+                      apply_backward, update_y_vector);
+            break;
+          }
+          case GS_CLUSTER:
+          {
+            using SGS = typename Impl::ClusterGaussSeidel <KernelHandle, a_size_view_t_, a_lno_view_t, a_scalar_view_t>;
+            SGS sgs(handle, num_rows, num_cols, row_map, entries, values);
+            sgs.apply(
+                      x_lhs_output_vec,
+                      y_rhs_input_vec,
+                      init_zero_x_vector,
+                      numIter,
+                      omega,
+                      apply_forward,
+                      apply_backward, update_y_vector);
+            break;
+          }
+          case GS_TWOSTAGE:
+          {
+            using SGS = typename Impl::TwostageGaussSeidel
+              <KernelHandle, a_size_view_t_, a_lno_view_t,a_scalar_view_t>;
+            SGS sgs(handle, num_rows, num_cols, row_map, entries, values);
+            sgs.apply(
+                      x_lhs_output_vec,
+                      y_rhs_input_vec,
+                      init_zero_x_vector,
+                      numIter,
+                      omega,
+                      apply_forward,
+                      apply_backward, update_y_vector);
+            break;
+          }
+          default: throw std::logic_error("GS apply: Handle is not set up for a valid algorithm.");
         }
         Kokkos::Profiling::popRegion();
       }

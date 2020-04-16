@@ -70,6 +70,9 @@ mag_t column_norm(const vec_t& vec, int col, typename std::enable_if<vec_t::rank
 {
   if(col != 0)
     throw std::invalid_argument("Tried to ask for norm of column other than 0, in a rank-1 vector");
+  std::cout << "computing norm of view at " << vec.data() << ": ";
+  KokkosKernels::Impl::print_1Dview(std::cout, vec);
+  std::cout << '\n';
   return KokkosBlas::nrm2(vec);
 }
 
@@ -142,14 +145,17 @@ void run_and_verify(
   const int iters = 2;
   switch (direction) {
   case 0:
+    std::cout << "\n\n\n*******\nRUNNING SYMMETRIC APPLY\n******\n";
     symmetric_gauss_seidel_apply
       (kh, numRows, numCols, A.graph.row_map, A.graph.entries, A.values, x, y, true, true, one, iters);
     break;
   case 1:
+    std::cout << "\n\n\n*******\nRUNNING FORWARd APPLY\n******\n";
     forward_sweep_gauss_seidel_apply
       (kh, numRows, numCols, A.graph.row_map, A.graph.entries, A.values, x, y, true, true, one, iters);
     break;
   case 2:
+    std::cout << "\n\n\n*******\nRUNNING BACKWARD APPLY\n******\n";
     backward_sweep_gauss_seidel_apply
       (kh, numRows, numCols, A.graph.row_map, A.graph.entries, A.values, x, y, true, true, one, iters);
     break;
@@ -239,6 +245,24 @@ void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_
     crsMat_t A_trans = KokkosKernels::Impl::transpose_matrix(A);
     A = KokkosSparse::Experimental::spadd(A, A_trans);
   }
+  std::cout << "Finding largest value in A.\n";
+  double biggest = 0;
+  int biggestRow = 0;
+  int biggestCol = 0;
+  for(int i = 0; i < A.numRows(); i++)
+  {
+    for(int j = A.graph.row_map(i); j < A.graph.row_map(i + 1); j++)
+    {
+      double thisval = std::abs<double>(A.values(j));
+      if(thisval > biggest)
+      {
+        biggest = thisval;
+        biggestRow = i;
+        biggestCol = A.graph.entries(j);
+      }
+    }
+  }
+  std::cout << "It's " << biggest << ", at (" << biggestRow << ", " << biggestCol << ")\n";
   //Create random LHS vector (x)
   //x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols());
   x = vec_t("X", A.numCols());
@@ -516,12 +540,15 @@ void test_balloon_clustering(lno_t numRows, size_type nnzPerRow, lno_t bandwidth
 }
 }
 
-#define EXECUTE_TEST(SCALAR, ORDINAL, OFFSET, DEVICE) \
-TEST_F( TestCategory, sparse ## _ ## gauss_seidel_point ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
-  GSTest::test_point<SCALAR, ORDINAL, OFFSET, DEVICE, 1>(2000, true); \
+/*
   GSTest::test_point<SCALAR, ORDINAL, OFFSET, DEVICE, 1>(2000, false); \
   GSTest::test_point<SCALAR, ORDINAL, OFFSET, DEVICE, 1>(0, false); \
   GSTest::test_point<SCALAR, ORDINAL, OFFSET, DEVICE, 2>(1000, false); \
+  */
+
+#define EXECUTE_TEST(SCALAR, ORDINAL, OFFSET, DEVICE) \
+TEST_F( TestCategory, sparse ## _ ## gauss_seidel_point ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
+  GSTest::test_point<SCALAR, ORDINAL, OFFSET, DEVICE, 1>(2000, true); \
 } \
 TEST_F( TestCategory, sparse ## _ ## gauss_seidel_cluster ## _ ## SCALAR ## _ ## ORDINAL ## _ ## OFFSET ## _ ## DEVICE ) { \
   GSTest::test_cluster<SCALAR, ORDINAL, OFFSET, DEVICE, 1>(2000, true); \
