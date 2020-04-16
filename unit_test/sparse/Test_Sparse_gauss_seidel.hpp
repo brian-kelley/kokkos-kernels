@@ -70,9 +70,6 @@ mag_t column_norm(const vec_t& vec, int col, typename std::enable_if<vec_t::rank
 {
   if(col != 0)
     throw std::invalid_argument("Tried to ask for norm of column other than 0, in a rank-1 vector");
-  std::cout << "computing norm of view at " << vec.data() << ": ";
-  KokkosKernels::Impl::print_1Dview(std::cout, vec);
-  std::cout << '\n';
   return KokkosBlas::nrm2(vec);
 }
 
@@ -145,17 +142,14 @@ void run_and_verify(
   const int iters = 2;
   switch (direction) {
   case 0:
-    std::cout << "\n\n\n*******\nRUNNING SYMMETRIC APPLY\n******\n";
     symmetric_gauss_seidel_apply
       (kh, numRows, numCols, A.graph.row_map, A.graph.entries, A.values, x, y, true, true, one, iters);
     break;
   case 1:
-    std::cout << "\n\n\n*******\nRUNNING FORWARd APPLY\n******\n";
     forward_sweep_gauss_seidel_apply
       (kh, numRows, numCols, A.graph.row_map, A.graph.entries, A.values, x, y, true, true, one, iters);
     break;
   case 2:
-    std::cout << "\n\n\n*******\nRUNNING BACKWARD APPLY\n******\n";
     backward_sweep_gauss_seidel_apply
       (kh, numRows, numCols, A.graph.row_map, A.graph.entries, A.values, x, y, true, true, one, iters);
     break;
@@ -245,34 +239,12 @@ void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_
     crsMat_t A_trans = KokkosKernels::Impl::transpose_matrix(A);
     A = KokkosSparse::Experimental::spadd(A, A_trans);
   }
-  std::cout << "Finding largest value in A.\n";
-  double biggest = 0;
-  int biggestRow = 0;
-  int biggestCol = 0;
-  for(int i = 0; i < A.numRows(); i++)
-  {
-    for(int j = A.graph.row_map(i); j < A.graph.row_map(i + 1); j++)
-    {
-      double thisval = std::abs<double>(A.values(j));
-      if(thisval > biggest)
-      {
-        biggest = thisval;
-        biggestRow = i;
-        biggestCol = A.graph.entries(j);
-      }
-    }
-  }
-  std::cout << "It's " << biggest << ", at (" << biggestRow << ", " << biggestCol << ")\n";
   //Create random LHS vector (x)
-  //x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols());
-  x = vec_t("X", A.numCols());
+  x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols());
   create_x_vector(x);
   //do a SPMV to find the RHS vector (y)
-  //y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols());
-  y = vec_t("Y", A.numCols());
+  y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols());
   create_y_vector(A, x, y);
-  std::cout << "Here is Y (rank-1):\n";
-  KokkosKernels::Impl::print_1Dview(std::cout, y);
 }
 
 template<typename crsMat_t, typename vec_t>
@@ -298,20 +270,11 @@ void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_
     A = KokkosSparse::Experimental::spadd(A, A_trans);
   }
   //Create random LHS vector (x)
-  //x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols(), num_vecs);
-  x = vec_t("X", A.numCols(), num_vecs);
+  x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols(), num_vecs);
   create_x_vector(x);
   //do a SPMV to find the RHS vector (y)
-  //y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols(), num_vecs);
-  y = vec_t("Y", A.numCols(), num_vecs);
+  y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols(), num_vecs);
   create_y_vector(A, x, y);
-  std::cout << "Here is Y, col by col (rank-2):\n";
-  for(int i = 0; i < y.extent(1); i++)
-  {
-    KokkosKernels::Impl::print_1Dview(std::cout, Kokkos::subview(y, Kokkos::ALL(), i));
-    std::cout << '\n';
-  }
-
 }
 
 template <typename scalar_t, typename lno_t, typename size_type, typename device, int rank>
@@ -323,13 +286,11 @@ void test_point(int numRows, bool symmetric)
   using vec_t = typename std::conditional<rank == 2,
         Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device>,
         Kokkos::View<scalar_t*, Kokkos::LayoutLeft, device>>::type;
-  std::cout << "Testing point GS.";
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;
   vec_t y;
   create_problem(numRows, num_vecs, symmetric, A, x, y);
-  std::cout << "Created problem. A has " << A.nnz() << " entries, x is " << x.extent(0) << 'x' << x.extent(1) << ", and y is " << y.extent(0) << 'x' << y.extent(1) << '\n';
   //Just run for each apply direction
   //(there are no other options available for GS_POINT)
   for(int direction = 0; direction < 3; direction++)
@@ -350,7 +311,6 @@ void test_cluster(int numRows, bool symmetric)
   using vec_t = typename std::conditional<rank == 2,
         Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device>,
         Kokkos::View<scalar_t*, Kokkos::LayoutLeft, device>>::type;
-  std::cout << "Testing cluster GS.";
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;
@@ -385,7 +345,6 @@ void test_classic(int numRows, bool symmetric)
   using vec_t = typename std::conditional<rank == 2,
         Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device>,
         Kokkos::View<scalar_t*, Kokkos::LayoutLeft, device>>::type;
-  std::cout << "Testing classic GS.";
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;
@@ -412,7 +371,6 @@ void test_twostage(int numRows, bool symmetric)
   using vec_t = typename std::conditional<rank == 2,
         Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device>,
         Kokkos::View<scalar_t*, Kokkos::LayoutLeft, device>>::type;
-  std::cout << "Testing twostage GS.";
   int num_vecs = (vec_t::rank == 2) ? 3 : 1;
   crsMat_t A;
   vec_t x;

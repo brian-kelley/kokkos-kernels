@@ -195,24 +195,7 @@ namespace KokkosSparse{
             nnz_scalar_t invDiagonalVal = _permuted_inverse_diagonal(ii);
             for(nnz_lno_t i = 0; i < this_batch_size; i++)
             {
-              nnz_scalar_t xOld = _Xvector(ii, batch_start + i);
               _Xvector(ii, batch_start + i) += omega * sum[i] * invDiagonalVal;
-              //std::cout << "Updated X row " << ii << " by " << omega * sum[i] * invDiagonalVal << '\n';
-              if(Kokkos::ArithTraits<nnz_scalar_t>::abs(omega * sum[i] * invDiagonalVal) > 1e20)
-              {
-                std::cout << "  BAD! Updated X by huge amount (from " << xOld << " to " << _Xvector(ii, batch_start + i) << ")!\n";
-                std::cout << "  Replaying the inner product.\n";
-                nnz_scalar_t testing = 0;
-                testing = _Yvector(ii, batch_start + i);
-                std::cout << "  After just getting Y: " << testing << '\n';
-                for (size_type adjind = row_begin; adjind < row_end; ++adjind){
-                  nnz_lno_t colIndex = _adj(adjind);
-                  nnz_scalar_t val = _adj_vals(adjind);
-                  testing -= val * _Xvector(colIndex, batch_start + i);
-                  std::cout << "  Added A(" << ii << ", " << colIndex << ") * X(" << colIndex << "): now it's " << testing << '\n';
-                }
-                std::cout << "Done replaying, final value is " << testing << '\n';
-              }
             }
           }
         }
@@ -888,18 +871,15 @@ namespace KokkosSparse{
 
               num_values_in_l2 = max_row_size - num_values_in_l1;
               level_2_mem = num_values_in_l2 * block_size  * sizeof(nnz_scalar_t);
-              //std::cout << "level_2_mem:" << level_2_mem << std::endl;
               size_t l2mem = 1;
               while(l2mem < level_2_mem){
                 l2mem *= 2;
               }
               level_2_mem  = l2mem;
-              //std::cout << "level_2_mem:" << level_2_mem << std::endl;
 
               size_type num_large_rows = 0;
               KokkosKernels::Impl::kk_reduce_numrows_larger_than_threshold<row_lno_persistent_work_view_t, MyExecSpace>(brows, permuted_xadj, num_values_in_l1, num_large_rows);
               num_big_rows = KOKKOSKERNELS_MACRO_MIN(num_large_rows, (size_type)(MyExecSpace::concurrency() / suggested_vector_size));
-              //std::cout << "num_big_rows:" << num_big_rows << std::endl;
 
 #if defined( KOKKOS_ENABLE_CUDA )
               if (ex_sp == KokkosKernels::Impl::Exec_CUDA) {
@@ -1415,7 +1395,6 @@ namespace KokkosSparse{
                        bool apply_backward = true,
                        bool update_y_vector = true)
       {
-        std::cout << "\n\n***\nHello from point apply.\n";
         auto gsHandle = get_gs_handle();
 
         auto Permuted_Xvector = gsHandle->get_permuted_x_vector();
@@ -1431,7 +1410,6 @@ namespace KokkosSparse{
         color_t numColors = gsHandle->get_num_colors();
 
         if (update_y_vector) {
-          std::cout << "Y vector changed since last apply, so re-permuting it.\n";
           KokkosKernels::Impl::permute_vector
             <y_value_array_type,
              scalar_persistent_work_view2d_t,
@@ -1444,11 +1422,9 @@ namespace KokkosSparse{
         }
         MyExecSpace().fence();
         if(init_zero_x_vector) {
-          std::cout << "Zeroing out X vector.\n";
           KokkosKernels::Impl::zero_vector<scalar_persistent_work_view2d_t, MyExecSpace>(num_cols, Permuted_Xvector);
         }
         else {
-          std::cout << "NOT zeroing out X vector, so must permute it instead\n";
           KokkosKernels::Impl::permute_vector
             <x_value_array_type, scalar_persistent_work_view2d_t, nnz_lno_persistent_work_view_t, MyExecSpace>(
                 num_cols,
@@ -1469,7 +1445,6 @@ namespace KokkosSparse{
 #endif
 
         if(!gsHandle->use_teams()) {
-          std::cout << "  Calling range-policy apply.\n";
           PSGS gs(newxadj, newadj, newadj_vals,
                   Permuted_Xvector, Permuted_Yvector, color_adj, omega, permuted_inverse_diagonal);
           this->IterativePSGS(
@@ -1481,7 +1456,6 @@ namespace KokkosSparse{
                               apply_backward);
         }
         else {
-          std::cout << "  Calling team-policy apply.\n";
           pool_memory_space m_space(0, 0, 0, KokkosKernels::Impl::ManyThread2OneChunk, false);
 
           Team_PSGS gs(newxadj, newadj, newadj_vals,
@@ -1496,8 +1470,6 @@ namespace KokkosSparse{
                               apply_backward);
         }
 
-        std::cout << "  After apply: permuted X is:\n";
-        KokkosKernels::Impl::print_1Dview(Kokkos::subview(Permuted_Xvector, Kokkos::ALL(), 0));
         KokkosKernels::Impl::permute_vector
           <scalar_persistent_work_view2d_t, x_value_array_type, nnz_lno_persistent_work_view_t, MyExecSpace>(
               num_cols,
@@ -1505,8 +1477,6 @@ namespace KokkosSparse{
               Permuted_Xvector,
               x_lhs_output_vec
               );
-        std::cout << "  After permuting back: X is:\n";
-        KokkosKernels::Impl::print_1Dview(Kokkos::subview(x_lhs_output_vec, Kokkos::ALL(), 0));
         MyExecSpace().fence();
 #if KOKKOSSPARSE_IMPL_PRINTDEBUG
         std::cout << "--point After X:";
@@ -1577,7 +1547,6 @@ namespace KokkosSparse{
         nnz_lno_t block_size = get_gs_handle()->get_block_size();
 
         if (apply_forward){
-          std::cout << "    Point GS running forward sweep.\n";
           gs.is_backward = false;
 
           for (color_t i = 0; i < numColors; ++i){
@@ -1606,7 +1575,6 @@ namespace KokkosSparse{
           }
         }
         if (apply_backward){
-          std::cout << "    Point GS running backward sweep.\n";
           gs.is_backward = true;
           if (numColors > 0)
             for (color_t i = numColors - 1;  ; --i){
@@ -1655,22 +1623,18 @@ namespace KokkosSparse{
                   bool apply_forward,
                   bool apply_backward){
         if (apply_forward){
-          std::cout << "  Doing forward apply (range-pol). #colors is " << numColors << '\n';
           for (color_t i = 0; i < numColors; ++i){
             nnz_lno_t color_index_begin = h_color_xadj(i);
             nnz_lno_t color_index_end = h_color_xadj(i + 1);
-            std::cout << "  Applying over color set " << i << ", ranging from " << color_index_begin << " to " << color_index_end << '\n';
             Kokkos::parallel_for ("KokkosSparse::GaussSeidel::PSGS::forward",
                                   my_exec_space (color_index_begin, color_index_end) , gs);
             MyExecSpace().fence();
           }
         }
         if (apply_backward && numColors){
-          std::cout << "  Doing backward apply (range-pol). #colors is " << numColors << '\n';
           for (color_t i = numColors - 1; ; --i){
             nnz_lno_t color_index_begin = h_color_xadj(i);
             nnz_lno_t color_index_end = h_color_xadj(i + 1);
-            std::cout << "  Applying over color set " << i << ", ranging from " << color_index_begin << " to " << color_index_end << '\n';
             Kokkos::parallel_for ("KokkosSparse::GaussSeidel::PSGS::backward",
                                   my_exec_space (color_index_begin, color_index_end), gs);
             MyExecSpace().fence();
