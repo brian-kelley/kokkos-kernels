@@ -477,7 +477,7 @@ void test_balloon_clustering(lno_t numRows, size_type nnzPerRow, lno_t bandwidth
   KokkosKernels::Impl::symmetrize_graph_symbolic_hashmap
     <const_lno_row_view_t, const_lno_nnz_view_t, lno_row_view_t, lno_nnz_view_t, typename device::execution_space>
     (numRows, A.graph.row_map, A.graph.entries, symRowmap, symEntries);
-  KokkosSparse::Impl::BalloonClustering<KernelHandle, lno_row_view_t, lno_nnz_view_t> balloon(numRows, symRowmap, symEntries);
+  KokkosSparse::Impl::BalloonClustering<KernelHandle, lno_row_view_t, lno_nnz_view_t, lno_nnz_view_t> balloon(numRows, symRowmap, symEntries);
   for(int clusterSize = 1; clusterSize <= numRows / 16; clusterSize = std::ceil(clusterSize * 1.3))
   {
     auto vertClusters = balloon.run(clusterSize);

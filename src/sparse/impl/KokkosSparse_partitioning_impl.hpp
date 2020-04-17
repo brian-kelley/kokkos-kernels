@@ -46,11 +46,11 @@
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Atomic.hpp>
 #include <impl/Kokkos_Timer.hpp>
-#include <Kokkos_Sort.hpp>
 #include <Kokkos_Random.hpp>
 #include <Kokkos_MemoryTraits.hpp>
 #include <Kokkos_Parallel_Reduce.hpp>
 #include "KokkosBlas1_fill.hpp"
+#include "KokkosKernels_Sorting.hpp"
 #include "KokkosGraph_Distance1Color.hpp"
 #include "KokkosKernels_Uniform_Initialized_MemoryPool.hpp"
 
@@ -74,7 +74,7 @@ struct IotaFunctor
   View v;
 };
 
-template <typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t>
+template <typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t, typename ordering_view_t>
 struct RCM
 {
   typedef typename HandleType::HandleExecSpace MyExecSpace;
@@ -121,113 +121,28 @@ struct RCM
   const_lno_row_view_t rowmap;
   const_lno_nnz_view_t colinds;
 
-  //radix sort keys according to their corresponding values ascending.
-  //keys are NOT preserved since the use of this in RCM doesn't care about degree after sorting
-  template<typename size_type, typename KeyType, typename ValueType, typename IndexType, typename member_t>
-  KOKKOS_INLINE_FUNCTION static void
-  radixSortKeysAndValues(KeyType* keys, KeyType* keysAux, ValueType* values, ValueType* valuesAux, IndexType n, const member_t& mem)
+  template<typename Rowmap>
+  struct MaxDegreeFunctor
   {
-    if(n <= 1)
-      return;
-    //sort 4 bits at a time
-    KeyType mask = 0xF;
-    bool inAux = false;
-    //maskPos counts the low bit index of mask (0, 4, 8, ...)
-    IndexType maskPos = 0;
-    IndexType sortBits = 0;
-    KeyType minKey = Kokkos::ArithTraits<KeyType>::max();
-    KeyType maxKey = 0;
-    Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(mem, n),
-    [=](size_type i, KeyType& lminkey)
+    typedef typename std::remove_cv<typename Rowmap::value_type>::type size_type;
+    MaxDegreeFunctor(Rowmap& rowmap_) : r(rowmap_) {}
+    KOKKOS_INLINE_FUNCTION void operator()(const size_type i, size_type& lmax) const
     {
-      if(keys[i] < lminkey)
-        lminkey = keys[i];
-    }, Kokkos::Min<KeyType>(minKey));
-    Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(mem, n),
-    [=](size_type i, KeyType& lmaxkey)
-    {
-      if(keys[i] > lmaxkey)
-        lmaxkey = keys[i];
-    }, Kokkos::Max<KeyType>(maxKey));
-    //apply a bias so that key range always starts at 0
-    //also invert key values here for a descending sort
-    Kokkos::parallel_for(Kokkos::ThreadVectorRange(mem, n),
-    [=](size_type i)
-    {
-      keys[i] -= minKey;
-    });
-    KeyType upperBound = maxKey - minKey;
-    while(upperBound)
-    {
-      upperBound >>= 1;
-      sortBits++;
+      size_type ideg = r(i + 1) - r(i);
+      if(ideg > lmax)
+        lmax = ideg;
     }
-    for(IndexType s = 0; s < (sortBits + 3) / 4; s++)
-    {
-      //Count the number of elements in each bucket
-      IndexType count[16] = {0};
-      IndexType offset[17];
-      if(!inAux)
-      {
-        for(IndexType i = 0; i < n; i++)
-        {
-          count[(keys[i] & mask) >> maskPos]++;
-        }
-      }
-      else
-      {
-        for(IndexType i = 0; i < n; i++)
-        {
-          count[(keysAux[i] & mask) >> maskPos]++;
-        }
-      }
-      offset[0] = 0;
-      //get offset as the prefix sum for count
-      for(IndexType i = 0; i < 16; i++)
-      {
-        offset[i + 1] = offset[i] + count[i];
-      }
-      //now for each element in [lo, hi), move it to its offset in the other buffer
-      //this branch should be ok because whichBuf is the same on all threads
-      if(!inAux)
-      {
-        //copy from *Over to *Aux
-        for(IndexType i = 0; i < n; i++)
-        {
-          IndexType bucket = (keys[i] & mask) >> maskPos;
-          keysAux[offset[bucket + 1] - count[bucket]] = keys[i];
-          valuesAux[offset[bucket + 1] - count[bucket]] = values[i];
-          count[bucket]--;
-        }
-      }
-      else
-      {
-        //copy from *Aux to *Over
-        for(IndexType i = 0; i < n; i++)
-        {
-          IndexType bucket = (keysAux[i] & mask) >> maskPos;
-          keys[offset[bucket + 1] - count[bucket]] = keysAux[i];
-          values[offset[bucket + 1] - count[bucket]] = valuesAux[i];
-          count[bucket]--;
-        }
-      }
-      inAux = !inAux;
-      mask = mask << 4;
-      maskPos += 4;
-    }
-    //move keys/values back from aux if they are currently in aux,
-    //and remove bias
-    if(inAux)
-    {
-      Kokkos::parallel_for(Kokkos::ThreadVectorRange(mem, n),
-      [=](size_type i)
-      {
-        //TODO: when everything works, is safe to remove next line
-        //since keys (BFS visit scores) will never be needed again
-        keys[i] = keysAux[i];
-        values[i] = valuesAux[i];
-      });
-    }
+    Rowmap r;
+  };
+
+  //simple parallel reduction to find max degree in graph
+  size_type find_max_degree()
+  {
+    size_type maxDeg = 0;
+    Kokkos::parallel_reduce(range_policy_t(0, numRows), MaxDegreeFunctor<const_lno_row_view_t>(rowmap), Kokkos::Max<size_type>(maxDeg));
+    //max degree should be computed as an offset_t,
+    //but must fit in a nnz_lno_t
+    return maxDeg;
   }
 
   //Functor that does breadth-first search on a sparse graph.
@@ -235,7 +150,7 @@ struct RCM
   {
     typedef Kokkos::View<nnz_lno_t**, MyTempMemorySpace, Kokkos::MemoryTraits<0>> WorkView;
 
-    BfsFunctor(const WorkView& workQueue_, const WorkView& scratch_, const nnz_view_t& visit_, const const_lno_row_view_t& rowmap_, const const_lno_nnz_view_t& colinds_, const single_view_t& numLevels_, const nnz_view_t& threadNeighborCounts_, nnz_lno_t start_, nnz_lno_t numRows_)
+    BfsFunctor(const WorkView& workQueue_, const WorkView& scratch_, const ordering_view_t& visit_, const const_lno_row_view_t& rowmap_, const const_lno_nnz_view_t& colinds_, const single_view_t& numLevels_, const nnz_view_t& threadNeighborCounts_, nnz_lno_t start_, nnz_lno_t numRows_)
       : workQueue(workQueue_), scratch(scratch_), visit(visit_), rowmap(rowmap_), colinds(colinds_), numLevels(numLevels_), threadNeighborCounts(threadNeighborCounts_), start(start_), numRows(numRows_)
     {}
 
@@ -364,7 +279,7 @@ struct RCM
 
     WorkView workQueue;
     WorkView scratch;
-    nnz_view_t visit;
+    ordering_view_t visit;
     const_lno_row_view_t rowmap;
     const_lno_nnz_view_t colinds;
     single_view_t numLevels;
@@ -381,7 +296,7 @@ struct RCM
     //need to know maximum degree to allocate scratch space for threads
     maxDeg = KokkosKernels::Impl::graph_max_degree<device_t, nnz_lno_t, const_lno_row_view_t>(rowmap);
     //view for storing the visit timestamps
-    nnz_view_t visit("BFS visited nodes", numRows);
+    ordering_view_t visit("BFS visited nodes", numRows);
     const nnz_lno_t LNO_MAX = Kokkos::ArithTraits<nnz_lno_t>::max();
     const nnz_lno_t NOT_VISITED = LNO_MAX;
     KokkosBlas::fill(visit, NOT_VISITED);
@@ -396,7 +311,7 @@ struct RCM
     Kokkos::parallel_for(team_policy_t(1, nthreads), BfsFunctor(workQueue, scratch, visit, rowmap, colinds, numLevels, threadNeighborCounts, start, numRows));
     Kokkos::deep_copy(numLevelsHost, numLevels);
     //now that level structure has been computed, construct xadj/adj
-    KokkosKernels::Impl::create_reverse_map<nnz_view_t, nnz_view_t, MyExecSpace>
+    KokkosKernels::Impl::create_reverse_map<ordering_view_t, nnz_view_t, MyExecSpace>
       (numRows, numLevelsHost(), visit, xadj, adj);
     return numLevelsHost();
   }
@@ -405,7 +320,7 @@ struct RCM
   {
     typedef Kokkos::View<offset_t*, MyTempMemorySpace, Kokkos::MemoryTraits<0u>> ScoreView;
 
-    CuthillMcKeeFunctor(nnz_lno_t numLevels_, nnz_lno_t maxDegree_, const const_lno_row_view_t& rowmap_, const const_lno_nnz_view_t& colinds_, const ScoreView& scores_, const ScoreView& scoresAux_, const nnz_view_t& visit_, const nnz_view_t& xadj_, const nnz_view_t& adj_, const nnz_view_t& adjAux_)
+    CuthillMcKeeFunctor(nnz_lno_t numLevels_, nnz_lno_t maxDegree_, const const_lno_row_view_t& rowmap_, const const_lno_nnz_view_t& colinds_, const ScoreView& scores_, const ScoreView& scoresAux_, const ordering_view_t& visit_, const nnz_view_t& xadj_, const nnz_view_t& adj_, const nnz_view_t& adjAux_)
       : numLevels(numLevels_), maxDegree(maxDegree_), rowmap(rowmap_), colinds(colinds_), scores(scores_), scoresAux(scoresAux_), visit(visit_), xadj(xadj_), adj(adj_), adjAux(adjAux_)
     {
       numRows = rowmap.extent(0) - 1;
@@ -449,8 +364,9 @@ struct RCM
         Kokkos::single(Kokkos::PerTeam(mem),
         [=]()
         {
-          radixSortKeysAndValues<size_type, offset_t, nnz_lno_t, nnz_lno_t, team_member_t>
-            (scores.data(), scoresAux.data(), adj.data() + levelOffset, adjAux.data(), levelSize, mem);
+          using unsigned_size_type = typename std::make_unsigned<size_type>::type;
+          KokkosKernels::Impl::SerialRadixSort2<nnz_lno_t, unsigned_size_type, nnz_lno_t>(
+            (unsigned_size_type*) scores.data(), (unsigned_size_type*) scoresAux.data(), adj.data() + levelOffset, adjAux.data(), levelSize);
         });
         mem.team_barrier();
         //label all vertices (which are now in label order within their level)
@@ -471,7 +387,7 @@ struct RCM
     const_lno_nnz_view_t colinds;
     ScoreView scores;
     ScoreView scoresAux;
-    nnz_view_t visit;
+    ordering_view_t visit;
     //The levels, stored in CRS format.
     //xadj stores offsets for each level, and adj stores the rows in each level.
     nnz_view_t xadj;
@@ -482,7 +398,7 @@ struct RCM
   //Does the reversing in "reverse Cuthill-McKee")
   struct OrderReverseFunctor
   {
-    OrderReverseFunctor(const nnz_view_t& visit_, nnz_lno_t numRows_)
+    OrderReverseFunctor(const ordering_view_t& visit_, nnz_lno_t numRows_)
       : visit(visit_), numRows(numRows_)
     {}
 
@@ -490,12 +406,12 @@ struct RCM
     {
       visit(i) = numRows - visit(i) - 1;
     }
-    nnz_view_t visit;
+    ordering_view_t visit;
     nnz_lno_t numRows;
   };
 
   //breadth-first search, producing a reverse Cuthill-McKee ordering
-  nnz_view_t parallel_cuthill_mckee(nnz_lno_t start)
+  ordering_view_t parallel_cuthill_mckee(nnz_lno_t start)
   {
     size_type nthreads = MyExecSpace::concurrency();
     if(nthreads > 64)
@@ -515,7 +431,7 @@ struct RCM
     nnz_lno_t maxLevelSize = KokkosKernels::Impl::graph_max_degree<device_t, nnz_lno_t, nnz_view_t>(xadj);
     std::cout << "Maximum size of a level set: " << maxLevelSize << '\n';
     //visit (to be returned) contains the RCM numberings of each row
-    nnz_view_t visit("RCM labels", numRows);
+    ordering_view_t visit("RCM labels", numRows);
     //Populate visit wth LNO_MAX so that the "min-labeled neighbor"
     //is always a node in the previous level
     const nnz_lno_t LNO_MAX = Kokkos::ArithTraits<nnz_lno_t>::max();
@@ -552,7 +468,7 @@ struct RCM
   //parallel-for functor that assigns a cluster given a envelope-reduced reordering (like RCM)
   struct OrderToClusterFunctor
   {
-    OrderToClusterFunctor(const nnz_view_t& ordering_, const nnz_view_t& vertClusters_, nnz_lno_t clusterSize_)
+    OrderToClusterFunctor(const ordering_view_t& ordering_, const nnz_view_t& vertClusters_, nnz_lno_t clusterSize_)
       : ordering(ordering_), vertClusters(vertClusters_), clusterSize(clusterSize_)
     {}
 
@@ -561,7 +477,7 @@ struct RCM
       vertClusters(i) = ordering(i) / clusterSize;
     }
 
-    const nnz_view_t ordering;
+    const ordering_view_t ordering;
     nnz_view_t vertClusters;
     nnz_lno_t clusterSize;
   };
@@ -577,7 +493,7 @@ struct RCM
     return v.loc;
   }
 
-  nnz_view_t cuthill_mckee()
+  ordering_view_t cuthill_mckee()
   {
     nnz_lno_t periph = find_peripheral();
     //run Cuthill-McKee BFS from periph
@@ -585,7 +501,7 @@ struct RCM
     return ordering;
   }
 
-  nnz_view_t rcm()
+  ordering_view_t rcm()
   {
     nnz_view_t cm = cuthill_mckee();
     //reverse the visit order (for the 'R' in RCM)
@@ -593,9 +509,9 @@ struct RCM
     return cm;
   }
 
-  nnz_view_t cm_cluster(nnz_lno_t clusterSize)
+  ordering_view_t cm_cluster(nnz_lno_t clusterSize)
   {
-    nnz_view_t cm = cuthill_mckee();
+    ordering_view_t cm = cuthill_mckee();
     nnz_view_t vertClusters("Vert to cluster", numRows);
     OrderToClusterFunctor makeClusters(cm, vertClusters, clusterSize);
     Kokkos::parallel_for(range_policy_t(0, numRows), makeClusters);
@@ -603,7 +519,7 @@ struct RCM
   }
 };
 
-template <typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t>
+template <typename HandleType, typename lno_row_view_t, typename lno_nnz_view_t, typename ordering_view_t>
 struct BalloonClustering
 {
   typedef typename HandleType::HandleExecSpace MyExecSpace;
@@ -653,7 +569,7 @@ struct BalloonClustering
 
   struct BalloonFunctor 
   {
-    BalloonFunctor(const nnz_view_t& vertClusters_, const nnz_view_t& clusterCounts_, const nnz_view_t& distances_, const lno_row_view_t& row_map_, const lno_nnz_view_t& col_inds_, const float_view_t& pressure_, nnz_lno_t clusterSize_, RandPool& randPool_)
+    BalloonFunctor(const ordering_view_t& vertClusters_, const nnz_view_t& clusterCounts_, const nnz_view_t& distances_, const lno_row_view_t& row_map_, const lno_nnz_view_t& col_inds_, const float_view_t& pressure_, nnz_lno_t clusterSize_, RandPool& randPool_)
       : vertClusters(vertClusters_), clusterCounts(clusterCounts_), distances(distances_), row_map(row_map_), col_inds(col_inds_), pressure(pressure_), clusterSize(clusterSize_), numRows(row_map.extent(0) - 1), vertLocks(numRows), randPool(randPool_)
     {
       numClusters = (numRows + clusterSize - 1) / clusterSize;
@@ -766,7 +682,7 @@ struct BalloonClustering
       }
     }
 
-    nnz_view_t vertClusters;
+    ordering_view_t vertClusters;
     nnz_view_t clusterCounts;
     nnz_view_t distances;
     //row_map/col_inds of input graph (read-only)
@@ -783,13 +699,13 @@ struct BalloonClustering
     double avgClusterSize;
   };
 
-  nnz_view_t run(nnz_lno_t clusterSize)
+  ordering_view_t run(nnz_lno_t clusterSize)
   {
-    nnz_view_t vertClusters("Vertex cluster labels", numRows);
+    ordering_view_t vertClusters("Vertex cluster labels", numRows);
     //For the sake of completeness, handle the clusterSize = 1 case by generating a trivial (identity) clustering.
     if(clusterSize == 1)
     {
-      Kokkos::parallel_for(Kokkos::RangePolicy<MyExecSpace>(0, numRows), IotaFunctor<nnz_view_t, nnz_lno_t>(vertClusters));
+      Kokkos::parallel_for(Kokkos::RangePolicy<MyExecSpace>(0, numRows), IotaFunctor<ordering_view_t, nnz_lno_t>(vertClusters));
       return vertClusters;
     }
     nnz_lno_t numClusters = (numRows + clusterSize - 1) / clusterSize;

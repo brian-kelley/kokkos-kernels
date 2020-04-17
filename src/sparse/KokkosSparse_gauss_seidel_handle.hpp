@@ -475,19 +475,22 @@ namespace KokkosSparse{
   public:
     using GSHandle = GaussSeidelHandle<size_type_, lno_t_, scalar_t_, ExecutionSpace, TemporaryMemorySpace, PersistentMemorySpace>;
     using exec_space = ExecutionSpace;
-    using mem_space = TemporaryMemorySpace;
+    using mem_space = PersistentMemorySpace;
 
     using size_type = typename std::remove_const<size_type_>::type;
     using lno_t = typename std::remove_const<lno_t_>::type;
     using scalar_t = typename std::remove_const<scalar_t_>::type;
 
-    using offset_view_t = Kokkos::View<size_type*, mem_space>;
+    using offset_view_t = typename GSHandle::row_lno_persistent_work_view_t;
+    using unmanaged_offset_view_t = Kokkos::View<const size_type*, typename offset_view_t::device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
     using host_offset_view_t = typename offset_view_t::HostMirror;
 
-    using ordinal_view_t = Kokkos::View<lno_t*, mem_space>;
+    using ordinal_view_t = typename GSHandle::nnz_lno_persistent_work_view_t;
+    using unmanaged_ordinal_view_t = Kokkos::View<const lno_t*, typename ordinal_view_t::device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
     using host_ordinal_view_t = typename ordinal_view_t::HostMirror;
 
-    using scalar_view_t = Kokkos::View<scalar_t*, mem_space> ;
+    using scalar_view_t = typename GSHandle::scalar_persistent_work_view_t;
+    using unmanaged_scalar_view_t = Kokkos::View<const scalar_t*, typename scalar_view_t::device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
     using host_scalar_view_t = typename scalar_view_t::HostMirror;
 
     //Const versions for viewing the input matrix
