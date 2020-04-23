@@ -243,6 +243,7 @@ struct ClusterCompression
 template <bool compactScalar, typename CGSHandle, typename X_t_, typename Y_t_>
 struct CompressedClusterApply
 {
+  using exec_space = typename CGSHandle::exec_space;
   using mem_space = typename CGSHandle::mem_space;
   using size_type = typename CGSHandle::size_type;
   using lno_t = typename CGSHandle::lno_t;
@@ -255,50 +256,24 @@ struct CompressedClusterApply
   using rowmap_t = typename CGSHandle::const_rowmap_t;
   using entries_t = typename CGSHandle::const_entries_t;
   using values_t = typename CGSHandle::const_values_t;
+  using team_policy_t = Kokkos::TeamPolicy<exec_space>;
+  using team_member_t = typename team_policy_t::member_type;
   //These are just so that X_t and Y_T are available as member typedefs
   using X_t = X_t_;
   using Y_t = Y_t_;
 
-  struct ApplyFunctor
+  //Range-policy version of apply (one row = one work item)
+  struct ApplyFunctorRange
   {
-    ApplyFunctor(
+    ApplyFunctorRange(
         const offset_view_t& compressedOffsets_, const unit_view_t& compressed_,
         const X_t& x_, const Y_t& y_, scalar_t omega_)
       : compressedOffsets(compressedOffsets_), compressed(compressed_), x(x_), y(y_), omega(omega_)
     {}
 
-    KOKKOS_FORCEINLINE_FUNCTION
-    void rowApply(comp_scalar_t invDiag, lno_t row, lno_t rowSize, lno_t* rowCols, comp_scalar_t* rowVals) const
-    {
-      lno_t num_vecs = x.extent(1);
-      constexpr lno_t colBatchSize = 8;
-      scalar_t accum[colBatchSize];
-      scalar_t k = omega * invDiag;
-      for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
-      {
-        lno_t batch = colBatchSize;
-        if(batch_start + batch > num_vecs)
-          batch = num_vecs - batch_start;
-        //the current batch of columns given by: batch_start, this_batch_size
-        for(lno_t i = 0; i < batch; i++)
-          accum[i] = y(row, batch_start + i);
-        for(lno_t i = 0; i < rowSize; i++)
-        {
-          lno_t col = rowCols[i];
-          scalar_t val = rowVals[i];
-          for(lno_t i = 0; i < batch; i++)
-            accum[i] -= val * x(col, batch_start + i);
-        }
-        for(lno_t i = 0; i < batch; i++)
-        {
-          x(row, batch_start + i) *= (Kokkos::ArithTraits<scalar_t>::one() - omega);
-          x(row, batch_start + i) += k * accum[i];
-        }
-      }
-    }
-
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t c) const
     {
+      lno_t num_vecs = x.extent(1);
       //compressed layout is contiguous, and range policy will just be over the
       //color set, so no need to map the work-item index to a cluster.
       KokkosKernels::Impl::MemStream<unit_t>
@@ -321,7 +296,30 @@ struct CompressedClusterApply
         comp_scalar_t invDiag = block.template readSingle<comp_scalar_t>();
         lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
         comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
-        this->rowApply(invDiag, row, rowSize, rowEntries, rowValues);
+        constexpr lno_t colBatchSize = 8;
+        scalar_t accum[colBatchSize];
+        scalar_t k = omega * invDiag;
+        for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
+        {
+          lno_t batch = colBatchSize;
+          if(batch_start + batch > num_vecs)
+            batch = num_vecs - batch_start;
+          //the current batch of columns given by: batch_start, this_batch_size
+          for(lno_t i = 0; i < batch; i++)
+            accum[i] = y(row, batch_start + i);
+          for(lno_t i = 0; i < rowSize; i++)
+          {
+            lno_t col = rowEntries[i];
+            scalar_t val = rowValues[i];
+            for(lno_t i = 0; i < batch; i++)
+              accum[i] -= val * x(col, batch_start + i);
+          }
+          for(lno_t i = 0; i < batch; i++)
+          {
+            scalar_t newXval = x(row, batch_start + i) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
+            x(row, batch_start + i) = newXval + k * accum[i];
+          }
+        }
       }
     }
 
@@ -332,6 +330,95 @@ struct CompressedClusterApply
     X_t x;
     Y_t y;
     scalar_t omega;
+  };
+
+  //Team-policy version of apply (one row = one work item)
+  struct ApplyFunctorTeam
+  {
+    ApplyFunctorTeam(
+        const offset_view_t& compressedOffsets_, const unit_view_t& compressed_,
+        const X_t& x_, const Y_t& y_, scalar_t omega_, lno_t clustersPerTeam_, lno_t colorSetBegin_, lno_t colorSetEnd_)
+      : compressedOffsets(compressedOffsets_), compressed(compressed_),
+      x(x_), y(y_), omega(omega_),
+      clustersPerTeam(clustersPerTeam_), colorSetBegin(colorSetBegin_), colorSetEnd(colorSetEnd_)
+    {}
+
+    KOKKOS_INLINE_FUNCTION void operator()(const team_member_t t) const
+    {
+      lno_t num_vecs = x.extent(1);
+      lno_t teamClusterBegin = colorSetBegin + t.league_rank() * clustersPerTeam;
+      lno_t teamClusterEnd = teamClusterBegin + clustersPerTeam;
+      if(teamClusterEnd > colorSetEnd)
+        teamClusterEnd = colorSetEnd;
+      Kokkos::parallel_for(Kokkos::TeamThreadRange(t, teamClusterEnd - teamClusterBegin),
+        [&](const lno_t threadWork)
+        {
+          lno_t c = teamClusterBegin + threadWork;
+          //compressed layout is contiguous, and range policy will just be over the
+          //color set, so no need to map the work-item index to a cluster.
+          KokkosKernels::Impl::MemStream<unit_t>
+            block(&compressed(compressedOffsets(c)));
+          //1. get #rows in cluster
+          lno_t clusterSize = block.template readSingle<lno_t>();
+          //2. get the list of rows in the cluster
+          lno_t* clusterRows = block.template getArray<lno_t>(clusterSize);
+          //3. store the number of entries in each row (excluding diagonals)
+          lno_t* rowSizes = block.template getArray<lno_t>(clusterSize);
+          //4. for each row: inverse diagonal, entries and values per row.
+          //                 the first row must be scalar-aligned,
+          //                 and each values array is also aligned.
+          for(lno_t i = 0; i < clusterSize; i++)
+          {
+            lno_t row = clusterRows[i];
+            lno_t rowSize = rowSizes[i];
+            //divide up storage for the row:
+            //determine where diag^-1, entries, values will go
+            comp_scalar_t invDiag = block.template readSingle<comp_scalar_t>();
+            lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
+            comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
+            constexpr lno_t colBatchSize = 8;
+            scalar_t accum[colBatchSize];
+            scalar_t k = omega * invDiag;
+            for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
+            {
+              lno_t batch = colBatchSize;
+              if(batch_start + batch > num_vecs)
+                batch = num_vecs - batch_start;
+              //the current batch of columns given by: batch_start, this_batch_size
+              Kokkos::parallel_for(Kokkos::ThreadVectorRange(t, batch),
+                [&](const lno_t j)
+                {
+                  accum[j] = y(row, batch_start + j);
+                });
+              Kokkos::parallel_for(Kokkos::ThreadVectorRange(t, rowSize),
+                [&](const lno_t j)
+                {
+                  lno_t col = rowEntries[j];
+                  scalar_t val = rowValues[j];
+                  for(lno_t k = 0; k < batch; k++)
+                    accum[i] -= val * x(col, batch_start + i);
+                });
+              for(lno_t i = 0; i < batch; i++)
+              {
+                scalar_t newXval = x(row, batch_start + i) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
+                x(row, batch_start + i) = newXval + k * accum[i];
+              }
+            }
+          }
+        });
+      }
+    }
+
+    //offset of each cluster in compressed
+    offset_view_t compressedOffsets;
+    //output: the compact representation of all clusters
+    unit_view_t compressed;
+    X_t x;
+    Y_t y;
+    scalar_t omega;
+    lno_t clustersPerTeam;
+    lno_t colorSetBegin;
+    lno_t colorSetEnd;
   };
 };
 
