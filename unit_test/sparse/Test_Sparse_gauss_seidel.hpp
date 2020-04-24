@@ -321,6 +321,10 @@ void test_cluster(int numRows, bool symmetric)
   {
     for(int apply_algo = 0; apply_algo < (int) NUM_CGS_ALGORITHMS; apply_algo++)
     {
+      if(apply_algo != CGS_RANGE && apply_algo != CGS_TEAM)
+      {
+        continue;
+      }
       for(int clusterSize : clusterSizes)
       {
         for(int mixed_prec = 0; mixed_prec < 2; mixed_prec++)

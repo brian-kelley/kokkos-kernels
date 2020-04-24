@@ -333,21 +333,21 @@ struct CompressedClusterApply
   };
 
   //Team-policy version of apply (one row = one work item)
+  //Set colorSetBegin and colorSetEnd before executing over each color set
   struct ApplyFunctorTeam
   {
     ApplyFunctorTeam(
         const offset_view_t& compressedOffsets_, const unit_view_t& compressed_,
-        const X_t& x_, const Y_t& y_, scalar_t omega_, lno_t clustersPerTeam_, lno_t colorSetBegin_, lno_t colorSetEnd_)
+        const X_t& x_, const Y_t& y_, scalar_t omega_)
       : compressedOffsets(compressedOffsets_), compressed(compressed_),
-      x(x_), y(y_), omega(omega_),
-      clustersPerTeam(clustersPerTeam_), colorSetBegin(colorSetBegin_), colorSetEnd(colorSetEnd_)
+      x(x_), y(y_), omega(omega_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(const team_member_t t) const
     {
       lno_t num_vecs = x.extent(1);
-      lno_t teamClusterBegin = colorSetBegin + t.league_rank() * clustersPerTeam;
-      lno_t teamClusterEnd = teamClusterBegin + clustersPerTeam;
+      lno_t teamClusterBegin = colorSetBegin + t.league_rank() * t.team_size();
+      lno_t teamClusterEnd = teamClusterBegin + t.team_size();
       if(teamClusterEnd > colorSetEnd)
         teamClusterEnd = colorSetEnd;
       Kokkos::parallel_for(Kokkos::TeamThreadRange(t, teamClusterEnd - teamClusterBegin),
@@ -396,17 +396,17 @@ struct CompressedClusterApply
                   lno_t col = rowEntries[j];
                   scalar_t val = rowValues[j];
                   for(lno_t k = 0; k < batch; k++)
-                    accum[i] -= val * x(col, batch_start + i);
+                    accum[k] -= val * x(col, batch_start + k);
                 });
-              for(lno_t i = 0; i < batch; i++)
-              {
-                scalar_t newXval = x(row, batch_start + i) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
-                x(row, batch_start + i) = newXval + k * accum[i];
-              }
+              Kokkos::parallel_for(Kokkos::ThreadVectorRange(t, batch),
+                [&](const lno_t j)
+                {
+                  scalar_t newXval = x(row, batch_start + j) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
+                  x(row, batch_start + j) = newXval + k * accum[j];
+                });
             }
           }
         });
-      }
     }
 
     //offset of each cluster in compressed
@@ -416,7 +416,6 @@ struct CompressedClusterApply
     X_t x;
     Y_t y;
     scalar_t omega;
-    lno_t clustersPerTeam;
     lno_t colorSetBegin;
     lno_t colorSetEnd;
   };

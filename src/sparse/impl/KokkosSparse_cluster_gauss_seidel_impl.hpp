@@ -826,7 +826,7 @@ namespace KokkosSparse
 #endif
       }
 
-      //Non-permuted forward apply using range policy
+      //Non-permuted apply using range policy
       template<typename CompressionApply>
       void applyRange(
           color_t numColors, const host_ordinal_view_t& colorOffsets,
@@ -841,7 +841,34 @@ namespace KokkosSparse
           color_t c = isForward ? i : (numColors - 1 - i);
           Kokkos::parallel_for(
               range_policy_t(colorOffsets(c), colorOffsets(c + 1)),
-              typename CompressionApply::ApplyFunctor(streamOffsets, streamData, x, y, omega));
+              typename CompressionApply::ApplyFunctorRange(streamOffsets, streamData, x, y, omega));
+        }
+      }
+
+      //Non-permuted apply using team policy
+      template<typename CompressionApply>
+      void applyTeam(
+          color_t numColors, const host_ordinal_view_t& colorOffsets,
+          const offset_view_t& streamOffsets, const unit_view_t& streamData,
+          const typename CompressionApply::X_t& x,
+          const typename CompressionApply::Y_t& y,
+          bool isForward,
+          scalar_t omega)
+      {
+        //Build the functor
+        using ApplyTeam = typename CompressionApply::ApplyFunctorTeam;
+        ApplyTeam f(streamOffsets, streamData, x, y, omega);
+        //Decide the best team, thread size
+        int threadSize = KokkosKernels::Impl::kk_get_suggested_vector_size(
+            num_rows, entries.extent(0), KokkosKernels::Impl::kk_get_exec_space_type<exec_space>());
+        int teamSize = KokkosKernels::Impl::get_suggested_team_size<team_policy_t, ApplyTeam>(f, threadSize);
+        for(color_t i = 0; i < numColors; i++)
+        {
+          color_t c = isForward ? i : (numColors - 1 - i);
+          f.colorSetBegin = colorOffsets(c);
+          f.colorSetEnd = colorOffsets(c + 1);
+          int leagueSize = (f.colorSetEnd - f.colorSetBegin + teamSize - 1) / teamSize;
+          Kokkos::parallel_for(team_policy_t(leagueSize, teamSize, threadSize), f);
         }
       }
 
@@ -886,35 +913,68 @@ namespace KokkosSparse
 
         auto streamOffsets = gsHandle->get_stream_offsets();
         auto streamData = gsHandle->get_stream_data();
-        
+
+        CGSAlgorithm algo = gsHandle->get_cgs_algorithm();
         for(int iter = 0; iter < numIter; iter++)
         {
           if(gsHandle->using_compact_scalars())
           {
             using CompApply = CompressedClusterApply<true, CGSHandle, X_t, Y_t>;
-            if(apply_forward)
+            if(algo == CGS_RANGE)
             {
-              this->template applyRange<CompApply>(
-                  numColors, h_color_xadj, streamOffsets, streamData, x, y, true, omega);
+              if(apply_forward)
+              {
+                this->template applyRange<CompApply>(
+                    numColors, h_color_xadj, streamOffsets, streamData, x, y, true, omega);
+              }
+              if(apply_backward)
+              {
+                this->template applyRange<CompApply>(
+                    numColors, h_color_xadj, streamOffsets, streamData, x, y, false, omega);
+              }
             }
-            if(apply_backward)
+            else if(algo == CGS_TEAM)
             {
-              this->template applyRange<CompApply>(
-                  numColors, h_color_xadj, streamOffsets, streamData, x, y, false, omega);
+              if(apply_forward)
+              {
+                this->template applyTeam<CompApply>(
+                    numColors, h_color_xadj, streamOffsets, streamData, x, y, true, omega);
+              }
+              if(apply_backward)
+              {
+                this->template applyTeam<CompApply>(
+                    numColors, h_color_xadj, streamOffsets, streamData, x, y, false, omega);
+              }
             }
           }
           else
           {
             using CompApply = CompressedClusterApply<false, CGSHandle, X_t, Y_t>;
-            if(apply_forward)
+            if(algo == CGS_RANGE)
             {
-              this->template applyRange<CompApply>(
-                  numColors, h_color_xadj, streamOffsets, streamData, x, y, true, omega);
+              if(apply_forward)
+              {
+                this->template applyRange<CompApply>(
+                    numColors, h_color_xadj, streamOffsets, streamData, x, y, true, omega);
+              }
+              if(apply_backward)
+              {
+                this->template applyRange<CompApply>(
+                    numColors, h_color_xadj, streamOffsets, streamData, x, y, false, omega);
+              }
             }
-            if(apply_backward)
+            else if(algo == CGS_TEAM)
             {
-              this->template applyRange<CompApply>(
-                  numColors, h_color_xadj, streamOffsets, streamData, x, y, false, omega);
+              if(apply_forward)
+              {
+                this->template applyTeam<CompApply>(
+                    numColors, h_color_xadj, streamOffsets, streamData, x, y, true, omega);
+              }
+              if(apply_backward)
+              {
+                this->template applyTeam<CompApply>(
+                    numColors, h_color_xadj, streamOffsets, streamData, x, y, false, omega);
+              }
             }
           }
         }

@@ -4,6 +4,7 @@
 \#*#
 .#*
 .*.swp
+.*.swo
 .cproject
 .project
 *.o
