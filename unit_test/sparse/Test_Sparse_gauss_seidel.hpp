@@ -166,8 +166,8 @@ void run_and_verify(
       //using abs to get a real number,
       //so it works if scalar_t is real or complex
       mag_t resNorm = column_norm<mag_t, vec_t>(res, i);
-      std::cout << "*** DONE RUNNING GS. Final rel norm in col " << i << ": " << resNorm / initial_norms[i] << '\n';
-      EXPECT_LT(resNorm, 0.5 * initial_norms[i]);
+      //In practice, the diagonally-dominant matrices give extremely fast convergence for GS.
+      EXPECT_LT(resNorm, 0.005 * initial_norms[i]);
     }
   }
 }
@@ -318,9 +318,14 @@ void test_cluster(int numRows, bool symmetric)
   vec_t y;
   std::vector<int> clusterSizes = {2, 4, 19};
   std::vector<CGSAlgorithm> algos = {CGS_RANGE, CGS_TEAM, CGS_PERMUTED_RANGE, CGS_PERMUTED_TEAM};
-  //DEBUGGING: we know the non-permutes work. Test the permuted versions only.
-  algos = {CGS_PERMUTED_RANGE, CGS_PERMUTED_TEAM};
   create_problem(numRows, num_vecs, symmetric, A, x, y);
+  //Do one run with CGS_DEFAULT, just to test the default algorithm logic
+  {
+    Handle kh;
+    kh.create_gs_handle(CGS_DEFAULT, CLUSTER_BALLOON, false, 5);
+    run_and_verify<Handle, crsMat_t, vec_t>(&kh, A, x, y, symmetric, 0);
+    kh.destroy_gs_handle();
+  }
   for(int direction = 0; direction < 3; direction++)
   {
     for(CGSAlgorithm apply_algo : algos)
@@ -329,10 +334,8 @@ void test_cluster(int numRows, bool symmetric)
       {
         for(int mixed_prec = 0; mixed_prec < 2; mixed_prec++)
         {
-          std::cout << "Running CGS. direction = " << direction << ", algo = " << apply_algo << ", clusterSize = " << clusterSize << ", compact scalars = " << mixed_prec << '\n';
-          std::cout << "A is " << numRows << "x" << numRows << '\n';
           Handle kh;
-          kh.create_gs_handle((CGSAlgorithm) apply_algo, CLUSTER_BALLOON, mixed_prec, clusterSize);
+          kh.create_gs_handle(apply_algo, CLUSTER_BALLOON, mixed_prec, clusterSize);
           run_and_verify<Handle, crsMat_t, vec_t>(&kh, A, x, y, symmetric, direction);
           kh.destroy_gs_handle();
         }

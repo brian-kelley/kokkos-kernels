@@ -331,7 +331,8 @@ struct ClusterCompression
       //1. store #rows in cluster
       block.template writeSingle<lno_t>(clusterSize);
       //2. store the list of rows in the cluster
-      block.template writeSingle<lno_t>(invPerm(clusterBegin));
+      lno_t firstSrcRow = clusterVerts(clusterBegin);
+      block.template writeSingle<lno_t>(invPerm(firstSrcRow));
       //3. store the number of entries in each row (excluding diagonals)
       lno_t* rowSizes = block.template getArray<lno_t>(clusterSize);
       for(lno_t i = 0; i < clusterSize; i++)
@@ -532,6 +533,7 @@ struct CompressedClusterApply
           for(lno_t j = 0; j < rowSize; j++)
           {
             lno_t col = rowEntries[j];
+            //expand val to scalar_t
             scalar_t val = rowValues[j];
             for(lno_t k = 0; k < batch; k++)
             {

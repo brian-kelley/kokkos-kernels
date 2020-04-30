@@ -861,19 +861,16 @@ public:
     }
     //Compute the compressed size of each cluster.
     offset_view_t streamOffsets(Kokkos::ViewAllocateWithoutInitializing("Matrix stream cluster offsets"), numClusters + 1);
-    std::cout << "Hello from CGS numeric: computing compressed size, then compressed represetation of each cluster.\n";
     if(gsHandle->use_compact_scalars())
     {
       using Compression = ClusterCompression<true, CGSHandle>;
       if(gsHandle->use_permutation())
       {
-        std::cout << "Doing compression for permute & compact\n";
         Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::PermutedCompressedSizeFunctor(
               this->row_map, this->entries, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), streamOffsets));
       }
       else
       {
-        std::cout << "Doing compression for non-permute & compact\n";
         Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::CompressedSizeFunctor(
               this->row_map, this->entries, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), streamOffsets));
       }
@@ -883,13 +880,11 @@ public:
       using Compression = ClusterCompression<false, CGSHandle>;
       if(gsHandle->use_permutation())
       {
-        std::cout << "Doing compression for permute & non-compact\n";
         Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::PermutedCompressedSizeFunctor(
               this->row_map, this->entries, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), streamOffsets));
       }
       else
       {
-        std::cout << "Doing compression for non-permute & non-compact\n";
         Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::CompressedSizeFunctor(
               this->row_map, this->entries, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), streamOffsets));
       }
@@ -903,13 +898,11 @@ public:
       using Compression = ClusterCompression<true, CGSHandle>;
       if(gsHandle->use_permutation())
       {
-        std::cout << "Doing compression for permute & compact\n";
         Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::PermutedCompressFunctor(
               this->row_map, this->entries, this->values, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), invPermutation, streamOffsets, streamData));
       }
       else
       {
-        std::cout << "Doing compression for non-permute & compact\n";
         Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::CompressFunctor(
               this->row_map, this->entries, this->values, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), streamOffsets, streamData));
       }
@@ -919,13 +912,11 @@ public:
       using Compression = ClusterCompression<false, CGSHandle>;
       if(gsHandle->use_permutation())
       {
-        std::cout << "Doing compression for permute & non-compact\n";
         Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::PermutedCompressFunctor(
               this->row_map, this->entries, this->values, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), invPermutation, streamOffsets, streamData));
       }
       else
       {
-        std::cout << "Doing compression for non-permute & non-compact\n";
         Kokkos::parallel_for(range_policy_t(0, numClusters), typename Compression::CompressFunctor(
               this->row_map, this->entries, this->values, clusterOffsets, clusterVerts, gsHandle->get_color_adj(), streamOffsets, streamData));
       }
@@ -1092,18 +1083,15 @@ public:
   template<typename X_t, typename Y_t>
   void generalNonPermutedApply(CGSHandle* gsHandle, color_t numColors, const host_ordinal_view_t& colorOffsets, const offset_view_t& streamOffsets, const unit_view_t& streamData, const X_t& x, const Y_t& y, bool forward, scalar_t omega)
   {
-    std::cout << "Hello from NON-permuted apply!\n";
     if(gsHandle->use_compact_scalars())
     {
       using CompressedApply = CompressedClusterApply<true, CGSHandle, X_t, Y_t>;
       if(gsHandle->use_teams())
       {
-        std::cout << "  Calling non-permuted, team, compact version.\n";
         applyTeam<CompressedApply, false>(numColors, colorOffsets, streamOffsets, streamData, x, y, forward, omega);
       }
       else
       {
-        std::cout << "  Calling non-permuted, range, compact version.\n";
         applyRange<CompressedApply, false>(numColors, colorOffsets, streamOffsets, streamData, x, y, forward, omega);
       }
     }
@@ -1112,12 +1100,10 @@ public:
       using CompressedApply = CompressedClusterApply<false, CGSHandle, X_t, Y_t>;
       if(gsHandle->use_teams())
       {
-        std::cout << "  Calling non-permuted, team, non-compact version.\n";
         applyTeam<CompressedApply, false>(numColors, colorOffsets, streamOffsets, streamData, x, y, forward, omega);
       }
       else
       {
-        std::cout << "  Calling non-permuted, range, non-compact version.\n";
         applyRange<CompressedApply, false>(numColors, colorOffsets, streamOffsets, streamData, x, y, forward, omega);
       }
     }
@@ -1125,18 +1111,15 @@ public:
 
   void generalPermutedApply(CGSHandle* gsHandle, color_t numColors, const host_ordinal_view_t& colorOffsets, const offset_view_t& streamOffsets, const unit_view_t& streamData, const colmajor_vector_t& perm_x, const rowmajor_vector_t& perm_y, bool forward, scalar_t omega)
   {
-    std::cout << "Hello from permuted apply!\n";
     if(gsHandle->use_compact_scalars())
     {
       using CompressedApply = CompressedClusterApply<true, CGSHandle, colmajor_vector_t, rowmajor_vector_t>;
       if(gsHandle->use_teams())
       {
-        std::cout << "  Calling permuted, team, compact version.\n";
         applyTeam<CompressedApply, true>(numColors, colorOffsets, streamOffsets, streamData, perm_x, perm_y, forward, omega);
       }
       else
       {
-        std::cout << "  Calling permuted, range, compact version.\n";
         applyRange<CompressedApply, true>(numColors, colorOffsets, streamOffsets, streamData, perm_x, perm_y, forward, omega);
       }
     }
@@ -1145,12 +1128,10 @@ public:
       using CompressedApply = CompressedClusterApply<false, CGSHandle, colmajor_vector_t, rowmajor_vector_t>;
       if(gsHandle->use_teams())
       {
-        std::cout << "  Calling permuted, team, non-compact version.\n";
         applyTeam<CompressedApply, true>(numColors, colorOffsets, streamOffsets, streamData, perm_x, perm_y, forward, omega);
       }
       else
       {
-        std::cout << "  Calling permuted, range, non-compact version.\n";
         applyRange<CompressedApply, true>(numColors, colorOffsets, streamOffsets, streamData, perm_x, perm_y, forward, omega);
       }
     }
@@ -1171,11 +1152,6 @@ public:
     colmajor_vector_t perm_x;
     rowmajor_vector_t perm_y;
     ordinal_view_t permutation;
-    std::cout << "Hello from CGS apply.\n";
-    std::cout << "Using permutation? " << gsHandle->use_permutation() << ".\n";
-    std::cout << "Forward & back: " << apply_forward << ", " << apply_backward << ".\n";
-    std::cout << "Zeroing x: " << init_zero_x_vector << '\n';
-    std::cout << "Updating y: " << update_y_vector << '\n';
     if(gsHandle->use_permutation())
     {
       //Lazily allocate permuted x/y to the right size (costs nothing if already the right size)
