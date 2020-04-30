@@ -42,7 +42,6 @@
 //@HEADER
 */
 
-
 #include <Kokkos_MemoryTraits.hpp>
 #include <Kokkos_Core.hpp>
 #include <KokkosKernels_Utils.hpp>
@@ -87,8 +86,6 @@ namespace KokkosSparse{
         return "Permuted,Range";
       case CGS_PERMUTED_TEAM:
         return "Permuted,Team";
-      case CGS_SHARED:
-        return "Shared";
       default:;
     }
     return "INVALID CGS ALGORITHM";
@@ -157,7 +154,7 @@ namespace KokkosSparse{
     virtual GSAlgorithm get_algorithm_type() const = 0;
 
     //Always use TeamPolicy on GPU, and RangePolicy on CPU
-    bool use_teams() const
+    virtual bool use_teams() const
     {
 #if defined( KOKKOS_ENABLE_SERIAL )
       if (std::is_same< Kokkos::Serial , ExecutionSpace >::value)
@@ -492,6 +489,11 @@ namespace KokkosSparse{
     using scalar_view_t = typename GSHandle::scalar_persistent_work_view_t;
     using unmanaged_scalar_view_t = Kokkos::View<const scalar_t*, typename scalar_view_t::device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
     using host_scalar_view_t = typename scalar_view_t::HostMirror;
+    //Internal space for storing the permuted vectors.
+    //Internally, LHS (x) accesses coalesce better when column-major.
+    //RHS (y) access coalesce better when row-major.
+    using rowmajor_vector_t = Kokkos::View<scalar_t**, Kokkos::LayoutRight, typename scalar_view_t::device_type>;
+    using colmajor_vector_t = Kokkos::View<scalar_t**, Kokkos::LayoutLeft, typename scalar_view_t::device_type>;
 
     //Const versions for viewing the input matrix
     using const_rowmap_t = typename offset_view_t::const_type;
@@ -523,13 +525,22 @@ namespace KokkosSparse{
     //vert_clusters(i) is the cluster that vertex i belongs to
     ordinal_view_t vert_clusters;
 
+    //If using an apply algorithm with permutation,
+    //the list of input rows in permuted order.
+    //Otherwise empty/not allocated.
+    ordinal_view_t permutation;
+
+    //Likewise, perm_x and perm_y are only allocated if using permuted algorithm
+    colmajor_vector_t perm_x;
+    rowmajor_vector_t perm_y;
+
     //offsets of compact and reordered matrix,
     //and the actual data (units) that the offsets index into
     offset_view_t stream_offsets;
     unit_view_t stream_data;
 
     //whether to use a lower-precision version of the matrix (32-bit instead of 64-bit)
-    bool use_compact_scalars;
+    bool compact_scalars;
 
   public:
 
@@ -538,9 +549,8 @@ namespace KokkosSparse{
      */
 
     //Constructor for cluster-coloring based GS and SGS
-    ClusterGaussSeidelHandle(CGSAlgorithm apply_algo_, CoarseningAlgorithm coarse_algo_, lno_t cluster_size_, bool force_single_precision = true)
-      : GSHandle(GS_CLUSTER), apply_algo(apply_algo_), coarse_algo(coarse_algo_), cluster_size(cluster_size_),
-      cluster_xadj(), cluster_adj(), vert_clusters(), use_compact_scalars(force_single_precision)
+    ClusterGaussSeidelHandle(CGSAlgorithm apply_algo_, CoarseningAlgorithm coarse_algo_, lno_t cluster_size_, bool compact_scalars_ = true)
+      : GSHandle(GS_CLUSTER), apply_algo(apply_algo_), coarse_algo(coarse_algo_), cluster_size(cluster_size_), compact_scalars(compact_scalars_)
     {}
 
     GSAlgorithm get_algorithm_type() const {return GS_CLUSTER;}
@@ -577,6 +587,23 @@ namespace KokkosSparse{
       return cluster_adj;
     }
 
+    //(Copied from PointGaussSeidelHandle)
+    //Lazily allocate permuted x/y to the correct size, based on the vectors passed in to apply.
+    void allocate_perm_xy(lno_t num_rows, lno_t num_cols, lno_t num_vecs) {
+      if(perm_x.extent(0) != size_t(num_cols) || perm_x.extent(1) != size_t(num_vecs))
+        perm_x = colmajor_vector_t("CGS Permuted X", num_cols, num_vecs);
+      if(perm_y.extent(0) != size_t(num_rows) || perm_y.extent(1) != size_t(num_vecs))
+        perm_y = rowmajor_vector_t("CGS Permuted Y", num_rows, num_vecs);
+    }
+    void get_perm_xy(colmajor_vector_t& x, rowmajor_vector_t& y) const {
+      x = perm_x;
+      y = perm_y;
+    }
+    void set_perm_xy(const colmajor_vector_t& x, const rowmajor_vector_t& y) {
+      perm_x = x;
+      perm_y = y;
+    }
+
     void set_stream_offsets(const offset_view_t& offsets) {
       this->stream_offsets = offsets;
     }
@@ -591,9 +618,28 @@ namespace KokkosSparse{
       return this->stream_data;
     }
 
+    void set_apply_permutation(const ordinal_view_t& perm) {
+      this->permutation = perm;
+    }
+    ordinal_view_t get_apply_permutation() const {
+      return this->permutation;
+    }
+
     //note: no setter for use_compact_scalars. It can't be changed after the first setup.
-    bool using_compact_scalars() const {
+    bool use_compact_scalars() const {
       return this->use_compact_scalars;
+    }
+
+    bool use_teams() const
+    {
+      return (apply_algo == CGS_TEAM) ||
+        (apply_algo == CGS_PERMUTED_TEAM);
+    }
+
+    bool use_permutation() const
+    {
+      return (apply_algo == CGS_PERMUTED_RANGE) ||
+        (apply_algo == CGS_PERMUTED_TEAM);
     }
   };
 
