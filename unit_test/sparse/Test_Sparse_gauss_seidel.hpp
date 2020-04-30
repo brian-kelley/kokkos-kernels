@@ -166,6 +166,7 @@ void run_and_verify(
       //using abs to get a real number,
       //so it works if scalar_t is real or complex
       mag_t resNorm = column_norm<mag_t, vec_t>(res, i);
+      std::cout << "*** DONE RUNNING GS. Final rel norm in col " << i << ": " << resNorm / initial_norms[i] << '\n';
       EXPECT_LT(resNorm, 0.5 * initial_norms[i]);
     }
   }
@@ -316,15 +317,14 @@ void test_cluster(int numRows, bool symmetric)
   vec_t x;
   vec_t y;
   std::vector<int> clusterSizes = {2, 4, 19};
+  std::vector<CGSAlgorithm> algos = {CGS_RANGE, CGS_TEAM, CGS_PERMUTED_RANGE, CGS_PERMUTED_TEAM};
+  //DEBUGGING: we know the non-permutes work. Test the permuted versions only.
+  algos = {CGS_PERMUTED_RANGE, CGS_PERMUTED_TEAM};
   create_problem(numRows, num_vecs, symmetric, A, x, y);
   for(int direction = 0; direction < 3; direction++)
   {
-    for(int apply_algo = 0; apply_algo < (int) NUM_CGS_ALGORITHMS; apply_algo++)
+    for(CGSAlgorithm apply_algo : algos)
     {
-      if(apply_algo != CGS_RANGE && apply_algo != CGS_TEAM)
-      {
-        continue;
-      }
       for(int clusterSize : clusterSizes)
       {
         for(int mixed_prec = 0; mixed_prec < 2; mixed_prec++)

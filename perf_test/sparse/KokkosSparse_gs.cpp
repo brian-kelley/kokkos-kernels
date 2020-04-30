@@ -73,6 +73,8 @@ static char* getNextArg(int& i, int argc, char** argv)
 template<typename device_t>
 void runGS(string matrixPath, string devName, bool symmetric, bool twostage, bool classic)
 {
+  //TODO: rewrite
+  /*
   typedef default_scalar scalar_t;
   typedef default_lno_t lno_t;
   typedef default_size_type size_type;
@@ -189,10 +191,12 @@ void runGS(string matrixPath, string devName, bool symmetric, bool twostage, boo
   applyTimes.push_back(timer.seconds());
   std::cout << "\n*** apply time: " << applyTimes.back() << '\n';
   kh.destroy_gs_handle();
+  */
 }
 
 int main(int argc, char** argv)
 {
+  /*
   //Expect two args: matrix name and device flag.
   if(argc != 3 && argc != 4 && argc != 5)
   {
@@ -304,5 +308,6 @@ int main(int argc, char** argv)
   }
   Kokkos::finalize();
   return 0;
+  */
 }
 

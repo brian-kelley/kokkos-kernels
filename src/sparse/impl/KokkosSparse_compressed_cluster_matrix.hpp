@@ -509,7 +509,6 @@ struct CompressedClusterApply
       //4. for each row: inverse diagonal, entries and values per row.
       //                 the first row must be scalar-aligned,
       //                 and each values array is also aligned.
-      std::cout << "Cluster " << c << " permuted rows: " << clusterRowBegin << " to " << clusterRowBegin + clusterSize << '\n';
       for(lno_t i = 0; i < clusterSize; i++)
       {
         lno_t row = clusterRowBegin + i;
@@ -534,7 +533,6 @@ struct CompressedClusterApply
           {
             lno_t col = rowEntries[j];
             scalar_t val = rowValues[j];
-            std::cout << "Have entry " << val << " in col " << col << '\n';
             for(lno_t k = 0; k < batch; k++)
               accum[k] -= val * x(col, batch_start + k);
           }
