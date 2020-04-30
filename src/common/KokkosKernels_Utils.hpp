@@ -1678,12 +1678,6 @@ struct array_sum_reduce
     for(int i = 0; i < N; i++)
       data[i] = scalar_t();
   }
-  KOKKOS_INLINE_FUNCTION
-  array_sum_reduce(const ValueType& rhs)
-  { 
-    for(int i = 0; i < N; i++)
-      data[i] = rhs.data[i];
-  }
   KOKKOS_INLINE_FUNCTION   // add operator
   array_sum_reduce& operator+=(const ValueType& src)
   {
@@ -1702,7 +1696,7 @@ struct array_sum_reduce
 template<typename InPtr, typename T>
 KOKKOS_FORCEINLINE_FUNCTION T* alignPtr(InPtr p)
 {
-  //by forcing inline, this branch can always be eliminated
+  //by forcing inline, one branch or the other can always be eliminated.
   if(alignof(decltype(*p)) >= alignof(T))
   {
     //InPtr already has sufficient alignment

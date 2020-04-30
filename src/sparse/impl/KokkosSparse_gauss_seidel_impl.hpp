@@ -56,6 +56,7 @@
 #include "KokkosKernels_Uniform_Initialized_MemoryPool.hpp"
 #include "KokkosKernels_BitUtils.hpp"
 #include "KokkosKernels_SimpleUtils.hpp"
+#include "KokkosSparse_gauss_seidel_common_impl.hpp"
 
 //FOR DEBUGGING
 #include "KokkosBlas1_nrm2.hpp"
@@ -202,6 +203,7 @@ namespace KokkosSparse{
       };
 
       struct Team_PSGS{
+        using RowApply = KokkosSparse::Impl::GS_RowApply<nnz_lno_t, nnz_scalar_t, nnz_scalar_t, scalar_persistent_work_view2d_t, scalar_persistent_work_view2d_t, team_member_t>;
 
         row_lno_persistent_work_view_t _xadj;
         nnz_lno_persistent_work_view_t _adj; // CSR storage of the graph.
@@ -225,8 +227,6 @@ namespace KokkosSparse{
         bool is_backward;
 
         nnz_scalar_t omega;
-
-        typedef typename KokkosKernels::Impl::array_sum_reduce<nnz_scalar_t, apply_batch_size> batch_sum;
 
         Team_PSGS(row_lno_persistent_work_view_t xadj_, nnz_lno_persistent_work_view_t adj_, scalar_persistent_work_view_t adj_vals_,
                   scalar_persistent_work_view2d_t Xvector_, scalar_persistent_work_view2d_t Yvector_,
@@ -258,65 +258,20 @@ namespace KokkosSparse{
           num_max_vals_in_l2(_num_max_vals_in_l2), is_backward(false),
           omega(omega_){}
 
-        //Do a Gauss-Seidel step on a single row, for X/Y columns colStart:colStart+N-1 (inclusive)
-        //Specializing this on the batch size allows the best reuse of matrix accesses, while also
-        //using the correct width array_sum_reduce.
-        template<int N>
-        KOKKOS_INLINE_FUNCTION void runColBatch(const team_member_t& teamMember, nnz_lno_t row, nnz_lno_t colStart) const
-        {
-          typedef KokkosKernels::Impl::array_sum_reduce<nnz_scalar_t, N> reducer; 
-          size_type row_begin = _xadj(row);
-          size_type row_end = _xadj(row + 1);
-          reducer sum;
-          Kokkos::parallel_reduce(
-            Kokkos::ThreadVectorRange(teamMember, row_end - row_begin),
-            [&] (size_type i, reducer& lsum)
-            {
-              size_type adjind = row_begin + i;
-              nnz_lno_t colIndex = _adj(adjind);
-              nnz_scalar_t val = _adj_vals(adjind);
-              for(int j = 0; j < N; j++)
-                lsum.data[j] += val * _Xvector(colIndex, colStart + j);
-            }, sum);
-          Kokkos::single(Kokkos::PerThread(teamMember),[=] ()
-          {
-            nnz_scalar_t invDiagonalVal = _permuted_inverse_diagonal(row);
-            for(int i = 0; i < N; i++)
-            {
-              _Xvector(row, colStart + i) +=
-                omega * (_Yvector(row, colStart + i) - sum.data[i]) * invDiagonalVal;
-            }
-          });
-        }
-
         KOKKOS_INLINE_FUNCTION
-        void operator()(const team_member_t & teamMember) const {
-          nnz_lno_t row = teamMember.league_rank() * teamMember.team_size() + teamMember.team_rank() + _color_set_begin;
-          if (row >= _color_set_end)
-            return;
-          nnz_lno_t num_vecs = _Xvector.extent(1);
-          for(nnz_lno_t batch_start = 0; batch_start < num_vecs;)
-          {
-            switch(num_vecs - batch_start)
+        void operator()(const team_member_t& teamMember) const {
+          Kokkos::parallel_for(Kokkos::TeamThreadRange(teamMember, team_work_size),
+            [&](nnz_lno_t i)
             {
-              #define COL_BATCH_CASE(n) \
-              case n: \
-                      runColBatch<n>(teamMember, row, batch_start); \
-                      batch_start += n; \
-                      break;
-              COL_BATCH_CASE(1)
-              COL_BATCH_CASE(2)
-              COL_BATCH_CASE(3)
-              COL_BATCH_CASE(4)
-              COL_BATCH_CASE(5)
-              COL_BATCH_CASE(6)
-              COL_BATCH_CASE(7)
-              #undef COL_BATCH_CASE
-              default:
-                runColBatch<8>(teamMember, row, batch_start);
-                batch_start += 8;
-            }
-          }
+              nnz_lno_t row = teamMember.league_rank() * team_work_size + i + _color_set_begin;
+              if(row >= _color_set_end)
+                return;
+              size_type rowBegin = _xadj(row);
+              size_type rowLen = _xadj(row + 1) - rowBegin;
+              RowApply::gsThreadRowApply(row, rowLen, &_adj(rowBegin), &_adj_vals(rowBegin),
+                  Kokkos::ArithTraits<nnz_scalar_t>::one(), omega * _permuted_inverse_diagonal(row),
+                  _Xvector.extent(1), _Xvector, _Yvector, teamMember);
+            });
         }
 
         KOKKOS_INLINE_FUNCTION

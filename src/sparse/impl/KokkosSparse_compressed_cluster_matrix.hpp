@@ -44,6 +44,7 @@
 
 #include <Kokkos_Core.hpp>
 #include "KokkosKernels_Utils.hpp"
+#include "KokkosSparse_gauss_seidel_common_impl.hpp"
 
 namespace KokkosSparse{
 namespace Impl{
@@ -414,6 +415,7 @@ struct CompressedClusterApply
   //These are just so that X_t and Y_T are available as member typedefs
   using X_t = X_t_;
   using Y_t = Y_t_;
+  using RowApply = KokkosSparse::Impl::GS_RowApply<lno_t, comp_scalar_t, scalar_t, X_t, Y_t, team_member_t>;
 
   //Range-policy version of apply (one row = one work item)
   struct ApplyRange
@@ -450,7 +452,7 @@ struct CompressedClusterApply
         lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
         comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
         constexpr lno_t colBatchSize = 8;
-        scalar_t accum[colBatchSize];
+        scalar_t accum[colBatchSize] = {0};
         scalar_t k = omega * invDiag;
         for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
         {
@@ -520,7 +522,7 @@ struct CompressedClusterApply
         lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
         comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
         constexpr lno_t colBatchSize = 8;
-        scalar_t accum[colBatchSize];
+        scalar_t accum[colBatchSize] = {0};
         scalar_t coef = omega * invDiag;
         for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
         {
@@ -602,35 +604,8 @@ struct CompressedClusterApply
             comp_scalar_t invDiag = block.template readSingle<comp_scalar_t>();
             lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
             comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
-            constexpr lno_t colBatchSize = 8;
-            scalar_t accum[colBatchSize];
-            scalar_t coef = omega * invDiag;
-            for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
-            {
-              lno_t batch = colBatchSize;
-              if(batch_start + batch > num_vecs)
-                batch = num_vecs - batch_start;
-              //the current batch of columns given by: batch_start, this_batch_size
-              Kokkos::parallel_for(Kokkos::ThreadVectorRange(t, batch),
-                [&](const lno_t j)
-                {
-                  accum[j] = y(row, batch_start + j);
-                });
-              Kokkos::parallel_for(Kokkos::ThreadVectorRange(t, rowSize),
-                [&](const lno_t j)
-                {
-                  lno_t col = rowEntries[j];
-                  scalar_t val = rowValues[j];
-                  for(lno_t k = 0; k < batch; k++)
-                    accum[k] -= val * x(col, batch_start + k);
-                });
-              Kokkos::parallel_for(Kokkos::ThreadVectorRange(t, batch),
-                [&](const lno_t j)
-                {
-                  scalar_t newXval = x(row, batch_start + j) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
-                  x(row, batch_start + j) = newXval + coef * accum[j];
-                });
-            }
+            RowApply::gsThreadRowApply(row, rowSize, rowEntries, rowValues,
+                Kokkos::ArithTraits<scalar_t>::one() - omega, omega * invDiag, num_vecs, x, y, t);
           }
         });
     }
@@ -688,35 +663,8 @@ struct CompressedClusterApply
             comp_scalar_t invDiag = block.template readSingle<comp_scalar_t>();
             lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
             comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
-            constexpr lno_t colBatchSize = 8;
-            scalar_t accum[colBatchSize];
-            scalar_t coef = omega * invDiag;
-            for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
-            {
-              lno_t batch = colBatchSize;
-              if(batch_start + batch > num_vecs)
-                batch = num_vecs - batch_start;
-              //the current batch of columns given by: batch_start, this_batch_size
-              Kokkos::parallel_for(Kokkos::ThreadVectorRange(t, batch),
-                [&](const lno_t j)
-                {
-                  accum[j] = y(row, batch_start + j);
-                });
-              Kokkos::parallel_for(Kokkos::ThreadVectorRange(t, rowSize),
-                [&](const lno_t j)
-                {
-                  lno_t col = rowEntries[j];
-                  scalar_t val = rowValues[j];
-                  for(lno_t k = 0; k < batch; k++)
-                    accum[k] -= val * x(col, batch_start + k);
-                });
-              Kokkos::parallel_for(Kokkos::ThreadVectorRange(t, batch),
-                [&](const lno_t j)
-                {
-                  scalar_t newXval = x(row, batch_start + j) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
-                  x(row, batch_start + j) = newXval + coef * accum[j];
-                });
-            }
+            RowApply::gsThreadRowApply(row, rowSize, rowEntries, rowValues,
+                Kokkos::ArithTraits<scalar_t>::one() - omega, omega * invDiag, num_vecs, x, y, t);
           }
         });
     }

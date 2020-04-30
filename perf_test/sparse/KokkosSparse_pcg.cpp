@@ -122,7 +122,7 @@ void run_experiment(
   if(clusterSize == 1)
     kh.create_gs_handle();
   else
-    kh.create_gs_handle(KokkosSparse::CLUSTER_BALLOON, clusterSize);
+    kh.create_gs_handle(KokkosSparse::CGS_TEAM, KokkosSparse::CLUSTER_BALLOON, true, clusterSize);
   Kokkos::Impl::Timer timer1;
   KokkosKernels::Experimental::Example::pcgsolve(
         kh
