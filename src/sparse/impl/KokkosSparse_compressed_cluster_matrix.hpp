@@ -173,7 +173,7 @@ struct ClusterCompression
       KokkosKernels::Impl::MemStream<unit_t> block;
       //1. store #rows in cluster
       block.template allocSingle<lno_t>();
-      //2. store the offset of first row in cluster
+      //2. store the first row in the cluster
       block.template allocSingle<lno_t>();
       //3. store the number of entries in each row (excluding diagonals)
       block.template getArray<lno_t>(clusterSize);
@@ -330,19 +330,17 @@ struct ClusterCompression
         block(&compressed(compressedOffsets(dstC)));
       //1. store #rows in cluster
       block.template writeSingle<lno_t>(clusterSize);
-      //2. store the first row (permuted) in the cluster
-      lno_t firstRowInput = clusterVerts(clusterBegin);
-      lno_t firstRowPerm = invPerm(firstRowInput);
-      block.template writeSingle<lno_t>(firstRowPerm);
+      //2. store the list of rows in the cluster
+      block.template writeSingle<lno_t>(invPerm(clusterBegin));
       //3. store the number of entries in each row (excluding diagonals)
       lno_t* rowSizes = block.template getArray<lno_t>(clusterSize);
       for(lno_t i = 0; i < clusterSize; i++)
       {
-        lno_t row = clusterVerts(clusterBegin + i);
+        lno_t srcRow = clusterVerts(clusterBegin + i);
         int numOffDiag = 0;
-        for(size_type j = rowmap(row); j < rowmap(row + 1); j++)
+        for(size_type j = rowmap(srcRow); j < rowmap(srcRow + 1); j++)
         {
-          if(entries(j) != row)
+          if(entries(j) != srcRow)
             numOffDiag++;
         }
         rowSizes[i] = numOffDiag;
@@ -352,16 +350,16 @@ struct ClusterCompression
       //                 and each values array is also aligned.
       for(lno_t i = 0; i < clusterSize; i++)
       {
-        lno_t row = clusterVerts(clusterBegin + i);
+        lno_t srcRow = clusterVerts(clusterBegin + i);
         //divide up storage for the row:
         //determine where diag^-1, entries, values will go
         comp_scalar_t* invDiag = block.template getArray<comp_scalar_t>(1);
         lno_t* rowEntries = block.template getArray<lno_t>(rowSizes[i]);
         comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSizes[i]);
         int numOffDiag = 0;
-        for(size_type j = rowmap(row); j < rowmap(row + 1); j++)
+        for(size_type j = rowmap(srcRow); j < rowmap(srcRow + 1); j++)
         {
-          if(entries(j) == row)
+          if(entries(j) == srcRow)
           {
             *invDiag =
               Kokkos::ArithTraits<comp_scalar_t>::one() / comp_scalar_t(values(j));
@@ -371,8 +369,7 @@ struct ClusterCompression
             lno_t col = entries(j);
             if(col < numRows)
               col = invPerm(col);
-            //col is now the correct index for permuted x
-            rowEntries[numOffDiag] = col;
+            rowEntries[numOffDiag] = entries(j);
             rowValues[numOffDiag] = comp_scalar_t(values(j));
             numOffDiag++;
           }
@@ -512,6 +509,7 @@ struct CompressedClusterApply
       //4. for each row: inverse diagonal, entries and values per row.
       //                 the first row must be scalar-aligned,
       //                 and each values array is also aligned.
+      std::cout << "Cluster " << c << " permuted rows: " << clusterRowBegin << " to " << clusterRowBegin + clusterSize << '\n';
       for(lno_t i = 0; i < clusterSize; i++)
       {
         lno_t row = clusterRowBegin + i;
@@ -523,26 +521,27 @@ struct CompressedClusterApply
         comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
         constexpr lno_t colBatchSize = 8;
         scalar_t accum[colBatchSize];
-        scalar_t k = omega * invDiag;
+        scalar_t coef = omega * invDiag;
         for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
         {
           lno_t batch = colBatchSize;
           if(batch_start + batch > num_vecs)
             batch = num_vecs - batch_start;
           //the current batch of columns given by: batch_start, this_batch_size
-          for(lno_t i = 0; i < batch; i++)
-            accum[i] = y(row, batch_start + i);
-          for(lno_t i = 0; i < rowSize; i++)
+          for(lno_t j = 0; j < batch; j++)
+            accum[j] = y(row, batch_start + j);
+          for(lno_t j = 0; j < rowSize; j++)
           {
-            lno_t col = rowEntries[i];
-            scalar_t val = rowValues[i];
-            for(lno_t i = 0; i < batch; i++)
-              accum[i] -= val * x(col, batch_start + i);
+            lno_t col = rowEntries[j];
+            scalar_t val = rowValues[j];
+            std::cout << "Have entry " << val << " in col " << col << '\n';
+            for(lno_t k = 0; k < batch; k++)
+              accum[k] -= val * x(col, batch_start + k);
           }
-          for(lno_t i = 0; i < batch; i++)
+          for(lno_t j = 0; j < batch; j++)
           {
-            scalar_t newXval = x(row, batch_start + i) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
-            x(row, batch_start + i) = newXval + k * accum[i];
+            scalar_t newXval = x(row, batch_start + j) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
+            x(row, batch_start + j) = newXval + coef * accum[j];
           }
         }
       }
@@ -603,7 +602,7 @@ struct CompressedClusterApply
             comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
             constexpr lno_t colBatchSize = 8;
             scalar_t accum[colBatchSize];
-            scalar_t k = omega * invDiag;
+            scalar_t coef = omega * invDiag;
             for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
             {
               lno_t batch = colBatchSize;
@@ -627,7 +626,7 @@ struct CompressedClusterApply
                 [&](const lno_t j)
                 {
                   scalar_t newXval = x(row, batch_start + j) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
-                  x(row, batch_start + j) = newXval + k * accum[j];
+                  x(row, batch_start + j) = newXval + coef * accum[j];
                 });
             }
           }
@@ -689,7 +688,7 @@ struct CompressedClusterApply
             comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
             constexpr lno_t colBatchSize = 8;
             scalar_t accum[colBatchSize];
-            scalar_t k = omega * invDiag;
+            scalar_t coef = omega * invDiag;
             for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
             {
               lno_t batch = colBatchSize;
@@ -713,7 +712,7 @@ struct CompressedClusterApply
                 [&](const lno_t j)
                 {
                   scalar_t newXval = x(row, batch_start + j) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
-                  x(row, batch_start + j) = newXval + k * accum[j];
+                  x(row, batch_start + j) = newXval + coef * accum[j];
                 });
             }
           }

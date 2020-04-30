@@ -860,6 +860,30 @@ public:
           PermuteOrderFunctor(permutation, gsHandle->get_color_adj(), clusterOffsets, clusterVerts, this->num_rows));
       gsHandle->set_apply_permutation(permutation);
       Kokkos::parallel_for(range_policy_t(0, this->num_rows), PermuteInverseFunctor(permutation, invPermutation));
+
+
+      std::cout << "Debug: printing out rows in permuted order using color sets/clusters.\n";
+      auto color_xadj = gsHandle->get_color_xadj();
+      auto color_adj = gsHandle->get_color_adj();
+      auto numColors = gsHandle->get_num_colors();
+      for(int color = 0; color < numColors; color++)
+      {
+        std::cout << "Printing out color " << color << '\n';
+        int colorBegin = color_xadj(color);
+        int colorEnd = color_xadj(color + 1);
+        for(int ci = colorBegin; ci < colorEnd; ci++)
+        {
+          int c = color_adj(ci);
+          std::cout << "  Printing out cluster " << c << '\n';
+          int clusterBegin = clusterOffsets(c);
+          int clusterEnd = clusterOffsets(c + 1);
+          for(int ri = clusterBegin; ri < clusterEnd; ri++)
+          {
+            int r = clusterVerts(ri);
+            std::cout << "    Contains orig row " << r << ", which is permuted row " << invPermutation(r) << '\n';
+          }
+        }
+      }
     }
     //Compute the compressed size of each cluster.
     offset_view_t streamOffsets(Kokkos::ViewAllocateWithoutInitializing("Matrix stream cluster offsets"), numClusters + 1);
@@ -1048,6 +1072,7 @@ public:
     for(color_t i = 0; i < numColors; i++)
     {
       color_t c = isForward ? i : (numColors - 1 - i);
+      std::cout << "Applying over color set " << c << ", from " << colorOffsets(c) << " to " << colorOffsets(c + 1) << '\n';
       Kokkos::parallel_for(
           range_policy_t(colorOffsets(c), colorOffsets(c + 1)),
           ApplyFunctor(streamOffsets, streamData, x, y, omega));

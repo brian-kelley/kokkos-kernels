@@ -329,6 +329,8 @@ void test_cluster(int numRows, bool symmetric)
       {
         for(int mixed_prec = 0; mixed_prec < 2; mixed_prec++)
         {
+          std::cout << "Running CGS. direction = " << direction << ", algo = " << apply_algo << ", clusterSize = " << clusterSize << ", compact scalars = " << mixed_prec << '\n';
+          std::cout << "A is " << numRows << "x" << numRows << '\n';
           Handle kh;
           kh.create_gs_handle((CGSAlgorithm) apply_algo, CLUSTER_BALLOON, mixed_prec, clusterSize);
           run_and_verify<Handle, crsMat_t, vec_t>(&kh, A, x, y, symmetric, direction);
