@@ -369,7 +369,7 @@ struct ClusterCompression
             lno_t col = entries(j);
             if(col < numRows)
               col = invPerm(col);
-            rowEntries[numOffDiag] = entries(j);
+            rowEntries[numOffDiag] = col;
             rowValues[numOffDiag] = comp_scalar_t(values(j));
             numOffDiag++;
           }
@@ -534,7 +534,9 @@ struct CompressedClusterApply
             lno_t col = rowEntries[j];
             scalar_t val = rowValues[j];
             for(lno_t k = 0; k < batch; k++)
+            {
               accum[k] -= val * x(col, batch_start + k);
+            }
           }
           for(lno_t j = 0; j < batch; j++)
           {

@@ -764,18 +764,19 @@ public:
       perm(perm_),
       color_adj(color_adj_),
       clusterOffsets(clusterOffsets_),
+      clusterVerts(clusterVerts_),
       numRows(numRows_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t i, lno_t& loffset, bool finalPass) const
     {
       const lno_t cluster = color_adj(i);
-      const lno_t clusterSize = clusterOffsets(cluster + 1) - clusterOffsets(cluster);
+      const lno_t clusterBegin = clusterOffsets(cluster);
+      const lno_t clusterSize = clusterOffsets(cluster + 1) - clusterBegin;
       if(finalPass)
       {
         //populate perm for this cluster.
         //loffset is where it starts, and clusterVerts gives the row list
-        lno_t clusterBegin = clusterOffsets(cluster);
         for(lno_t j = 0; j < clusterSize; j++)
         {
           lno_t v = clusterVerts(clusterBegin + j);
@@ -857,30 +858,6 @@ public:
           PermuteOrderFunctor(permutation, gsHandle->get_color_adj(), clusterOffsets, clusterVerts, this->num_rows));
       gsHandle->set_apply_permutation(permutation);
       Kokkos::parallel_for(range_policy_t(0, this->num_rows), PermuteInverseFunctor(permutation, invPermutation));
-      ////////////////////
-      std::cout << "Debug: printing out rows in permuted order using color sets/clusters.\n";
-      auto color_xadj = gsHandle->get_color_xadj();
-      auto color_adj = gsHandle->get_color_adj();
-      auto numColors = gsHandle->get_num_colors();
-      for(int color = 0; color < numColors; color++)
-      {
-        std::cout << "Printing out color " << color << '\n';
-        int colorBegin = color_xadj(color);
-        int colorEnd = color_xadj(color + 1);
-        for(int ci = colorBegin; ci < colorEnd; ci++)
-        {
-          int c = color_adj(ci);
-          std::cout << "  Printing out cluster " << c << '\n';
-          int clusterBegin = clusterOffsets(c);
-          int clusterEnd = clusterOffsets(c + 1);
-          for(int ri = clusterBegin; ri < clusterEnd; ri++)
-          {
-            int r = clusterVerts(ri);
-            std::cout << "    Contains orig row " << r << ", which is permuted row " << invPermutation(r) << '\n';
-          }
-        }
-      }
-      ////////////////////
     }
     //Compute the compressed size of each cluster.
     offset_view_t streamOffsets(Kokkos::ViewAllocateWithoutInitializing("Matrix stream cluster offsets"), numClusters + 1);
@@ -1058,7 +1035,6 @@ public:
     ordinal_view_t permutation; //list of rows
     colmajor_vector_t perm_x;
     X_t orig_x;
-    lno_t numRows;
     lno_t numVecs;
   };
 
@@ -1210,17 +1186,17 @@ public:
       if(!update_y_vector && !init_zero_x_vector)
       {
         //Only permute x.
-        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Pre_Permute_X_Tag>(0, this->num_rows), pf);
+        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Pre_Permute_X_Tag>(0, this->num_cols), pf);
       }
       else if(update_y_vector && init_zero_x_vector)
       {
         //Only permute y.
-        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Pre_Permute_Y_Tag>(0, this->num_rows), pf);
+        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Pre_Permute_Y_Tag>(0, this->num_cols), pf);
       }
       else if(update_y_vector && !init_zero_x_vector)
       {
         //Permute both x and y.
-        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Pre_Permute_XY_Tag>(0, this->num_rows), pf);
+        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Pre_Permute_XY_Tag>(0, this->num_rows + this->num_cols), pf);
       }
     }
     if(init_zero_x_vector)
@@ -1235,11 +1211,6 @@ public:
     color_t numColors = gsHandle->get_num_colors();
     auto streamOffsets = gsHandle->get_stream_offsets();
     auto streamData = gsHandle->get_stream_data();
-    //Fork on a few runtime/compile-time options:
-    // - Compact scalars on/off
-    // - Range vs. Team
-    // - Permuted vs. not
-    // - Forward vs. backward
     for(int iter = 0; iter < numIter; iter++)
     {
       if(apply_forward)
