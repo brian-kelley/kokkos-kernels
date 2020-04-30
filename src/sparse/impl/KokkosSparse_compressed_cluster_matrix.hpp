@@ -368,10 +368,11 @@ struct ClusterCompression
           }
           else
           {
-            lno_t permCol = entries(j);
+            lno_t col = entries(j);
             if(col < numRows)
-              permCol = invPerm(permCol);
-            rowEntries[numOffDiag] = permCol;
+              col = invPerm(col);
+            //col is now the correct index for permuted x
+            rowEntries[numOffDiag] = col;
             rowValues[numOffDiag] = comp_scalar_t(values(j));
             numOffDiag++;
           }

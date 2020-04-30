@@ -422,9 +422,9 @@ public:
 
   //Assign cluster labels to vertices, given that the vertices are naturally
   //ordered so that contiguous groups of vertices form decent clusters.
-  struct NopVertClusteringFunctor
+  struct NaturalCoarseningFunctor
   {
-    NopVertClusteringFunctor(const ordinal_view_t& vertClusters_, lno_t clusterSize_) :
+    NaturalCoarseningFunctor(const ordinal_view_t& vertClusters_, lno_t clusterSize_) :
         vertClusters(vertClusters_),
         numRows(vertClusters.extent(0)),
         clusterSize(clusterSize_)
@@ -604,8 +604,8 @@ public:
     std::cout << "Coloring: " << timer.seconds() << '\n';
     timer.reset();
 #endif
-    ordinal_view_t color_xadj;
-    ordinal_view_t color_adj;
+    ordinal_view_t color_xadj; //offsets for color_sets
+    ordinal_view_t color_adj;  //rows grouped by color
     KokkosKernels::Impl::create_reverse_map
       <typename HandleType::GraphColoringHandleType::color_view_t,
        ordinal_view_t, exec_space>
@@ -940,7 +940,7 @@ public:
   //Permute both: if !init_zero_x_vector && update_y_vector
   struct Pre_Permute_XY_Tag {};
   //Just permute Y: if init_zero_x_vector && update_y_vector
-  struct Pre_Zero_X_Permute_Y_Tag {};
+  struct Pre_Permute_Y_Tag {};
   //Final case is init_zero_x_vector && !update_y_vector,
   //so nothing gets permuted.
 
@@ -950,49 +950,11 @@ public:
     //Version that does both x and y
     PrePermute(const ordinal_view_t& permutation_, const X_t& orig_x_, const colmajor_vector_t& perm_x_, const Y_t& orig_y_, const rowmajor_vector_t& perm_y_)
       : permutation(permutation_), orig_x(orig_x_), perm_x(perm_x_), orig_y(orig_y_), perm_y(perm_y_),
-      numRows(y.extent(0)), numVecs(y.extent(1))
+      numRows(orig_y.extent(0)), numVecs(orig_y.extent(1))
     {}
 
-    //Version that only does x
-    PrePermute(const ordinal_view_t& permutation_, const X_t& orig_x_, const colmajor_vector_t& perm_x_, lno_t numRows_)
-      : permutation(permutation_), orig_x(orig_x_), perm_x(perm_x_), orig_y(), perm_y(),
-      numRows(numRows_), numVecs(x.extent(1))
-    {}
-
-    //Call over range (0, numRows + numCols)
-    KOKKOS_INLINE_FUNCTION void operator(Permute_WithY_Tag, lno_t row) const
+    KOKKOS_FORCEINLINE_FUNCTION void permXRow(lno_t row) const
     {
-      if(row < numRows)
-      {
-        //doing y
-        lno_t origRow = permutation(row);
-        for(lno_t col = 0; col < numVecs; col++)
-          perm_y(row, col) = orig_y(origRow, col);
-      }
-      else
-      {
-        row -= numRows;
-        //doing x
-        if(row < numRows)
-        {
-          //must be permuted
-          lno_t origRow = permutation(row);
-          for(lno_t col = 0; col < numVecs; col++)
-            perm_x(row, col) = orig_x(origRow, col);
-        }
-        else
-        {
-          //copy to same posiiton
-          for(lno_t col = 0; col < numVecs; col++)
-            perm_x(row, col) = orig_x(row, col);
-        }
-      }
-    }
-
-    //Call over range (0, numCols)
-    KOKKOS_INLINE_FUNCTION void operator(Permute_WithoutY_Tag, lno_t row) const
-    {
-      //Just permute x
       if(row < numRows)
       {
         //must be permuted
@@ -1006,6 +968,34 @@ public:
         for(lno_t col = 0; col < numVecs; col++)
           perm_x(row, col) = orig_x(row, col);
       }
+    }
+
+    KOKKOS_FORCEINLINE_FUNCTION void permYRow(lno_t row) const
+    {
+      lno_t origRow = permutation(row);
+      for(lno_t col = 0; col < numVecs; col++)
+        perm_y(row, col) = orig_y(origRow, col);
+    }
+
+    //Call over range (0, numCols)
+    KOKKOS_INLINE_FUNCTION void operator()(Pre_Permute_X_Tag, lno_t row) const
+    {
+      permXRow(row);
+    }
+
+    //Call over range (0, numRows)
+    KOKKOS_INLINE_FUNCTION void operator()(Pre_Permute_Y_Tag, lno_t row) const
+    {
+      permYRow(row);
+    }
+
+    //Call over range (0, numRows + numCols)
+    KOKKOS_INLINE_FUNCTION void operator()(Pre_Permute_XY_Tag, lno_t i) const
+    {
+      if(i < numRows)
+        permYRow(i);
+      else
+        permXRow(i - numRows);
     }
 
     ordinal_view_t permutation; //list of rows
@@ -1026,7 +1016,7 @@ public:
 
     //Run this over range (0, numRows). Elements numRows...numCols
     //weren't modified and don't need to be copied back.
-    KOKKOS_INLINE_FUNCTION void operator(lno_t row) const
+    KOKKOS_INLINE_FUNCTION void operator()(lno_t row) const
     {
       //A reversal of the pre-permute assignment.
       //This works because rows 0...numRows are permuted in a 1-1 mapping.
@@ -1122,7 +1112,7 @@ public:
     }
   }
 
-  void generalPermutedApply(CGSHandle* gsHandle, color_t numColors, const host_ordinal_view_t& colorOffsets, const offset_view_t& streamOffsets, const unit_view_t& streamData, const colmajor_vector_t& perm_x, const rowmajor_vector_t& perm_y, bool forward, scalar_t omega, bool forward)
+  void generalPermutedApply(CGSHandle* gsHandle, color_t numColors, const host_ordinal_view_t& colorOffsets, const offset_view_t& streamOffsets, const unit_view_t& streamData, const colmajor_vector_t& perm_x, const rowmajor_vector_t& perm_y, bool forward, scalar_t omega)
   {
     if(gsHandle->use_compact_scalars())
     {
@@ -1172,29 +1162,32 @@ public:
       gsHandle->allocate_perm_xy(y.extent(0), x.extent(0), x.extent(1));
       gsHandle->get_perm_xy(perm_x, perm_y);
       permutation = gsHandle->get_apply_permutation();
-      if(update_y_vector && init_zero_x_vector)
+      PrePermute<X_t, Y_t> pf(permutation, x, perm_x, y, perm_y);
+      if(!update_y_vector && !init_zero_x_vector)
       {
-        //Permute all rows of y, and rows 0...numRows of x.
-        //Also copy rows numRows...numCols of x to perm_x.
-        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Permute_WithY_Tag>(0, this->num_rows + this->num_cols),
-            PrePermute(permutation, x, perm_x, y, perm_y));
+        //Only permute x.
+        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Pre_Permute_X_Tag>(0, this->num_rows), pf);
       }
-      else if(!update_y_vector && init_zero_x_vector)
+      else if(update_y_vector && init_zero_x_vector)
       {
-        //perm_y is already correct, so just permute 0...numRows and copy numRows...numCols of x.
-        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Permute_WithoutY_Tag>(0, this->num_cols),
-            PrePermute(permutation, x, perm_x, this->num_rows));
+        //Only permute y.
+        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Pre_Permute_Y_Tag>(0, this->num_rows), pf);
+      }
+      else if(update_y_vector && !init_zero_x_vector)
+      {
+        //Permute both x and y.
+        Kokkos::parallel_for(Kokkos::RangePolicy<exec_space, Pre_Permute_XY_Tag>(0, this->num_rows), pf);
       }
     }
     if(init_zero_x_vector)
     {
       //zero out the entire x vector used for apply.
-      if(permutedApply)
+      if(gsHandle->use_permutation())
         KokkosKernels::Impl::zero_vector<colmajor_vector_t, exec_space>(this->num_cols, perm_x);
       else
         KokkosKernels::Impl::zero_vector<X_t, exec_space>(this->num_cols, x);
     }
-    host_ordinal_view_t h_color_xadj = gsHandle->get_color_xadj();
+    host_ordinal_view_t colorOffsets = gsHandle->get_color_xadj();
     color_t numColors = gsHandle->get_num_colors();
     auto streamOffsets = gsHandle->get_stream_offsets();
     auto streamData = gsHandle->get_stream_data();
@@ -1232,10 +1225,11 @@ public:
     {
       //scatter the modified entries of perm_x back to x
       Kokkos::parallel_for(Kokkos::RangePolicy<exec_space>(0, this->num_rows),
-          PostPermute(permutation, perm_x, x));
+          PostPermute<X_t>(permutation, perm_x, x));
       if(init_zero_x_vector && this->num_cols > this->num_rows)
       {
-        //also need to zero out rows num_rows...num_cols in x
+        //Also need to zero out rows num_rows...num_cols in input x.
+        //Before, only perm_x was zeroed.
         auto remoteX = Kokkos::subview(x, std::make_pair(this->num_rows, this->num_cols), Kokkos::ALL());
         KokkosKernels::Impl::zero_vector<decltype(remoteX), exec_space>(this->num_cols - this->num_rows, remoteX);
       }

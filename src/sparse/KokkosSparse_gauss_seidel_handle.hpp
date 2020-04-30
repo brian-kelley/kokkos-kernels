@@ -627,17 +627,15 @@ namespace KokkosSparse{
 
     //note: no setter for use_compact_scalars. It can't be changed after the first setup.
     bool use_compact_scalars() const {
-      return this->use_compact_scalars;
+      return this->compact_scalars;
     }
 
-    bool use_teams() const
-    {
+    bool use_teams() const {
       return (apply_algo == CGS_TEAM) ||
         (apply_algo == CGS_PERMUTED_TEAM);
     }
 
-    bool use_permutation() const
-    {
+    bool use_permutation() const {
       return (apply_algo == CGS_PERMUTED_RANGE) ||
         (apply_algo == CGS_PERMUTED_TEAM);
     }
