@@ -58,6 +58,7 @@
 
 using std::cout;
 using std::string;
+using namespace KokkosSparse;
 
 static char* getNextArg(int& i, int argc, char** argv)
 {
@@ -70,11 +71,23 @@ static char* getNextArg(int& i, int argc, char** argv)
   return argv[i];
 }
 
-template<typename device_t>
-void runGS(string matrixPath, string devName, bool symmetric, bool twostage, bool classic)
+struct GS_Parameters
 {
-  //TODO: rewrite
-  /*
+  const char* matrix_path;
+  bool graph_symmetric = true;
+  GSAlgorithm algo = GS_POINT;
+  GSDirection direction = GS_FORWARD;
+  //Cluster:
+  CGSAlgorithm cgs_algo = CGS_DEFAULT;
+  int cluster_size = 10;
+  bool compact_scalars = true;
+  //Two stage:
+  bool classic = false;
+};
+
+template<typename device_t>
+void runGS(const GS_Parameters& params)
+{
   typedef default_scalar scalar_t;
   typedef default_lno_t lno_t;
   typedef default_size_type size_type;
@@ -86,12 +99,14 @@ void runGS(string matrixPath, string devName, bool symmetric, bool twostage, boo
   typedef typename crsmat_t::values_type::non_const_type scalar_view_t;
   //typedef typename graph_t::row_map_type::non_const_type lno_view_t;
   //typedef typename graph_t::entries_type::non_const_type lno_nnz_view_t;
-  crsmat_t A = KokkosKernels::Impl::read_kokkos_crst_matrix<crsmat_t>(matrixPath.c_str());
+  crsmat_t A = KokkosKernels::Impl::read_kokkos_crst_matrix<crsmat_t>(params.matrix_path);
   lno_t nrows = A.numRows();
   lno_t ncols = A.numCols();
   if(nrows != ncols)
   {
-    throw std::runtime_error("Gauss_Seidel only works for square matrices"); 
+    cout << "ERROR: Gauss-Seidel only works for square matrices\n";
+    Kokkos::finalize();
+    exit(1);
   }
   //size_type nnz = A.nnz();
   KernelHandle kh;
@@ -106,121 +121,130 @@ void runGS(string matrixPath, string devName, bool symmetric, bool twostage, boo
     }
     Kokkos::deep_copy(b, bhost);
   }
+  double bnorm = KokkosBlas::nrm2(b);
   //initial LHS is 0
   scalar_view_t x("x", nrows);
   //how long symbolic/numeric phases take (the graph reuse case isn't that interesting since numeric doesn't do much)
-  std::vector<double> symbolicTimes;
-  std::vector<double> numericTimes;
-  std::vector<double> applyTimes;
   Kokkos::Timer timer;
   //cluster size of 1 is standard multicolor GS
-  if(clusterSize == 1)
+  if(params.algo == GS_CLUSTER)
   {
-    //cluster size of 1 is standard multicolor GS
-    if(twostage || classic) {
-      // Two-stage or Classical GS
-      if (classic) {
-        std::cout << "\n\n***** RUNNING CLASSICAL SGS (two-stage with inner triangular solve)\n";
-      } else {
-        std::cout << "\n\n***** RUNNING TWO-STAGE SGS\n";
-      }
-      //this constructor is for two-stage
-      kh.create_gs_handle(KokkosSparse::GS_TWOSTAGE);
-      kh.set_gs_twostage(!classic, nrows);
-    } else if(clusterSize == 1)
-    {
-      std::cout << "\n\n***** RUNNING POINT COLORING SGS\n";
-      //this constructor is for point coloring
-      kh.create_gs_handle(KokkosSparse::GS_DEFAULT);
-    }
-    else
-    {
-      std::cout << "\n\n***** RUNNING CLUSTER SGS, cluster size = " << clusterSize << "\n";
-      //this constructor is for cluster (block) coloring
-      kh.create_gs_handle(KokkosSparse::CLUSTER_BALLOON, clusterSize);
-    }
-    timer.reset();
-    KokkosSparse::Experimental::gauss_seidel_symbolic//<KernelHandle, lno_view_t, lno_nnz_view_t>
-      (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, symmetric);
-    symbolicTimes.push_back(timer.seconds());
-    std::cout << "\n*** symbolic time: " << symbolicTimes.back() << '\n';
-    timer.reset();
-    KokkosSparse::Experimental::gauss_seidel_numeric//<KernelHandle, lno_view_t, lno_nnz_view_t, scalar_view_t>
-      (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, symmetric);
-    numericTimes.push_back(timer.seconds());
-    std::cout << "\n*** numeric time: " << numericTimes.back() << '\n';
-    timer.reset();
-    //Last two parameters are damping factor (should be 1) and sweeps
-    KokkosSparse::Experimental::symmetric_gauss_seidel_apply
-      (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, 1);
-    applyTimes.push_back(timer.seconds());
-    std::cout << "\n*** apply time: " << applyTimes.back() << '\n';
-    //Now, compute the 2-norm of residual 
-    scalar_view_t res("Ax-b", nrows);
-    Kokkos::deep_copy(res, b);
-    typedef Kokkos::Details::ArithTraits<scalar_t> KAT;
-    scalar_t alpha = KAT::one();
-    scalar_t beta = -KAT::one();
-    KokkosSparse::spmv<scalar_t, crsmat_t, scalar_view_t, scalar_t, scalar_view_t>
-      ("N", alpha, A, x, beta, res);
-    double resnorm = KokkosBlas::nrm2(res);
-    //note: this still works if the solution diverges
-    scaledRes.push_back(resnorm / bnorm);
-    kh.destroy_gs_handle();
+    kh.create_gs_handle(params.cgs_algo, CLUSTER_BALLOON, params.compact_scalars, params.cluster_size);
   }
   else
   {
-    std::cout << "\n\n***** RUNNING CLUSTER SGS, cluster size = " << clusterSize << "\n";
-    //this constructor is for cluster (block) coloring
-    kh.create_gs_handle(KokkosSparse::CLUSTER_BALLOON, clusterSize);
+    kh.create_gs_handle(params.algo);
+    if(params.algo == GS_TWOSTAGE)
+      kh.set_gs_twostage(!params.classic, nrows);
   }
   timer.reset();
   KokkosSparse::Experimental::gauss_seidel_symbolic
-    (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, symmetric);
-  symbolicTimes.push_back(timer.seconds());
-  std::cout << "\n*** symbolic time: " << symbolicTimes.back() << '\n';
+    (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, params.graph_symmetric);
+  double symbolicTime = timer.seconds();
+  std::cout << "\n*** Symbolic time: " << symbolicTime << '\n';
   timer.reset();
   KokkosSparse::Experimental::gauss_seidel_numeric
-    (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, symmetric);
-  numericTimes.push_back(timer.seconds());
-  std::cout << "\n*** numeric time: " << numericTimes.back() << '\n';
+    (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, params.graph_symmetric);
+  double numericTime = timer.seconds();
+  std::cout << "\n*** Numeric time: " << numericTime << '\n';
   timer.reset();
   //Last two parameters are damping factor (should be 1) and sweeps
-  KokkosSparse::Experimental::symmetric_gauss_seidel_apply
-    (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, 1);
-  applyTimes.push_back(timer.seconds());
-  std::cout << "\n*** apply time: " << applyTimes.back() << '\n';
+  switch(params.direction)
+  {
+    case GS_SYMMETRIC:
+      KokkosSparse::Experimental::symmetric_gauss_seidel_apply
+        (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, 1);
+      break;
+    case GS_FORWARD:
+      KokkosSparse::Experimental::forward_sweep_gauss_seidel_apply
+        (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, 1);
+      break;
+    case GS_BACKWARD:
+      KokkosSparse::Experimental::backward_sweep_gauss_seidel_apply
+        (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, 1);
+      break;
+  }
+  double applyTime = timer.seconds();
+  std::cout << "\n*** Apply time: " << applyTime << '\n';
   kh.destroy_gs_handle();
-  */
+  //Now, compute the 2-norm of residual 
+  scalar_view_t res("Ax-b", nrows);
+  Kokkos::deep_copy(res, b);
+  typedef Kokkos::Details::ArithTraits<scalar_t> KAT;
+  scalar_t alpha = KAT::one();
+  scalar_t beta = -KAT::one();
+  KokkosSparse::spmv<scalar_t, crsmat_t, scalar_view_t, scalar_t, scalar_view_t>
+    ("N", alpha, A, x, beta, res);
+  double resnorm = KokkosBlas::nrm2(res);
+  //note: this still works if the solution diverges
+  std::cout << "Relative res norm: " << resnorm / bnorm << '\n';
 }
 
 int main(int argc, char** argv)
 {
-  /*
   //Expect two args: matrix name and device flag.
-  if(argc != 3 && argc != 4 && argc != 5)
+  if(argc < 3)
   {
-    std::cout << "Usage: ./sparse_gs matrix.mtx [--device] [--symmetric]\n\n";
-    std::cout << "device can be \"serial\", \"openmp\", \"cuda\" or \"threads\".\n";
-    std::cout << "If device is not given, the default device is used.\n";
-    std::cout << "Add the --symmetric flag if the matrix is known to be symmetric.\n";
+    cout << "Usage: ./sparse_gs matrix.mtx --algorithm\n\n";
+    cout << "device can be \"serial\", \"openmp\", \"cuda\" or \"threads\".\n";
+    cout << "If device is not given, the default device for this build is used.\n";
+    cout << "Add the --sym-graph flag if the matrix is known to be structurally symmetric.\n";
+    cout << "4 main algorithms (required, choose one):\n";
+    cout << "  --point\n";
+    cout << "  --cluster\n";
+    cout << "  --twostage\n";
+    cout << "  --classic\n\n";
+    cout << "Apply direction (default is forward)\n";
+    cout << "  --forward\n";
+    cout << "  --backward\n";
+    cout << "  --symmetric\n";
+    cout << "Options for cluster only:\n";
+    cout << "  --cluster-size N (default: 10)\n";
+    cout << "  --compact-scalars, --no-compact-scalars (default: compact)\n";
+    cout << "  --cgs-apply ALGO\n";
+    cout << "     ALGO may be: \"range\", \"team\", \"permuted-range\" or \"permuted-team\".\n";
+    cout << "     Default is chosen by the library.\n";
     return 0;
   }
+  Kokkos::initialize(argc, argv);
+  //device is just the name of the execution space, lowercase
   string device;
-  string matrixPath;
-  int clusterSize = 1;
-  bool sym = false;
-  bool twostage = false;
+  GS_Parameters params;
+
+struct GS_Parameters
+{
+  std::string matrix_path;
+  bool graph_symmetric = true;
+  GSAlgorithm algo = GS_POINT;
+  GSDirection direction = GS_FORWARD;
+  //Cluster:
+  CGSAlgorithm cgs_algo = CGS_DEFAULT;
+  int cluster_size = 10;
+  bool compact_scalars = true;
+  //Two stage:
   bool classic = false;
+};
+
   for(int i = 1; i < argc; i++)
   {
-    if(!strcmp(argv[i], "--twostage"))
-      twostage = true;
-    else if(!strcmp(argv[i], "--classic"))
-      classic = true;
-    else if(!strcmp(argv[i], "--symmetric"))
-      sym = true;
-    else if(!strcmp(argv[i], "--serial"))
+    /*
+    std::cout << "Usage: ./sparse_gs matrix.mtx --algorithm [--device] [--symmetric]\n\n";
+    std::cout << "device can be \"serial\", \"openmp\", \"cuda\" or \"threads\".\n";
+    std::cout << "If device is not given, the default device is used.\n";
+    std::cout << "Add the --symmetric flag if the matrix is known to be structurally symmetric.\n";
+    std::cout << "4 main algorithms (required to pick one):\n";
+    std::cout << "  --point\n";
+    std::cout << "  --cluster\n";
+    std::cout << "  --twostage\n";
+    std::cout << "  --classic\n\n";
+    std::cout << "Direction flags:
+    std::cout << "Options for cluster only:\n";
+    std::cout << "  --cluster-size N (default: 10)\n";
+    std::cout << "  --compact-scalars, --no-compact-scalars (default: compact)\n";
+    std::cout << "  --cgs-apply ALGO\n";
+    std::cout << "     ALGO may be: \"range\", \"team\", \"permuted-range\" or \"permuted-team\".\n";
+    */
+    if(!strcmp(argv[i], "--serial"))
       device = "serial";
     else if(!strcmp(argv[i], "--openmp"))
       device = "openmp";
@@ -228,86 +252,92 @@ int main(int argc, char** argv)
       device = "threads";
     else if(!strcmp(argv[i], "--cuda"))
       device = "cuda";
-    else if(!strcmp(argv[i], "--clusterSize"))
-      clusterSize = atoi(getNextArg(i, argc, argv));
+    else if(!strcmp(argv[i], "--sym-graph"))
+      params.graph_symmetric  = true;
+    else if(!strcmp(argv[i], "--symmetric"))
+      params.direction = GS_SYMMETRIC;
+    else if(!strcmp(argv[i], "--forward"))
+      params.direction = GS_FORWARD;
+    else if(!strcmp(argv[i], "--backward"))
+      params.direction = GS_BACKWARD;
+    else if(!strcmp(argv[i], "--point"))
+      params.algo = GS_POINT;
+    else if(!strcmp(argv[i], "--cluster"))
+      params.algo = GS_CLUSTER;
+    else if(!strcmp(argv[i], "--twostage"))
+      params.algo = GS_TWOSTAGE;
+    else if(!strcmp(argv[i], "--classic"))
+    {
+      params.algo = GS_TWOSTAGE;
+      params.classic = true;
+    }
+    else if(!strcmp(argv[i], "--compact-scalars"))
+      params.compact_scalars = true;
+    else if(!strcmp(argv[i], "--no-compact-scalars"))
+      params.compact_scalars = false;
+    else if(!strcmp(argv[i], "--cgs-apply"))
+    {
+      const char* cgsApply = getNextArg(i, argc, argv);
+      if(!strcmp(cgsApply, "range"))
+        params.cgs_algo = CGS_RANGE;
+      else if(!strcmp(cgsApply, "team"))
+        params.cgs_algo = CGS_TEAM;
+      else if(!strcmp(cgsApply, "permuted-range"))
+        params.cgs_algo = CGS_PERMUTED_RANGE;
+      else if(!strcmp(cgsApply, "permuted-team"))
+        params.cgs_algo = CGS_PERMUTED_TEAM;
+      else
+      {
+        std::cout << "\"" << cgsApply << "\" is not a valid cluster GS apply algorithm.\n";
+        std::cout << "Valid choices are: range, team, permuted-range, permuted-team.\\n";
+        Kokkos::finalize();
+        exit(1);
+      }
+    }
+    else if(!strcmp(argv[i], "--cluster-size"))
+      params.cluster_size = atoi(getNextArg(i, argc, argv));
     else
-      matrixPath = argv[i];
+      params.matrix_path = argv[i];
   }
-  //No device given, so use the default one
   if(!device.length())
   {
-    #ifdef KOKKOS_ENABLE_SERIAL
-    if(std::is_same<Kokkos::DefaultExecutionSpace, Kokkos::Serial>::value)
-      device = "serial";
-    #endif
-    #ifdef KOKKOS_ENABLE_OPENMP
-    if(std::is_same<Kokkos::DefaultExecutionSpace, Kokkos::OpenMP>::value)
-      device = "openmp";
-    #endif
-    #ifdef KOKKOS_ENABLE_CUDA
-    if(std::is_same<Kokkos::DefaultExecutionSpace, Kokkos::Cuda>::value)
-      device = "cuda";
-    #endif
-    #ifdef KOKKOS_ENABLE_THREADS
-    if(std::is_same<Kokkos::DefaultExecutionSpace, Kokkos::Threads>::value)
-      device = "threads";
-    #endif
+    runGS<Kokkos::DefaultExecutionSpace>(params);
   }
-  Kokkos::initialize();
-  //Kokkos::ScopeGuard kokkosScope (argc, argv);
-
   bool run = false;
   #ifdef KOKKOS_ENABLE_SERIAL
   if(device == "serial")
   {
-<<<<<<< 83c31bf54673e04bfb45cfa3d40cc5555c6c54be
-    runGS<Kokkos::Serial>(matrixPath, device, sym, twostage, classic);
-=======
-    runGS<Kokkos::Serial>(matrixPath, device, clusterSize, sym);
->>>>>>> Minor GS cleanup
+    runGS<Kokkos::Serial>(params);
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_OPENMP
   if(device == "openmp")
   {
-<<<<<<< 83c31bf54673e04bfb45cfa3d40cc5555c6c54be
-    runGS<Kokkos::OpenMP>(matrixPath, device, sym, twostage, classic);
-=======
-    runGS<Kokkos::OpenMP>(matrixPath, device, clusterSize, sym);
->>>>>>> Minor GS cleanup
+    runGS<Kokkos::OpenMP>(params);
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_THREADS
   if(device == "threads")
   {
-<<<<<<< 83c31bf54673e04bfb45cfa3d40cc5555c6c54be
-    runGS<Kokkos::Threads>(matrixPath, device, sym, twostage, classic);
-=======
-    runGS<Kokkos::Threads>(matrixPath, device, clusterSize, sym);
->>>>>>> Minor GS cleanup
+    runGS<Kokkos::Threads>(params);
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_CUDA
   if(device == "cuda")
   {
-<<<<<<< 83c31bf54673e04bfb45cfa3d40cc5555c6c54be
-    runGS<Kokkos::Cuda>(matrixPath, device, sym, twostage, classic);
-=======
-    runGS<Kokkos::Cuda>(matrixPath, device, clusterSize, sym);
->>>>>>> Minor GS cleanup
+    runGS<Kokkos::Cuda>(params);
     run = true;
   }
   #endif
   if(!run)
   {
-    std::cerr << "Error: device " << device << " was requested but it's not enabled.\n";
+    std::cerr << "Error: device " << device << " was requested but it's not enabled in this build.\n";
     return 1;
   }
   Kokkos::finalize();
   return 0;
-  */
 }
 

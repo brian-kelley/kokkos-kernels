@@ -312,10 +312,11 @@ void pcgsolve(
 {
   using namespace KokkosSparse;
   using namespace KokkosSparse::Experimental;
+  using scalar_t = typename KernelHandle_t::nnz_scalar_t;
   using size_type = typename KernelHandle_t::size_type;
   using nnz_lno_t = typename KernelHandle_t::nnz_lno_t;
   using Space = typename KernelHandle_t::HandleExecSpace;
-  static_assert(std::is_same<double, typename KernelHandle_t::nnz_scalar_t>::value,
+  static_assert(std::is_same<double, scalar_t>::value,
       "The PCG performance test only works with scalar = double.");
 
   const nnz_lno_t count_total = crsMat.numRows();
