@@ -453,26 +453,26 @@ struct CompressedClusterApply
         comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
         constexpr lno_t colBatchSize = 8;
         scalar_t accum[colBatchSize] = {0};
-        scalar_t k = omega * invDiag;
+        scalar_t coef = omega * invDiag;
         for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
         {
           lno_t batch = colBatchSize;
           if(batch_start + batch > num_vecs)
             batch = num_vecs - batch_start;
           //the current batch of columns given by: batch_start, this_batch_size
-          for(lno_t i = 0; i < batch; i++)
-            accum[i] = y(row, batch_start + i);
-          for(lno_t i = 0; i < rowSize; i++)
+          for(lno_t k = 0; k < batch; k++)
+            accum[k] = y(row, batch_start + k);
+          for(lno_t j = 0; j < rowSize; j++)
           {
-            lno_t col = rowEntries[i];
-            scalar_t val = rowValues[i];
-            for(lno_t i = 0; i < batch; i++)
-              accum[i] -= val * x(col, batch_start + i);
+            lno_t col = rowEntries[j];
+            scalar_t val = rowValues[j];
+            for(lno_t k = 0; k < batch; k++)
+              accum[k] -= val * x(col, batch_start + k);
           }
-          for(lno_t i = 0; i < batch; i++)
+          for(lno_t k = 0; k < batch; k++)
           {
-            scalar_t newXval = x(row, batch_start + i) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
-            x(row, batch_start + i) = newXval + k * accum[i];
+            scalar_t newXval = x(row, batch_start + k) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
+            x(row, batch_start + k) = newXval + coef * accum[k];
           }
         }
       }
