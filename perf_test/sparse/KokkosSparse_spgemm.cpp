@@ -288,7 +288,7 @@ int main (int argc, char ** argv){
     return 1;
   }
   if (params.a_mtx_bin_file == NULL){
-    std::cerr << "Provide a and b matrix files" << std::endl ;
+    std::cerr << "Provide A (and optionally B) matrix files" << std::endl ;
     print_options();
     return 0;
   }

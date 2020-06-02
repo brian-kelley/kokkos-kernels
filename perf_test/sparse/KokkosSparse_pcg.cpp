@@ -43,112 +43,396 @@
 */
 
 #include <KokkosKernels_config.h>
-#if defined(KOKKOSKERNELS_INST_DOUBLE) &&  \
-    defined(KOKKOSKERNELS_INST_OFFSET_SIZE_T) && \
-    defined(KOKKOSKERNELS_INST_ORDINAL_INT)
-#include "KokkosSparse_pcg.hpp"
-
 #include "KokkosKernels_Utils.hpp"
-#include <iostream>
+#include "KokkosKernels_Handle.hpp"
+#include "KokkosSparse_gauss_seidel.hpp"
+#include "KokkosSparse_spmv.hpp"
+#include "KokkosKernels_default_types.hpp"
+#include "impl/KokkosSparse_sor_sequential_impl.hpp"
 #include "KokkosKernels_IOUtils.hpp"
 
-#define MAXVAL 1
+#include <iostream>
+#include <string>
 
-#define SIZE_TYPE size_t
-#define INDEX_TYPE int
-#define SCALAR_TYPE double
+using std::string;
+using std::cout;
 
-
-
-template<typename scalar_view_t>
-scalar_view_t create_x_vector(INDEX_TYPE nv, SCALAR_TYPE max_value = 1.0){
-  scalar_view_t kok_x ("X", nv);
-
-  typename scalar_view_t::HostMirror h_x =  Kokkos::create_mirror_view (kok_x);
-
-
-  for (INDEX_TYPE i = 0; i < nv; ++i){
-    SCALAR_TYPE r = static_cast <SCALAR_TYPE> (rand()) / static_cast <SCALAR_TYPE> (RAND_MAX / max_value);
-    h_x(i) = r;
-  }
-  Kokkos::deep_copy (kok_x, h_x);
-  return kok_x;
-}
-
-
-
-template <typename crsMat_t, typename vector_t>
-vector_t create_y_vector(crsMat_t crsMat, vector_t x_vector){
-  vector_t y_vector ("Y VECTOR", crsMat.numRows());
-  KokkosSparse::spmv("N", 1, crsMat, x_vector, 1, y_vector);
-  return y_vector;
-}
-
-template <typename ExecSpace, typename crsMat_t>
-void run_experiment(
-    crsMat_t crsmat,
-    int clusterSize,
-    bool useSequential)
+struct CGSolveResult
 {
-  typedef typename crsMat_t::values_type::non_const_type scalar_view_t;
-  typedef typename crsMat_t::StaticCrsGraphType::row_map_type::non_const_type lno_view_t;
-  typedef typename crsMat_t::StaticCrsGraphType::entries_type::non_const_type lno_nnz_view_t;
+  size_t iteration ;
+  double iter_time ;
+  double matvec_time ;
+  double norm_res ;
+  double precond_time;
+  double precond_init_time;
+};
 
-  typedef typename lno_nnz_view_t::value_type lno_t;
-  typedef typename lno_view_t::value_type size_type;
-  typedef typename scalar_view_t::value_type scalar_t;
+//Parameters for the Gauss-Seidel preconditioner
+struct GS_Parameters
+{
+  int sweeps = 1; //GS sweeps per CG iteration
+  bool graph_symmetric = true;
+  //Whether to use any preconditioner
+  bool precondition = true;
+  //Whether to use sequential GS
+  bool sequential = false;
+  //Settings for parallel GS
+  GSAlgorithm algo = GS_POINT;
+  GSDirection direction = GS_FORWARD;
+  //Cluster:
+  CGSAlgorithm cgs_algo = CGS_DEFAULT;
+  int cluster_size = 10;
+  bool compact_scalars = true;
+  //Two stage:
+  bool classic = false;
+};
 
-  INDEX_TYPE nv = crsmat.numRows();
-  scalar_view_t kok_x_original = create_x_vector<scalar_view_t>(nv, MAXVAL);
-  scalar_view_t kok_b_vector = create_y_vector(crsmat, kok_x_original);
+template <typename device_t>
+void runPCG(const GS_Parameters& params)
+{
+  using scalar_t = default_scalar;
+  using lno_t = default_lno_t;
+  using size_type = default_size_type;
+  using exec_space = typename device_t::execution_space;
+  using mem_space = typename device_t::memory_space;
+  using crsMat_t = KokkosSparse::CrsMatrix<scalar_t, lno_t, device_t, void, size_type>;
+  using KernelHandle = KokkosKernels::Experimental::KokkosKernelsHandle
+    <size_type, lno_t, scalar_t, exec_space, mem_space, mem_space>;
+  using scalar_view_t = typename crsMat_t::values_type::non_const_type;
+  using offset_view_t = typename crsMat_t::StaticCrsGraphType::row_map_type::non_const_type;
+  using lno_view_t = typename crsMat_t::StaticCrsGraphType::entries_type::non_const_type;
+  using KAT = Kokkos::ArithTraits<scalar_t>;
+
+  crsmat_t A = KokkosKernels::Impl::read_kokkos_crst_matrix<crsMat_t>(params.matrix_path);
+
+  lno_t nrows = A.numRows();
+  lno_t ncols = A.numCols();
+
+  scalar_view_t kok_x_original(Kokkos::ViewAllocateWithoutInitializing("X"), ncols);
+  {
+    typename scalar_view_t::HostMirror h_x = Kokkos::create_mirror_view(kok_x_original);
+    for(lno_t i = 0; i < nv; ++i)
+    {
+      scalar_t r = (max_value * rand()) / RAND_MAX;
+      h_x(i) = r;
+    }
+    Kokkos::deep_copy (kok_x_original, h_x);
+  }
+  vector_t y_vector("Y VECTOR", nrows);
+  KokkosSparse::spmv("N", 1, crsMat, kok_x_original, 1, y_vector);
 
   //create X vector
-  scalar_view_t kok_x_vector("kok_x_vector", nv);
+  scalar_view_t x_vector("kok_x_vector", ncols);
 
   double solve_time = 0;
   const unsigned cg_iteration_limit = 100000;
-  const double   cg_iteration_tolerance     = 1e-7 ;
+  const double   cg_iteration_tolerance = 1e-7 ;
 
-  KokkosKernels::Experimental::Example::CGSolveResult cg_result ;
-
-  typedef KokkosKernels::Experimental::KokkosKernelsHandle
-        < size_type,
-		  lno_t,
-		  scalar_t,
-          ExecSpace, ExecSpace, ExecSpace > KernelHandle;
+  KokkosKernels::Experimental::Example::CGSolveResult cg_result;
 
   KernelHandle kh;
 
-  if(clusterSize == 1)
-    kh.create_gs_handle();
-  else
-    kh.create_gs_handle(KokkosSparse::CGS_TEAM, KokkosSparse::CLUSTER_BALLOON, true, clusterSize);
+  //Host-side views of matrix and inverse diagonal (only initialized if using sequential GS)
+  typename offset_view_t::HostMirror ptrHost;
+  typename lno_view_t::HostMirror indHost;
+  typename scalar_view_t::HostMirror valHost;
+  typename scalar_view_t::HostMirror invDiagHost;
+
+  if(params.precondition)
+  {
+    //Set up preconditioner, depending on the algorithm requested
+    if(!params.sequential)
+    {
+      if(clusterSize == 1)
+      {
+        kh.create_gs_handle(params.algo);
+        if(params.algo == GS_TWOSTAGE)
+          kh.set_gs_twostage(!params.classic, nrows);
+      }
+      else
+        kh.create_gs_handle(params.cgs_algo, CLUSTER_BALLOON, params.compact_scalars, params.cluster_size);
+    }
+    else
+    {
+      //Set up for host sequential GS
+      ptrHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), crsMat.graph.row_map);
+      indHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), crsMat.graph.entries);
+      valHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), crsMat.values);
+      Kokkos::View<double*, Kokkos::HostSpace> invDiagHost;
+      if(use_sequential_sgs)
+      {
+        diagHost = Kokkos::View<double*, Kokkos::HostSpace>("Diag for Seq SOR", nrows);
+        for(int i = 0; i < nrows; i++)
+        {
+          for(size_type j = ptrHost(i); j < ptrHost(i + 1); j++)
+          {
+            if(indHost(j) == i)
+              invDiagHost(i) = KAT::one() / valHost(j);
+          }
+        }
+      }
+    }
+  }
+
   Kokkos::Impl::Timer timer1;
-  KokkosKernels::Experimental::Example::pcgsolve(
-        kh
-      , crsmat
-      , kok_b_vector
-      , kok_x_vector
-      , cg_iteration_limit
-      , cg_iteration_tolerance
-      , & cg_result
-      , true
-      , clusterSize
-      , useSequential
-  );
+
+  size_t iteration = 0 ;
+  double iter_time = 0 ;
+  double matvec_time = 0 ;
+  double norm_res = 0 ;
+  double precond_time = 0;
+  double precond_init_time = 0;
+
+  Kokkos::Impl::Timer wall_clock ;
+  Kokkos::Impl::Timer timer;
+
+  // Need input vector to matvec to be owned + received
+  scalar_view_t pAll ( "cg::p" , ncols );
+
+  scalar_view_t p = Kokkos::subview( pAll , std::pair<size_t,size_t>(0,nrows) );
+  scalar_view_t r ( "cg::r" , nrows );
+  scalar_view_t Ap( "cg::Ap", nrows );
+
+  /* r = b - A * x ; */
+  /* p  = x       */  Kokkos::deep_copy( p , x_vector );
+
+  /* Ap = A * p   */  KokkosSparse::spmv("N", 1, crsMat, pAll, 0, Ap);
+
+  /* r  = Ap       */  Kokkos::deep_copy( r , Ap );
+
+  /* r = b - r   */  KokkosBlas::axpby(1.0, y_vector, -1.0, r);
+
+  /* p  = r       */  Kokkos::deep_copy( p , r );
+
+  double old_rdot = KokkosBlas::dot( r , r );
+  norm_res  = sqrt( old_rdot );
+
+  scalar_view_t z;
+
+  double precond_old_rdot = 1;
+  //Kokkos::deep_copy( p , z );
+
+  bool use_par_sgs = params.precondition && !params.sequential;
+  
+  if(params.precondition)
+  {
+    timer.reset();
+    z = scalar_view_t( "pcg::z" , count_total );
+    if (use_par_sgs)
+    {
+      gauss_seidel_symbolic
+        (&kh, nr, nc, crsMat.graph.row_map, crsMat.graph.entries, crsMat.values);
+      gauss_seidel_numeric
+        (&kh, count_total, count_total, crsMat.graph.row_map, crsMat.graph.entries, crsMat.values);
+
+      Space().fence();
+
+      precond_init_time += timer.seconds();
+      Space().fence();
+      timer.reset();
+      //Do initial precondition, that will zero out X and initialize the permuted B, if used
+      switch(params.direction)
+      {
+        case GS_FORWARD:
+          forward_sweep_gauss_seidel_apply
+            (&kh, count_total, count_total, crsMat.graph.row_map, crsMat.graph.entries, crsMat.values, z, r, true, true, 1.0, params.sweeps);
+          break;
+        case GS_BACKWARD:
+          backward_sweep_gauss_seidel_apply
+            (&kh, count_total, count_total, crsMat.graph.row_map, crsMat.graph.entries, crsMat.values, z, r, true, true, 1.0, params.sweeps);
+          break;
+        case GS_SYMMETRIC:
+          symmetric_gauss_seidel_apply
+            (&kh, count_total, count_total, crsMat.graph.row_map, crsMat.graph.entries, crsMat.values, z, r, true, true, 1.0, params.sweeps);
+      }
+      Space().fence();
+    }
+    else if(use_sequential_sgs)
+    {
+      //z = LHS (aka x), r RHS (aka y or b)
+      Kokkos::deep_copy(z, 0.0);
+      auto zhost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), z);
+      auto rhost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), r);
+      //as with par_sgs, init unknown to 0
+      timer.reset();
+      //then do one initial precondition
+      for(int sweep = 0; sweep < apply_count; sweep++)
+      {
+        KokkosSparse::Impl::Sequential::gaussSeidel<nnz_lno_t, size_type, double, double, double>
+          (count_total, // rows = cols of the matrix
+           1,           // number of vectors in X and B
+           ptrHost.data(), indHost.data(), valHost.data(),
+           rhost.data(), count_total, //raw ptr to B vector, and B column stride (for when multiple RHS gets added to MTSGS)
+           zhost.data(), count_total, //raw ptr to X vector, and X column stride
+           diagHost.data(),
+           1.0,
+           "F");
+        KokkosSparse::Impl::Sequential::gaussSeidel<nnz_lno_t, size_type, double, double, double>
+          (count_total, 1,
+           ptrHost.data(), indHost.data(), valHost.data(), 
+           rhost.data(), count_total,
+           zhost.data(), count_total,
+           diagHost.data(),
+           1.0,
+           "B");
+      }
+      //result is in z (but r doesn't change)
+      Kokkos::deep_copy(z, zhost);
+      Kokkos::deep_copy(r, rhost);
+    }
+    precond_time += timer.seconds();
+    precond_old_rdot = KokkosBlas::dot(r , z);
+    Kokkos::deep_copy(p, z);
+  }
+
+  iteration = 0 ;
+
+#ifdef KK_TICTOCPRINT
+
+  std::cout << "norm_res:" << norm_res << " old_rdot:" << old_rdot <<  std::endl;
+
+#endif
+  while (cg_iteration_tolerance < norm_res && iteration < cg_iteration_limit) {
+    std::cout << "Running CG iteration " << iteration << ", current resnorm = " << norm_res << '\n';
+
+    timer.reset();
+    /* Ap = A * p   */  KokkosSparse::spmv("N", 1, crsMat, pAll, 0, Ap);
+
+    Space().fence();
+    matvec_time += timer.seconds();
+
+    //const double pAp_dot = Kokkos::Example::all_reduce( dot( count_owned , p , Ap ) , import.comm );
+    //const double pAp_dot = dot<y_vector_t,y_vector_t, Space>( count_total , p , Ap ) ;
+
+    /* pAp_dot = dot(Ap , p ) */ const double pAp_dot = KokkosBlas::dot( p , Ap ) ;
+
+    double alpha  = 0;
+    if (use_sgs){
+      alpha = precond_old_rdot / pAp_dot ;
+    }
+    else {
+      alpha = old_rdot / pAp_dot ;
+    }
+
+    /* x +=  alpha * p ;  */  KokkosBlas::axpby(alpha, p, 1.0, x_vector);
+
+    /* r += -alpha * Ap ; */  KokkosBlas::axpby(-alpha, Ap, 1.0, r);
+
+    const double r_dot = KokkosBlas::dot( r , r );
+
+    const double beta_original  = r_dot / old_rdot ;
+    double precond_r_dot = 1;
+    double precond_beta = 1;
+    if(params.precondition)
+    {
+      Space().fence();
+      timer.reset();
+      if (use_par_sgs)
+      {
+        switch(params.direction)
+        {
+          case GS_FORWARD:
+            forward_sweep_gauss_seidel_apply
+              (&kh, count_total, count_total, crsMat.graph.row_map, crsMat.graph.entries, crsMat.values, z, r, true, true, 1.0, params.sweeps);
+            break;
+          case GS_BACKWARD:
+            backward_sweep_gauss_seidel_apply
+              (&kh, count_total, count_total, crsMat.graph.row_map, crsMat.graph.entries, crsMat.values, z, r, true, true, 1.0, params.sweeps);
+            break;
+          case GS_SYMMETRIC:
+            symmetric_gauss_seidel_apply
+              (&kh, count_total, count_total, crsMat.graph.row_map, crsMat.graph.entries, crsMat.values, z, r, true, true, 1.0, params.sweeps);
+        }
+      }
+      else if(use_sequential_sgs)
+      {
+        //z = LHS (aka x), r RHS (aka y or b)
+        Kokkos::deep_copy(z, 0.0);
+        auto zhost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), z);
+        auto rhost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), r);
+        //as with the par_sgs version, init unknown (here, zhost) to 0
+        for(int sweep = 0; sweep < apply_count; sweep++)
+        {
+          KokkosSparse::Impl::Sequential::gaussSeidel<nnz_lno_t, size_type, double, double, double>
+            (count_total, 1,
+             ptrHost.data(), indHost.data(), valHost.data(), 
+             rhost.data(), count_total,
+             zhost.data(), count_total,
+             diagHost.data(),
+             1.0,
+             "F");
+          KokkosSparse::Impl::Sequential::gaussSeidel<nnz_lno_t , size_type, double, double, double>
+            (count_total, 1,
+             ptrHost.data(), indHost.data(), valHost.data(), 
+             rhost.data(), count_total,
+             zhost.data(), count_total,
+             diagHost.data(),
+             1.0,
+             "B");
+        }
+        Kokkos::deep_copy(z, zhost);
+        Kokkos::deep_copy(r, rhost);
+      }
+      precond_time += timer.seconds();
+      precond_r_dot = KokkosBlas::dot(r , z );
+      precond_beta  = precond_r_dot / precond_old_rdot ;
+    }
+    double beta = 1;
+    if (!use_sgs) {
+      beta = beta_original;
+      /* p = r + beta * p ; */  KokkosBlas::axpby(1.0, r, beta, p);
+    }
+    else {
+      beta = precond_beta;
+      KokkosBlas::axpby(1.0, z, beta, p);
+    }
+
+#ifdef KK_TICTOCPRINT
+    std::cout << "\tbeta_original:" << beta_original <<  std::endl;
+    if (use_sgs)
+      std::cout << "\tprecond_beta:" << precond_beta <<  std::endl;
+
+#endif
+
+    norm_res = sqrt( old_rdot = r_dot );
+    precond_old_rdot = precond_r_dot;
+
+#ifdef KK_TICTOCPRINT
+    std::cout << "\tnorm_res:" << norm_res << " old_rdot:" << old_rdot<<  std::endl;
+#endif
+    ++iteration ;
+  }
+
+  Space().fence();
+  iter_time = wall_clock.seconds();
+
+  result.iteration         = iteration;
+  result.iter_time         = iter_time;
+  result.matvec_time       = matvec_time;
+  result.norm_res          = norm_res;
+  result.precond_time      = precond_time;
+  result.precond_init_time = precond_init_time;
+
+
+
   Kokkos::fence();
 
   solve_time = timer1.seconds();
 
   std::string algoSummary;
   if(useSequential)
-    algoSummary = "SEQUENTIAL SGS";
+    algoSummary = "SEQUENTIAL GS";
   else
   {
     if(clusterSize == 1)
-      algoSummary = "POINT-COLORING SGS";
+    {
+      if(params.algo == GS_TWOSTAGE)
+        algoSummary = "TWO-STAGE/CLASSIC GS";
+      else
+        algoSummary = "POINT-COLORING GS";
+    }
     else
-      algoSummary = "CLUSTER-COLORING SGS (CLUSTER SIZE " + std::to_string(clusterSize) + ")";
+      algoSummary = "CLUSTER-COLORING GS (CLUSTER SIZE " + std::to_string(clusterSize) + ")";
   }
 
   std::cout  << "DEFAULT SOLVE: " << algoSummary << " PRECONDITIONER"
@@ -172,7 +456,7 @@ void run_experiment(
   timer1.reset();
   KokkosKernels::Experimental::Example::pcgsolve(
         kh
-      , crsmat
+      ,A 
       , kok_b_vector
       , kok_x_vector
       , cg_iteration_limit
@@ -202,7 +486,7 @@ void run_experiment(
   timer1.reset();
   KokkosKernels::Experimental::Example::pcgsolve(
         kh
-      , crsmat
+      , A
       , kok_b_vector
       , kok_x_vector
       , cg_iteration_limit
@@ -231,7 +515,7 @@ void run_experiment(
   timer1.reset();
   KokkosKernels::Experimental::Example::pcgsolve(
         kh
-      , crsmat
+      , A
       , kok_b_vector
       , kok_x_vector
       , cg_iteration_limit
@@ -255,252 +539,372 @@ void run_experiment(
   */
 }
 
-
-
-
-enum { CMD_USE_THREADS = 0
-     , CMD_USE_NUMA
-     , CMD_USE_CORE_PER_NUMA
-     , CMD_USE_CUDA
-     , CMD_USE_OPENMP
-     , CMD_USE_CUDA_DEV
-     , CMD_BIN_MTX
-     , CMD_CLUSTER_SIZE
-     , CMD_USE_SEQUENTIAL_SGS
-     , CMD_ERROR
-     , CMD_COUNT };
-
-int main (int argc, char ** argv){
-
-  int cmdline[ CMD_COUNT ] ;
-  char *mtx_bin_file = NULL;
-  for ( int i = 0 ; i < CMD_COUNT ; ++i ) cmdline[i] = 0 ;
-
-  for ( int i = 1 ; i < argc ; ++i ) {
-    if ( 0 == strcasecmp( argv[i] , "--threads" ) ) {
-      cmdline[ CMD_USE_THREADS ] = atoi( argv[++i] );
-    }
-    else if ( 0 == strcasecmp( argv[i] , "--openmp" ) ) {
-      cmdline[ CMD_USE_OPENMP ] = atoi( argv[++i] );
-    }
-    else if ( 0 == strcasecmp( argv[i] , "--cores" ) ) {
-      sscanf( argv[++i] , "%dx%d" ,
-              cmdline + CMD_USE_NUMA ,
-              cmdline + CMD_USE_CORE_PER_NUMA );
-    }
-    else if ( 0 == strcasecmp( argv[i] , "--cuda" ) ) {
-      cmdline[ CMD_USE_CUDA ] = 1 ;
-    }
-    else if ( 0 == strcasecmp( argv[i] , "--cuda-dev" ) ) {
-      cmdline[ CMD_USE_CUDA ] = 1 ;
-      cmdline[ CMD_USE_CUDA_DEV ] = atoi( argv[++i] ) ;
-    }
-    else if ( 0 == strcasecmp( argv[i] , "--cluster-size" ) ) {
-      cmdline[CMD_CLUSTER_SIZE] = atoi(argv[++i]);
-    }
-    else if ( 0 == strcasecmp( argv[i] , "--seq-gs" ) ) {
-      cmdline[CMD_USE_SEQUENTIAL_SGS] = 1;
-    }
-
-    else if ( 0 == strcasecmp( argv[i] , "--mtx" ) ) {
-      mtx_bin_file = argv[++i];
-    }
-    else {
-      cmdline[ CMD_ERROR ] = 1 ;
-      std::cerr << "Unrecognized command line argument #" << i << ": " << argv[i] << std::endl ;
-      std::cerr << "OPTIONS\n\t--threads [numThreads]\n\t--openmp [numThreads]\n\t--cuda\n\t--cuda-dev[DeviceIndex]\n\t--mtx[binary_mtx_file]" << std::endl;
-
-      return 0;
-    }
+static char* getNextArg(int& i, int argc, char** argv)
+{
+  i++;
+  if(i >= argc)
+  {
+    std::cerr << "Error: expected additional command-line argument!\n";
+    exit(1);
   }
-  //default cluster size is always 1 (this runs point coloring GS)
-  if(cmdline[CMD_CLUSTER_SIZE] == 0)
-    cmdline[CMD_CLUSTER_SIZE] = 1;
+  return argv[i];
+}
 
-  if (mtx_bin_file == NULL){
-    std::cerr << "Provide a mtx binary file" << std::endl ;
-    std::cerr << "OPTIONS\n\t--threads [numThreads]\n\t--openmp [numThreads]\n\t--cuda\n\t--cuda-dev[DeviceIndex]\n\t--mtx[binary_mtx_file]" << std::endl;
-
+int main(int argc, char** argv)
+{
+  //Expect two args: matrix name and device flag.
+  if(argc == 1 || !strcmp(argv[1], "-h") || !strcmp(argv[1], "--help"))
+  {
+    cout << "Usage: ./sparse_gs [--threads=N] [--device-id=K] matrix.mtx [--device-type] [other args]\n\n";
+    cout << "\"--device-type\" flag can be \"--serial\", \"--openmp\", \"--cuda\" or \"--threads\".\n";
+    cout << "If device is not given, the default device for this build is used.\n";
+    cout << "\nOther flags:\n";
+    cout << "--sym-graph: promise the matrix is structurally symmetric (OK if symmetric but flag isn't provided)\n";
+    cout << "--sweeps S: run preconditioner S times between CG iters. For SGS, forward+backward counts as 1 sweep.\n";
+    cout << "5 main choices of preconditioner (default is point):\n";
+    cout << "  --point\n";
+    cout << "  --cluster\n";
+    cout << "  --twostage\n";
+    cout << "  --classic\n\n";
+    cout << "  --sequential (always runs on host)\n\n";
+    cout << "  --no-prec\n";
+    cout << "Apply direction (default is forward)\n";
+    cout << "  --forward\n";
+    cout << "  --backward\n";
+    cout << "  --symmetric\n";
+    cout << "Options for cluster:\n";
+    cout << "  --cluster-size N (default: 10)\n";
+    cout << "  --compact-scalars, --no-compact-scalars (default: compact)\n";
+    cout << "  --cgs-apply ALGO\n";
+    cout << "     ALGO may be: \"range\", \"team\", \"permuted-range\" or \"permuted-team\".\n";
+    cout << "     Default is chosen by the library.\n";
     return 0;
   }
-
-
-#if defined( KOKKOS_ENABLE_THREADS )
-
-    if ( cmdline[ CMD_USE_THREADS ] ) {
-
-      Kokkos::InitArguments init_args; // Construct with default args, change members based on exec space
-
-      if ( cmdline[ CMD_USE_NUMA ] && cmdline[ CMD_USE_CORE_PER_NUMA ] ) {
-        init_args.num_threads = cmdline[ CMD_USE_THREADS ];
-        init_args.num_numa = cmdline[ CMD_USE_NUMA ];
-        //const int core_per_numa = cmdline[ CMD_USE_CORE_PER_NUMA ]; // How to get this to initialize() without using impl_initialize()?
-      }
-      else {
-        init_args.num_threads = cmdline[ CMD_USE_THREADS ];
-      }
-
-      Kokkos::initialize( init_args );
-      Kokkos::print_configuration(std::cout);
-      {
-        INDEX_TYPE nv = 0, ne = 0;
-        INDEX_TYPE *xadj, *adj;
-        SCALAR_TYPE *ew;
-
-        KokkosKernels::Impl::read_matrix<INDEX_TYPE,INDEX_TYPE, SCALAR_TYPE> (&nv, &ne, &xadj, &adj, &ew, mtx_bin_file);
-
-        typedef Kokkos::Threads myExecSpace;
-        typedef typename KokkosSparse::CrsMatrix<SCALAR_TYPE, INDEX_TYPE, myExecSpace, void, SIZE_TYPE > crsMat_t;
-
-        typedef typename crsMat_t::StaticCrsGraphType graph_t;
-        typedef typename graph_t::row_map_type::non_const_type row_map_view_t;
-        typedef typename graph_t::entries_type::non_const_type   cols_view_t;
-        typedef typename crsMat_t::values_type::non_const_type values_view_t;
-
-        row_map_view_t rowmap_view("rowmap_view", nv+1);
-        cols_view_t columns_view("colsmap_view", ne);
-        values_view_t values_view("values_view", ne);
-
-        KokkosKernels::Impl::copy_vector<SCALAR_TYPE * , values_view_t, myExecSpace>(ne, ew, values_view);
-        KokkosKernels::Impl::copy_vector<INDEX_TYPE * , cols_view_t, myExecSpace>(ne, adj, columns_view);
-        KokkosKernels::Impl::copy_vector<INDEX_TYPE * , row_map_view_t, myExecSpace>(nv+1, xadj, rowmap_view);
-
-        graph_t static_graph (columns_view, rowmap_view);
-        crsMat_t crsmat("CrsMatrix", nv, values_view, static_graph);
-        delete [] xadj;
-        delete [] adj;
-        delete [] ew;
-
-        run_experiment<myExecSpace, crsMat_t>(crsmat, cmdline[CMD_CLUSTER_SIZE], cmdline[CMD_USE_SEQUENTIAL_SGS]);
-      }
-
-      Kokkos::finalize();
+  Kokkos::initialize(argc, argv);
+  //device is just the name of the execution space, lowercase
+  string deviceName;
+  GS_Parameters params;
+  int i = 1;
+  params.matrix_path = getNextArg(i, argc, argv);
+  for(; i < argc; i++)
+  {
+    if(!strcmp(argv[i], "--serial"))
+      deviceName = "serial";
+    else if(!strcmp(argv[i], "--openmp"))
+      deviceName = "openmp";
+    else if(!strcmp(argv[i], "--threads"))
+      deviceName = "threads";
+    else if(!strcmp(argv[i], "--cuda"))
+      deviceName = "cuda";
+    else if(!strcmp(argv[i], "--sym-graph"))
+      params.graph_symmetric = true;
+    else if(!strcmp(argv[i], "--sweeps"))
+      params.sweeps = atoi(getNextArg(i, argc, argv));
+    else if(!strcmp(argv[i], "--symmetric"))
+      params.direction = GS_SYMMETRIC;
+    else if(!strcmp(argv[i], "--forward"))
+      params.direction = GS_FORWARD;
+    else if(!strcmp(argv[i], "--backward"))
+      params.direction = GS_BACKWARD;
+    else if(!strcmp(argv[i], "--point"))
+      params.algo = GS_POINT;
+    else if(!strcmp(argv[i], "--cluster"))
+      params.algo = GS_CLUSTER;
+    else if(!strcmp(argv[i], "--twostage"))
+      params.algo = GS_TWOSTAGE;
+    else if(!strcmp(argv[i], "--classic"))
+    {
+      params.algo = GS_TWOSTAGE;
+      params.classic = true;
     }
-#endif
-
-#if defined( KOKKOS_ENABLE_OPENMP )
-
-    if ( cmdline[ CMD_USE_OPENMP ] ) {
-
-      Kokkos::InitArguments init_args; // Construct with default args, change members based on exec space
-
-      if ( cmdline[ CMD_USE_NUMA ] && cmdline[ CMD_USE_CORE_PER_NUMA ] ) {
-        init_args.num_threads = cmdline[ CMD_USE_OPENMP ];
-        init_args.num_numa = cmdline[ CMD_USE_NUMA ];
-        //const int core_per_numa = cmdline[ CMD_USE_CORE_PER_NUMA ];
-      }
-      else {
-        init_args.num_threads = cmdline[ CMD_USE_OPENMP ];
-      }
-
-      Kokkos::initialize( init_args );
-      Kokkos::print_configuration(std::cout);
+    else if(!strcmp(argv[i], "--no-prec"))
+      params.precondition = false;
+    else if(!strcmp(argv[i], "--compact-scalars"))
+      params.compact_scalars = true;
+    else if(!strcmp(argv[i], "--no-compact-scalars"))
+      params.compact_scalars = false;
+    else if(!strcmp(argv[i], "--cgs-apply"))
+    {
+      const char* cgsApply = getNextArg(i, argc, argv);
+      if(!strcmp(cgsApply, "range"))
+        params.cgs_algo = CGS_RANGE;
+      else if(!strcmp(cgsApply, "team"))
+        params.cgs_algo = CGS_TEAM;
+      else if(!strcmp(cgsApply, "permuted-range"))
+        params.cgs_algo = CGS_PERMUTED_RANGE;
+      else if(!strcmp(cgsApply, "permuted-team"))
+        params.cgs_algo = CGS_PERMUTED_TEAM;
+      else
       {
-        INDEX_TYPE nv = 0, ne = 0;
-        INDEX_TYPE *xadj, *adj;
-        SCALAR_TYPE *ew;
-
-        KokkosKernels::Impl::read_matrix<INDEX_TYPE,INDEX_TYPE, SCALAR_TYPE> (&nv, &ne, &xadj, &adj, &ew, mtx_bin_file);
-
-
-        typedef Kokkos::OpenMP myExecSpace;
-        typedef typename KokkosSparse::CrsMatrix<SCALAR_TYPE, INDEX_TYPE, myExecSpace, void, SIZE_TYPE > crsMat_t;
-
-        typedef typename crsMat_t::StaticCrsGraphType graph_t;
-        typedef typename crsMat_t::row_map_type::non_const_type row_map_view_t;
-        typedef typename crsMat_t::index_type::non_const_type   cols_view_t;
-        typedef typename crsMat_t::values_type::non_const_type values_view_t;
-
-        row_map_view_t rowmap_view("rowmap_view", nv+1);
-        cols_view_t columns_view("colsmap_view", ne);
-        values_view_t values_view("values_view", ne);
-
-        KokkosKernels::Impl::copy_vector<SCALAR_TYPE * , values_view_t, myExecSpace>(ne, ew, values_view);
-        KokkosKernels::Impl::copy_vector<INDEX_TYPE * , cols_view_t, myExecSpace>(ne, adj, columns_view);
-        KokkosKernels::Impl::copy_vector<INDEX_TYPE * , row_map_view_t, myExecSpace>(nv+1, xadj, rowmap_view);
-
-        graph_t static_graph (columns_view, rowmap_view);
-        crsMat_t crsmat("CrsMatrix", nv, values_view, static_graph);
-
-        //crsMat_t crsmat("CrsMatrix", nv, nv, ne, ew, xadj, adj);
-        delete [] xadj;
-        delete [] adj;
-        delete [] ew;
-
-        run_experiment<myExecSpace, crsMat_t>(crsmat, cmdline[CMD_CLUSTER_SIZE], cmdline[CMD_USE_SEQUENTIAL_SGS]);
+        std::cout << "\"" << cgsApply << "\" is not a valid cluster GS apply algorithm.\n";
+        std::cout << "Valid choices are: range, team, permuted-range, permuted-team.\\n";
+        Kokkos::finalize();
+        exit(1);
       }
-      Kokkos::finalize();
     }
-#endif
-
-#if defined( KOKKOS_ENABLE_CUDA )
-    if ( cmdline[ CMD_USE_CUDA ] ) {
-
-      Kokkos::InitArguments init_args; // Construct with default args, change members based on exec space
-
-      // Use the last device:
-      init_args.device_id = cmdline[ CMD_USE_CUDA_DEV ];
-
-      Kokkos::initialize( init_args );
-      Kokkos::print_configuration(std::cout);
-      {
-        INDEX_TYPE nv = 0, ne = 0;
-        INDEX_TYPE *xadj, *adj;
-        SCALAR_TYPE *ew;
-
-        KokkosKernels::Impl::read_matrix<INDEX_TYPE,INDEX_TYPE, SCALAR_TYPE> (&nv, &ne, &xadj, &adj, &ew, mtx_bin_file);
-
-
-        typedef Kokkos::Cuda myExecSpace;
-        typedef typename KokkosSparse::CrsMatrix<SCALAR_TYPE, INDEX_TYPE, myExecSpace, void, SIZE_TYPE > crsMat_t;
-
-        typedef typename crsMat_t::StaticCrsGraphType graph_t;
-        typedef typename crsMat_t::row_map_type::non_const_type row_map_view_t;
-        typedef typename crsMat_t::index_type::non_const_type   cols_view_t;
-        typedef typename crsMat_t::values_type::non_const_type values_view_t;
-
-        row_map_view_t rowmap_view("rowmap_view", nv+1);
-        cols_view_t columns_view("colsmap_view", ne);
-        values_view_t values_view("values_view", ne);
-
-
-        {
-          typename row_map_view_t::HostMirror hr = Kokkos::create_mirror_view (rowmap_view);
-          typename cols_view_t::HostMirror hc = Kokkos::create_mirror_view (columns_view);
-          typename values_view_t::HostMirror hv = Kokkos::create_mirror_view (values_view);
-
-          for (INDEX_TYPE i = 0; i <= nv; ++i){
-            hr(i) = xadj[i];
-          }
-
-          for (INDEX_TYPE i = 0; i < ne; ++i){
-            hc(i) = adj[i];
-            hv(i) = ew[i];
-          }
-          Kokkos::deep_copy (rowmap_view , hr);
-          Kokkos::deep_copy (columns_view , hc);
-          Kokkos::deep_copy (values_view , hv);
-
-
-        }
-        graph_t static_graph (columns_view, rowmap_view);
-        crsMat_t crsmat("CrsMatrix", nv, values_view, static_graph);
-
-  //      typedef typename KokkosSparse::CrsMatrix<SCALAR_TYPE, INDEX_TYPE, Kokkos::Cuda> crsMat_t;
-  //      crsMat_t crsmat("CrsMatrix", nv, nv, ne, ew, xadj, adj);
-        delete [] xadj;
-        delete [] adj;
-        delete [] ew;
-
-        run_experiment<myExecSpace, crsMat_t>(crsmat, cmdline[CMD_CLUSTER_SIZE], cmdline[CMD_USE_SEQUENTIAL_SGS]);
-      }
-      Kokkos::finalize();
-    }
-#endif
-
+    else if(!strcmp(argv[i], "--cluster-size"))
+      params.cluster_size = atoi(getNextArg(i, argc, argv));
+    else
+      params.matrix_path = argv[i];
+  }
+  bool run = false;
+  if(!device.length())
+  {
+    runPCG<Kokkos::DefaultExecutionSpace>(params);
+    run = true;
+  }
+  #ifdef KOKKOS_ENABLE_SERIAL
+  if(deviceName == "serial")
+  {
+    runPCG<Kokkos::Serial>(params);
+    run = true;
+  }
+  #endif
+  #ifdef KOKKOS_ENABLE_OPENMP
+  if(deviceName == "openmp")
+  {
+    runPCG<Kokkos::OpenMP>(params);
+    run = true;
+  }
+  #endif
+  #ifdef KOKKOS_ENABLE_THREADS
+  if(deviceName == "threads")
+  {
+    runPCG<Kokkos::Threads>(params);
+    run = true;
+  }
+  #endif
+  #ifdef KOKKOS_ENABLE_CUDA
+  if(deviceName == "cuda")
+  {
+    runPCG<Kokkos::Cuda>(params);
+    run = true;
+  }
+  #endif
+  if(!run)
+  {
+    std::cerr << "Error: device " << deviceName << " was requested but it's not enabled in this build.\n";
+    return 1;
+  }
+  Kokkos::finalize();
   return 0;
 }
-#else
-int main() {
-}
+
+/*
+//BMK TODO: need some extra work to support block
+template< typename KernelHandle_t,
+          typename crsMatrix_t,
+          typename y_vector_t,
+          typename x_vector_t
+          >
+void block_pcgsolve(
+               KernelHandle_t &kh
+            ,  const crsMatrix_t &point_crsMat
+            ,  const crsMatrix_t &_block_crsMat, int block_size
+            ,  const y_vector_t &y_vector
+            ,  x_vector_t x_vector
+            ,  const size_t  maximum_iteration = 200
+            ,  const double  tolerance = std::numeric_limits<double>::epsilon()
+            ,  CGSolveResult * result = 0
+            ,  bool use_sgs = true)
+{
+  using namespace KokkosSparse;
+  using namespace KokkosSparse::Experimental;
+  typedef typename KernelHandle_t::HandleExecSpace Space;
+
+  const size_t count_total = point_crsMat.numRows();
+
+  size_t  iteration = 0 ;
+  double  iter_time = 0 ;
+  double  matvec_time = 0 ;
+  double  norm_res = 0 ;
+  double precond_time = 0;
+  double precond_init_time = 0;
+
+  Kokkos::Impl::Timer wall_clock ;
+  Kokkos::Impl::Timer timer;
+
+  // Need input vector to matvec to be owned + received
+  y_vector_t pAll ( "cg::p" , count_total );
+
+  y_vector_t p = Kokkos::subview( pAll , std::pair<size_t,size_t>(0,count_total) );
+  y_vector_t r ( "cg::r" , count_total );
+  y_vector_t Ap( "cg::Ap", count_total );
+
+  // r = b - A * x ;
+  // p  = x      
+  Kokkos::deep_copy( p , x_vector );
+
+  // Ap = A * p 
+  KokkosSparse::spmv("N", 1, point_crsMat, pAll, 0, Ap);
+
+  // r  = Ap
+  Kokkos::deep_copy( r , Ap );
+
+  // r = b - r
+  KokkosBlas::axpby(1.0, y_vector, -1.0, r);
+
+  // p  = r
+  Kokkos::deep_copy( p , r );
+;
+  double old_rdot = KokkosBlas::dot( r , r );
+  norm_res  = sqrt( old_rdot );
+
+  int apply_count = 1;
+  y_vector_t z;
+
+  double precond_old_rdot = 1;
+  //Kokkos::deep_copy( p , z );
+
+  bool owner_handle = false;
+
+  KernelHandle_t block_kh;
+  block_kh.create_gs_handle();
+  block_kh.get_point_gs_handle()->set_block_size(block_size);
+    //block_kh.set_shmem_size(8032);
+  if (use_sgs){
+    if (kh.get_gs_handle() == NULL){
+      owner_handle = true;
+      kh.create_gs_handle();
+    }
+
+    timer.reset();
+
+    //gauss_seidel_numeric
+    //  (&kh, count_total, count_total, point_crsMat.graph.row_map, point_crsMat.graph.entries, point_crsMat.values);
+
+    //Space().fence();
+    //timer.reset();
+
+    //block_kh.set_verbose(true);
+    block_gauss_seidel_numeric
+          (&block_kh, _block_crsMat.numRows(), _block_crsMat.numCols(), block_size, _block_crsMat.graph.row_map, _block_crsMat.graph.entries, _block_crsMat.values);
+
+    precond_init_time += timer.seconds();
+
+    z = y_vector_t( "pcg::z" , count_total );
+    Space().fence();
+    timer.reset();
+    symmetric_block_gauss_seidel_apply
+            (&block_kh, _block_crsMat.numRows(), _block_crsMat.numCols(),block_size,  _block_crsMat.graph.row_map, _block_crsMat.graph.entries, _block_crsMat.values,
+            		z, r, true, true, 1.0, apply_count);
+
+    //symmetric_gauss_seidel_apply
+    //    (&kh, count_total, count_total, point_crsMat.graph.row_map, point_crsMat.graph.entries, point_crsMat.values, z, r, true, true, apply_count);
+    Space().fence();
+    precond_time += timer.seconds();
+    precond_old_rdot = KokkosBlas::dot( r , z );
+    Kokkos::deep_copy( p , z );
+  }
+
+  iteration = 0 ;
+
+#ifdef KK_TICTOCPRINT
+
+  std::cout << "norm_res:" << norm_res << " old_rdot:" << old_rdot<<  std::endl;
+
 #endif
+  while ( tolerance < norm_res && iteration < maximum_iteration ) {
+
+
+    timer.reset();
+    //Ap = A * p
+    KokkosSparse::spmv("N", 1, point_crsMat, pAll, 0, Ap);
+
+
+    Space().fence();
+    matvec_time += timer.seconds();
+
+    //const double pAp_dot = Kokkos::Example::all_reduce( dot( count_owned , p , Ap ) , import.comm );
+    //const double pAp_dot = dot<y_vector_t,y_vector_t, Space>( count_total , p , Ap ) ;
+
+    // pAp_dot = dot(Ap , p);
+    const double pAp_dot = KokkosBlas::dot( p , Ap ) ;
+
+
+    double alpha  = 0;
+    if (use_sgs){
+      alpha = precond_old_rdot / pAp_dot ;
+    }
+    else {
+      alpha = old_rdot / pAp_dot ;
+    }
+
+    // x +=  alpha * p ;
+    KokkosBlas::axpby(alpha, p, 1.0, x_vector);
+
+    // r += -alpha * Ap ;
+    KokkosBlas::axpby(-alpha, Ap, 1.0, r);
+
+    const double r_dot = KokkosBlas::dot( r , r );
+
+    const double beta_original  = r_dot / old_rdot ;
+    double precond_r_dot = 1;
+    double precond_beta = 1;
+    if (use_sgs){
+      Space().fence();
+      timer.reset();
+      symmetric_block_gauss_seidel_apply
+                  (&block_kh, _block_crsMat.numRows(), _block_crsMat.numCols(),block_size, _block_crsMat.graph.row_map, _block_crsMat.graph.entries, _block_crsMat.values,
+                  		z, r, true, true, 1.0, apply_count);
+
+      //symmetric_gauss_seidel_apply(
+      //    &kh,
+      //    count_total, count_total,
+      //    point_crsMat.graph.row_map,
+      //    point_crsMat.graph.entries,
+      //    point_crsMat.values, z, r, true,
+      //    apply_count);
+
+      Space().fence();
+      precond_time += timer.seconds();
+      precond_r_dot = KokkosBlas::dot(r , z );
+      precond_beta  = precond_r_dot / precond_old_rdot ;
+    }
+
+    double beta  = 1;
+    if (!use_sgs){
+      beta = beta_original;
+      // p = r + beta * p ;
+      KokkosBlas::axpby(1.0, r, beta, p);
+    }
+    else {
+      beta = precond_beta;
+      KokkosBlas::axpby(1.0, z, beta, p);
+    }
+
+#ifdef KK_TICTOCPRINT
+    std::cout << "\tbeta_original:" << beta_original <<  std::endl;
+    if (use_sgs)
+    std::cout << "\tprecond_beta:" << precond_beta <<  std::endl;
+
+#endif
+
+    norm_res = sqrt( old_rdot = r_dot );
+    precond_old_rdot = precond_r_dot;
+
+#ifdef KK_TICTOCPRINT
+    std::cout << "\tnorm_res:" << norm_res << " old_rdot:" << old_rdot<<  std::endl;
+#endif
+    ++iteration ;
+  }
+
+  Space().fence();
+  iter_time = wall_clock.seconds();
+
+  if ( 0 != result ) {
+    result->iteration   = iteration ;
+    result->iter_time   = iter_time ;
+    result->matvec_time = matvec_time ;
+    result->norm_res    = norm_res ;
+    result->precond_time = precond_time;
+    result->precond_init_time = precond_init_time;
+  }
+
+  if (use_sgs & owner_handle ){
+
+    kh.destroy_gs_handle();
+  }
+}
+*/
+

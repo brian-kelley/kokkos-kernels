@@ -183,11 +183,12 @@ void runGS(const GS_Parameters& params)
 int main(int argc, char** argv)
 {
   //Expect two args: matrix name and device flag.
-  if(argc < 3)
+  if(argc == 1 || !strcmp(argv[1], "-h") || !strcmp(argv[1], "--help"))
   {
-    cout << "Usage: ./sparse_gs matrix.mtx --algorithm\n\n";
-    cout << "device can be \"serial\", \"openmp\", \"cuda\" or \"threads\".\n";
+    cout << "Usage: ./sparse_gs [--threads=N] [--device-id=K] matrix.mtx [--device-type] [other args]\n\n";
+    cout << "\"--device-type\" flag can be \"--serial\", \"--openmp\", \"--cuda\" or \"--threads\".\n";
     cout << "If device is not given, the default device for this build is used.\n";
+    cout << "\nOther flags:\n";
     cout << "Add the --sym-graph flag if the matrix is known to be structurally symmetric.\n";
     cout << "4 main algorithms (required, choose one):\n";
     cout << "  --point\n";
@@ -198,7 +199,7 @@ int main(int argc, char** argv)
     cout << "  --forward\n";
     cout << "  --backward\n";
     cout << "  --symmetric\n";
-    cout << "Options for cluster only:\n";
+    cout << "Options for cluster:\n";
     cout << "  --cluster-size N (default: 10)\n";
     cout << "  --compact-scalars, --no-compact-scalars (default: compact)\n";
     cout << "  --cgs-apply ALGO\n";
@@ -208,52 +209,22 @@ int main(int argc, char** argv)
   }
   Kokkos::initialize(argc, argv);
   //device is just the name of the execution space, lowercase
-  string device;
+  string deviceName;
   GS_Parameters params;
-
-struct GS_Parameters
-{
-  std::string matrix_path;
-  bool graph_symmetric = true;
-  GSAlgorithm algo = GS_POINT;
-  GSDirection direction = GS_FORWARD;
-  //Cluster:
-  CGSAlgorithm cgs_algo = CGS_DEFAULT;
-  int cluster_size = 10;
-  bool compact_scalars = true;
-  //Two stage:
-  bool classic = false;
-};
-
-  for(int i = 1; i < argc; i++)
+  int i = 1;
+  params.matrix_path = getNextArg(i, argc, argv);
+  for(; i < argc; i++)
   {
-    /*
-    std::cout << "Usage: ./sparse_gs matrix.mtx --algorithm [--device] [--symmetric]\n\n";
-    std::cout << "device can be \"serial\", \"openmp\", \"cuda\" or \"threads\".\n";
-    std::cout << "If device is not given, the default device is used.\n";
-    std::cout << "Add the --symmetric flag if the matrix is known to be structurally symmetric.\n";
-    std::cout << "4 main algorithms (required to pick one):\n";
-    std::cout << "  --point\n";
-    std::cout << "  --cluster\n";
-    std::cout << "  --twostage\n";
-    std::cout << "  --classic\n\n";
-    std::cout << "Direction flags:
-    std::cout << "Options for cluster only:\n";
-    std::cout << "  --cluster-size N (default: 10)\n";
-    std::cout << "  --compact-scalars, --no-compact-scalars (default: compact)\n";
-    std::cout << "  --cgs-apply ALGO\n";
-    std::cout << "     ALGO may be: \"range\", \"team\", \"permuted-range\" or \"permuted-team\".\n";
-    */
     if(!strcmp(argv[i], "--serial"))
-      device = "serial";
+      deviceName = "serial";
     else if(!strcmp(argv[i], "--openmp"))
-      device = "openmp";
+      deviceName = "openmp";
     else if(!strcmp(argv[i], "--threads"))
-      device = "threads";
+      deviceName = "threads";
     else if(!strcmp(argv[i], "--cuda"))
-      device = "cuda";
+      deviceName = "cuda";
     else if(!strcmp(argv[i], "--sym-graph"))
-      params.graph_symmetric  = true;
+      params.graph_symmetric = true;
     else if(!strcmp(argv[i], "--symmetric"))
       params.direction = GS_SYMMETRIC;
     else if(!strcmp(argv[i], "--forward"))
@@ -299,34 +270,35 @@ struct GS_Parameters
     else
       params.matrix_path = argv[i];
   }
+  bool run = false;
   if(!device.length())
   {
     runGS<Kokkos::DefaultExecutionSpace>(params);
+    run = true;
   }
-  bool run = false;
   #ifdef KOKKOS_ENABLE_SERIAL
-  if(device == "serial")
+  if(deviceName == "serial")
   {
     runGS<Kokkos::Serial>(params);
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_OPENMP
-  if(device == "openmp")
+  if(deviceName == "openmp")
   {
     runGS<Kokkos::OpenMP>(params);
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_THREADS
-  if(device == "threads")
+  if(deviceName == "threads")
   {
     runGS<Kokkos::Threads>(params);
     run = true;
   }
   #endif
   #ifdef KOKKOS_ENABLE_CUDA
-  if(device == "cuda")
+  if(deviceName == "cuda")
   {
     runGS<Kokkos::Cuda>(params);
     run = true;
@@ -334,7 +306,7 @@ struct GS_Parameters
   #endif
   if(!run)
   {
-    std::cerr << "Error: device " << device << " was requested but it's not enabled in this build.\n";
+    std::cerr << "Error: device " << deviceName << " was requested but it's not enabled in this build.\n";
     return 1;
   }
   Kokkos::finalize();
