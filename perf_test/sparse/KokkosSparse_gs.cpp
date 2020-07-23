@@ -62,19 +62,19 @@ using namespace KokkosSparse;
 
 static char* getNextArg(int& i, int argc, char** argv)
 {
-  i++;
   if(i >= argc)
   {
     std::cerr << "Error: expected additional command-line argument!\n";
     exit(1);
   }
-  return argv[i];
+  return argv[i++];
 }
 
 struct GS_Parameters
 {
   const char* matrix_path;
   bool graph_symmetric = true;
+  int sweeps = 1;
   GSAlgorithm algo = GS_POINT;
   GSDirection direction = GS_FORWARD;
   //Cluster:
@@ -153,15 +153,15 @@ void runGS(const GS_Parameters& params)
   {
     case GS_SYMMETRIC:
       KokkosSparse::Experimental::symmetric_gauss_seidel_apply
-        (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, 1);
+        (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, params.sweeps);
       break;
     case GS_FORWARD:
       KokkosSparse::Experimental::forward_sweep_gauss_seidel_apply
-        (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, 1);
+        (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, params.sweeps);
       break;
     case GS_BACKWARD:
       KokkosSparse::Experimental::backward_sweep_gauss_seidel_apply
-        (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, 1);
+        (&kh, nrows, nrows, A.graph.row_map, A.graph.entries, A.values, x, b, true, true, 1.0, params.sweeps);
       break;
   }
   double applyTime = timer.seconds();
@@ -190,6 +190,7 @@ int main(int argc, char** argv)
     cout << "If device is not given, the default device for this build is used.\n";
     cout << "\nOther flags:\n";
     cout << "Add the --sym-graph flag if the matrix is known to be structurally symmetric.\n";
+    cout << "--sweeps S: run S times (default 1)\n";
     cout << "4 main algorithms (required, choose one):\n";
     cout << "  --point\n";
     cout << "  --cluster\n";
@@ -231,6 +232,8 @@ int main(int argc, char** argv)
       params.direction = GS_FORWARD;
     else if(!strcmp(argv[i], "--backward"))
       params.direction = GS_BACKWARD;
+    else if(!strcmp(argv[i], "--sweeps"))
+      params.sweeps = atoi(getNextArg(++i, argc, argv));
     else if(!strcmp(argv[i], "--point"))
       params.algo = GS_POINT;
     else if(!strcmp(argv[i], "--cluster"))
@@ -248,7 +251,7 @@ int main(int argc, char** argv)
       params.compact_scalars = false;
     else if(!strcmp(argv[i], "--cgs-apply"))
     {
-      const char* cgsApply = getNextArg(i, argc, argv);
+      const char* cgsApply = getNextArg(++i, argc, argv);
       if(!strcmp(cgsApply, "range"))
         params.cgs_algo = CGS_RANGE;
       else if(!strcmp(cgsApply, "team"))
@@ -266,12 +269,16 @@ int main(int argc, char** argv)
       }
     }
     else if(!strcmp(argv[i], "--cluster-size"))
-      params.cluster_size = atoi(getNextArg(i, argc, argv));
+      params.cluster_size = atoi(getNextArg(++i, argc, argv));
     else
-      params.matrix_path = argv[i];
+    {
+      cout << "Error: unknown argument " << argv[i] << '\n';
+      Kokkos::finalize();
+      exit(1);
+    }
   }
   bool run = false;
-  if(!device.length())
+  if(!deviceName.length())
   {
     runGS<Kokkos::DefaultExecutionSpace>(params);
     run = true;

@@ -47,10 +47,13 @@
 #if defined(KOKKOSKERNELS_INST_DOUBLE) &&  \
     defined(KOKKOSKERNELS_INST_OFFSET_INT) && \
     defined(KOKKOSKERNELS_INST_ORDINAL_INT)
-#include "KokkosSparse_pcg.hpp"
 
 #include "KokkosKernels_Utils.hpp"
 #include "KokkosKernels_IOUtils.hpp"
+#include "KokkosSparse_CrsMatrix.hpp"
+#include "KokkosSparse_gauss_seidel.hpp"
+#include "KokkosBlas1_dot.hpp"
+#include "KokkosBlas1_axpby.hpp"
 
 #define MAXVAL 1
 
@@ -59,7 +62,14 @@
 #define SCALAR_TYPE double
 unsigned cg_iteration_limit = 10;
 
-
+struct CGSolveResult {
+  size_t  iteration ;
+  double  iter_time ;
+  double  matvec_time ;
+  double  norm_res ;
+  double precond_time;
+  double precond_init_time;
+};
 
 template<typename scalar_view_t>
 scalar_view_t create_x_vector(INDEX_TYPE nv, SCALAR_TYPE max_value = 1.0){
@@ -85,109 +95,220 @@ vector_t create_y_vector(crsMat_t crsMat, vector_t x_vector){
   return y_vector;
 }
 
-template <typename ExecSpace, typename crsMat_t>
-void run_point_experiment(
-    crsMat_t crsmat,
-	typename  crsMat_t::values_type::non_const_type kok_x_original){
+template< typename KernelHandle_t,
+          typename crsMatrix_t,
+          typename y_vector_t,
+          typename x_vector_t
+          >
+void block_pcgsolve(
+               KernelHandle_t &kh
+            ,  const crsMatrix_t &point_crsMat
+            ,  const crsMatrix_t &_block_crsMat, int block_size
+            ,  const y_vector_t &y_vector
+            ,  x_vector_t x_vector
+            ,  const size_t  maximum_iteration = 200
+            ,  const double  tolerance = std::numeric_limits<double>::epsilon()
+            ,  CGSolveResult * result = 0
+            ,  bool use_sgs = true)
+{
+  using namespace KokkosSparse;
+  using namespace KokkosSparse::Experimental;
+  typedef typename KernelHandle_t::HandleExecSpace Space;
 
+  const size_t count_total = point_crsMat.numRows();
 
-	  //typedef typename crsMat_t::StaticCrsGraphType graph_t;
-	  typedef typename crsMat_t::values_type::non_const_type scalar_view_t;
-	  typedef typename crsMat_t::StaticCrsGraphType::row_map_type::non_const_type lno_view_t;
-	  typedef typename crsMat_t::StaticCrsGraphType::entries_type::non_const_type lno_nnz_view_t;
+  size_t  iteration = 0 ;
+  double  iter_time = 0 ;
+  double  matvec_time = 0 ;
+  double  norm_res = 0 ;
+  double precond_time = 0;
+  double precond_init_time = 0;
 
-	  typedef typename lno_nnz_view_t::value_type lno_t;
-	  typedef typename lno_view_t::value_type size_type;
-	  typedef typename scalar_view_t::value_type scalar_t;
-	  INDEX_TYPE nv = crsmat.numRows();
-	  //scalar_view_t kok_x_original = create_x_vector<scalar_view_t>(nv, MAXVAL);
+  Kokkos::Impl::Timer wall_clock ;
+  Kokkos::Impl::Timer timer;
 
-	  //KokkosKernels::Impl::print_1Dview(kok_x_original);
-	  scalar_view_t kok_b_vector = create_y_vector(crsmat, kok_x_original);
+  // Need input vector to matvec to be owned + received
+  y_vector_t pAll ( "cg::p" , count_total );
 
-	  //create X vector
-	  scalar_view_t kok_x_vector("kok_x_vector", nv);
+  y_vector_t p = Kokkos::subview( pAll , std::pair<size_t,size_t>(0,count_total) );
+  y_vector_t r ( "cg::r" , count_total );
+  y_vector_t Ap( "cg::Ap", count_total );
 
+  // r = b - A * x ;
+  // p  = x
+  Kokkos::deep_copy( p , x_vector );
 
-	  double solve_time = 0;
-	  const double   cg_iteration_tolerance     = 1e-7 ;
+  // Ap = A * p
+  KokkosSparse::spmv("N", 1, point_crsMat, pAll, 0, Ap);
 
-	  KokkosKernels::Experimental::Example::CGSolveResult cg_result ;
+  // r  = Ap
+  Kokkos::deep_copy( r , Ap );
 
+  // r = b - r
+  KokkosBlas::axpby(1.0, y_vector, -1.0, r);
 
+  // p  = r
+  Kokkos::deep_copy( p , r );
+;
+  double old_rdot = KokkosBlas::dot( r , r );
+  norm_res  = sqrt( old_rdot );
 
+  int apply_count = 1;
+  y_vector_t z;
 
-	  typedef KokkosKernels::Experimental::KokkosKernelsHandle
-	        < size_type,
-			  lno_t,
-			  scalar_t,
-	          ExecSpace, ExecSpace, ExecSpace > KernelHandle;
+  double precond_old_rdot = 1;
+  //Kokkos::deep_copy( p , z );
 
-	  KernelHandle kh;
+  bool owner_handle = false;
 
-	  kh.create_gs_handle(/*KokkosSparse::GS_TEAM*/);
-	  Kokkos::Impl::Timer timer1;
-	  KokkosKernels::Experimental::Example::pcgsolve(
-	        kh
-	      , crsmat
-	      , kok_b_vector
-	      , kok_x_vector
-	      , cg_iteration_limit
-	      , cg_iteration_tolerance
-	      , & cg_result
-	      , true
-	  );
-	  Kokkos::fence();
+  KernelHandle_t block_kh;
+  block_kh.create_gs_handle();
+  block_kh.get_point_gs_handle()->set_block_size(block_size);
+    //block_kh.set_shmem_size(8032);
+  if (use_sgs){
+    if (kh.get_gs_handle() == NULL){
+      owner_handle = true;
+      kh.create_gs_handle();
+    }
 
-	  solve_time = timer1.seconds();
+    timer.reset();
 
+    //gauss_seidel_numeric
+    //  (&kh, count_total, count_total, point_crsMat.graph.row_map, point_crsMat.graph.entries, point_crsMat.values);
 
-	  std::cout  << "DEFAULT SOLVE:"
-	      << "\n\t(P)CG_NUM_ITER              [" << cg_result.iteration << "]"
-	      << "\n\tMATVEC_TIME                 [" << cg_result.matvec_time << "]"
-	      << "\n\tCG_RESIDUAL                 [" << cg_result.norm_res << "]"
-	      << "\n\tCG_ITERATION_TIME           [" << cg_result.iter_time << "]"
-	      << "\n\tPRECONDITIONER_TIME         [" << cg_result.precond_time << "]"
-	      << "\n\tPRECONDITIONER_INIT_TIME    [" << cg_result.precond_init_time << "]"
-	      << "\n\tPRECOND_APPLY_TIME_PER_ITER [" << cg_result.precond_time / (cg_result.iteration  + 1) << "]"
-	      << "\n\tSOLVE_TIME                  [" << solve_time<< "]"
-	      << std::endl ;
+    //Space().fence();
+    //timer.reset();
 
+    //block_kh.set_verbose(true);
+    block_gauss_seidel_numeric
+          (&block_kh, _block_crsMat.numRows(), _block_crsMat.numCols(), block_size, _block_crsMat.graph.row_map, _block_crsMat.graph.entries, _block_crsMat.values);
 
-#if KOKKOSSPARSE_IMPL_PRINTDEBUG
-	  kok_x_vector = scalar_view_t("kok_x_vector", nv);
+    precond_init_time += timer.seconds();
 
-	  kh.create_gs_handle(KokkosSparse::GS_TEAM);
-	  timer1.reset();
-	  KokkosKernels::Experimental::Example::pcgsolve(
-	        kh
-	      , crsmat
-	      , kok_b_vector
-	      , kok_x_vector
-	      , cg_iteration_limit
-	      , cg_iteration_tolerance
-	      , & cg_result
-	      , true
-	  );
-	  Kokkos::fence();
+    z = y_vector_t( "pcg::z" , count_total );
+    Space().fence();
+    timer.reset();
+    symmetric_block_gauss_seidel_apply
+            (&block_kh, _block_crsMat.numRows(), _block_crsMat.numCols(),block_size,  _block_crsMat.graph.row_map, _block_crsMat.graph.entries, _block_crsMat.values,
+            		z, r, true, true, 1.0, apply_count);
 
-	  solve_time = timer1.seconds();
+    //symmetric_gauss_seidel_apply
+    //    (&kh, count_total, count_total, point_crsMat.graph.row_map, point_crsMat.graph.entries, point_crsMat.values, z, r, true, true, apply_count);
+    Space().fence();
+    precond_time += timer.seconds();
+    precond_old_rdot = KokkosBlas::dot( r , z );
+    Kokkos::deep_copy( p , z );
+  }
 
+  iteration = 0 ;
 
+#ifdef KK_TICTOCPRINT
 
-	  std::cout  << "TEAM SOLVE:"
-	      << "\n\t(P)CG_NUM_ITER              [" << cg_result.iteration << "]"
-	      << "\n\tMATVEC_TIME                 [" << cg_result.matvec_time << "]"
-	      << "\n\tCG_RESIDUAL                 [" << cg_result.norm_res << "]"
-	      << "\n\tCG_ITERATION_TIME           [" << cg_result.iter_time << "]"
-	      << "\n\tPRECONDITIONER_TIME         [" << cg_result.precond_time << "]"
-	      << "\n\tPRECONDITIONER_INIT_TIME    [" << cg_result.precond_init_time << "]"
-	      << "\n\tPRECOND_APPLY_TIME_PER_ITER [" << cg_result.precond_time / (cg_result.iteration  + 1) << "]"
-	      << "\n\tSOLVE_TIME                  [" << solve_time<< "]"
-	      << std::endl ;
+  std::cout << "norm_res:" << norm_res << " old_rdot:" << old_rdot<<  std::endl;
+
 #endif
-}
+  while ( tolerance < norm_res && iteration < maximum_iteration ) {
 
+
+    timer.reset();
+    //Ap = A * p
+    KokkosSparse::spmv("N", 1, point_crsMat, pAll, 0, Ap);
+
+
+    Space().fence();
+    matvec_time += timer.seconds();
+
+    //const double pAp_dot = Kokkos::Example::all_reduce( dot( count_owned , p , Ap ) , import.comm );
+    //const double pAp_dot = dot<y_vector_t,y_vector_t, Space>( count_total , p , Ap ) ;
+
+    // pAp_dot = dot(Ap , p);
+    const double pAp_dot = KokkosBlas::dot( p , Ap ) ;
+
+
+    double alpha  = 0;
+    if (use_sgs){
+      alpha = precond_old_rdot / pAp_dot ;
+    }
+    else {
+      alpha = old_rdot / pAp_dot ;
+    }
+
+    // x +=  alpha * p ;
+    KokkosBlas::axpby(alpha, p, 1.0, x_vector);
+
+    // r += -alpha * Ap ;
+    KokkosBlas::axpby(-alpha, Ap, 1.0, r);
+
+    const double r_dot = KokkosBlas::dot( r , r );
+
+    const double beta_original  = r_dot / old_rdot ;
+    double precond_r_dot = 1;
+    double precond_beta = 1;
+    if (use_sgs){
+      Space().fence();
+      timer.reset();
+      symmetric_block_gauss_seidel_apply
+                  (&block_kh, _block_crsMat.numRows(), _block_crsMat.numCols(),block_size, _block_crsMat.graph.row_map, _block_crsMat.graph.entries, _block_crsMat.values,
+                  		z, r, true, true, 1.0, apply_count);
+
+      //symmetric_gauss_seidel_apply(
+      //    &kh,
+      //    count_total, count_total,
+      //    point_crsMat.graph.row_map,
+      //    point_crsMat.graph.entries,
+      //    point_crsMat.values, z, r, true,
+      //    apply_count);
+
+      Space().fence();
+      precond_time += timer.seconds();
+      precond_r_dot = KokkosBlas::dot(r , z );
+      precond_beta  = precond_r_dot / precond_old_rdot ;
+    }
+
+    double beta  = 1;
+    if (!use_sgs){
+      beta = beta_original;
+      // p = r + beta * p ;
+      KokkosBlas::axpby(1.0, r, beta, p);
+    }
+    else {
+      beta = precond_beta;
+      KokkosBlas::axpby(1.0, z, beta, p);
+    }
+
+#ifdef KK_TICTOCPRINT
+    std::cout << "\tbeta_original:" << beta_original <<  std::endl;
+    if (use_sgs)
+    std::cout << "\tprecond_beta:" << precond_beta <<  std::endl;
+
+#endif
+
+    norm_res = sqrt( old_rdot = r_dot );
+    precond_old_rdot = precond_r_dot;
+
+#ifdef KK_TICTOCPRINT
+    std::cout << "\tnorm_res:" << norm_res << " old_rdot:" << old_rdot<<  std::endl;
+#endif
+    ++iteration ;
+  }
+
+  Space().fence();
+  iter_time = wall_clock.seconds();
+
+  if ( 0 != result ) {
+    result->iteration   = iteration ;
+    result->iter_time   = iter_time ;
+    result->matvec_time = matvec_time ;
+    result->norm_res    = norm_res ;
+    result->precond_time = precond_time;
+    result->precond_init_time = precond_init_time;
+  }
+
+  if (use_sgs & owner_handle ){
+
+    kh.destroy_gs_handle();
+  }
+}
 
 template <typename ExecSpace, typename crsMat_t>
 void run_block_experiment(
@@ -218,10 +339,7 @@ void run_block_experiment(
 	  //const unsigned cg_iteration_limit = 10;
 	  const double   cg_iteration_tolerance     = 1e-7 ;
 
-	  KokkosKernels::Experimental::Example::CGSolveResult cg_result ;
-
-
-
+	  CGSolveResult cg_result ;
 
 	  typedef KokkosKernels::Experimental::KokkosKernelsHandle
 	        < size_type,
@@ -234,7 +352,7 @@ void run_block_experiment(
 
 	  kh.create_gs_handle();
 	  Kokkos::Impl::Timer timer1;
-	  KokkosKernels::Experimental::Example::block_pcgsolve(
+	  block_pcgsolve(
 	        kh
 	      , point_crsmat
 		  , block_crsmat, block_size
@@ -268,8 +386,6 @@ void run_experiment(
     crsMat_t crsmat,
 	typename  crsMat_t::values_type::non_const_type kok_x_original, int block_size = 5 ){
 
-	//run_point_experiment<ExecSpace, crsMat_t>(crsmat, kok_x_original);
-
   typedef typename crsMat_t::StaticCrsGraphType graph_t;
   typedef typename crsMat_t::values_type::non_const_type scalar_view_t;
   typedef typename crsMat_t::StaticCrsGraphType::row_map_type::non_const_type lno_view_t;
@@ -280,9 +396,6 @@ void run_experiment(
   scalar_view_t pf_v;
   size_t out_r, out_c;
 
-  //typedef typename lno_nnz_view_t::value_type lno_t;
-  //typedef typename lno_view_t::value_type size_type;
-  //typedef typename scalar_view_t::value_type scalar_t;
   KokkosKernels::Impl::kk_create_blockcrs_formated_point_crsmatrix(
 		  block_size , crsmat.numRows(), crsmat.numCols(),
 		  crsmat.graph.row_map, crsmat.graph.entries, crsmat.values,
@@ -305,8 +418,6 @@ void run_experiment(
 
   graph_t static_graph2 (pf_e, pf_rm);
   crsMat_t crsmat2("CrsMatrix2", out_c, pf_v, static_graph2);
-  run_point_experiment<ExecSpace, crsMat_t>(crsmat2, kok_x_original);
-
 
   lno_view_t bf_rm;
   lno_nnz_view_t bf_e;
@@ -550,6 +661,6 @@ int main (int argc, char ** argv){
 #else //defined(KOKKOSKERNELS_INST_DOUBLE) &&  defined(KOKKOSKERNELS_INST_OFFSET_INT) &&     defined(KOKKOSKERNELS_INST_ORDINAL_INT)
 
 int main() {
-  std::cerr << "PCG is configured with INT, INT, DOUBLE. Test is not compiled as these are not instantiated." << std::endl; 
+  std::cerr << "PCG is configured with INT, INT, DOUBLE. Test is not compiled as these are not instantiated." << std::endl;
 }
 #endif
