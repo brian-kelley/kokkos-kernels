@@ -49,6 +49,9 @@
 namespace KokkosSparse{
 namespace Impl{
 
+struct CGS_SingleVec_Tag {};
+struct CGS_MultiVec_Tag {};
+
 //if compactScalar is true, store matrix with 32-bit precision even if scalar is 64-bit
 template<bool compact, typename scalar_t>
 struct get_compact_scalar
@@ -426,7 +429,43 @@ struct CompressedClusterApply
       : compressedOffsets(compressedOffsets_), compressed(compressed_), x(x_), y(y_), omega(omega_)
     {}
 
-    KOKKOS_INLINE_FUNCTION void operator()(const lno_t c) const
+    KOKKOS_INLINE_FUNCTION void operator()(CGS_SingleVec_Tag, const lno_t c) const
+    {
+      //compressed layout is contiguous, and range policy will just be over the
+      //color set, so no need to map the work-item index to a cluster.
+      KokkosKernels::Impl::MemStream<unit_t>
+        block(&compressed(compressedOffsets(c)));
+      //1. get #rows in cluster
+      lno_t clusterSize = block.template readSingle<lno_t>();
+      //2. get the list of rows in the cluster
+      lno_t* clusterRows = block.template getArray<lno_t>(clusterSize);
+      //3. store the number of entries in each row (excluding diagonals)
+      lno_t* rowSizes = block.template getArray<lno_t>(clusterSize);
+      //4. for each row: inverse diagonal, entries and values per row.
+      //                 the first row must be scalar-aligned,
+      //                 and each values array is also aligned.
+      for(lno_t i = 0; i < clusterSize; i++)
+      {
+        lno_t row = clusterRows[i];
+        lno_t rowSize = rowSizes[i];
+        //divide up storage for the row:
+        //determine where diag^-1, entries, values will go
+        comp_scalar_t invDiag = block.template readSingle<comp_scalar_t>();
+        lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
+        comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
+        scalar_t coef = omega * invDiag;
+        scalar_t accum = y(row, 0);
+        for(lno_t j = 0; j < rowSize; j++)
+        {
+          lno_t col = rowEntries[j];
+          accum -= rowValues[j] * x(col, 0);
+        }
+        scalar_t newXval = x(row, 0) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
+        x(row, 0) = newXval + coef * accum;
+      }
+    }
+
+    KOKKOS_INLINE_FUNCTION void operator()(CGS_MultiVec_Tag, const lno_t c) const
     {
       lno_t num_vecs = x.extent(1);
       //compressed layout is contiguous, and range policy will just be over the
@@ -451,7 +490,7 @@ struct CompressedClusterApply
         comp_scalar_t invDiag = block.template readSingle<comp_scalar_t>();
         lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
         comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
-        constexpr lno_t colBatchSize = 8;
+        constexpr lno_t colBatchSize = 4;
         scalar_t accum[colBatchSize] = {0};
         scalar_t coef = omega * invDiag;
         for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)
@@ -496,7 +535,43 @@ struct CompressedClusterApply
       : compressedOffsets(compressedOffsets_), compressed(compressed_), x(x_), y(y_), omega(omega_)
     {}
 
-    KOKKOS_INLINE_FUNCTION void operator()(const lno_t c) const
+    KOKKOS_INLINE_FUNCTION void operator()(CGS_SingleVec_Tag, const lno_t c) const
+    {
+      //compressed layout is contiguous, and range policy will just be over the
+      //color set, so no need to map the work-item index to a cluster.
+      KokkosKernels::Impl::MemStream<unit_t>
+        block(&compressed(compressedOffsets(c)));
+      //1. get #rows in cluster
+      lno_t clusterSize = block.template readSingle<lno_t>();
+      //2. get the list of rows in the cluster
+      lno_t clusterRowBegin = block.template readSingle<lno_t>();
+      //3. store the number of entries in each row (excluding diagonals)
+      lno_t* rowSizes = block.template getArray<lno_t>(clusterSize);
+      //4. for each row: inverse diagonal, entries and values per row.
+      //                 the first row must be scalar-aligned,
+      //                 and each values array is also aligned.
+      for(lno_t i = 0; i < clusterSize; i++)
+      {
+        lno_t row = clusterRowBegin + i;
+        lno_t rowSize = rowSizes[i];
+        //divide up storage for the row:
+        //determine where diag^-1, entries, values will go
+        comp_scalar_t invDiag = block.template readSingle<comp_scalar_t>();
+        lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
+        comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
+        scalar_t coef = omega * invDiag;
+        scalar_t accum = y(row, 0);
+        for(lno_t j = 0; j < rowSize; j++)
+        {
+          lno_t col = rowEntries[j];
+          accum -= rowValues[j] * x(col, 0);
+        }
+        scalar_t newXval = x(row, 0) * (Kokkos::ArithTraits<scalar_t>::one() - omega);
+        x(row, 0) = newXval + coef * accum;
+      }
+    }
+
+    KOKKOS_INLINE_FUNCTION void operator()(CGS_MultiVec_Tag, const lno_t c) const
     {
       lno_t num_vecs = x.extent(1);
       //compressed layout is contiguous, and range policy will just be over the
@@ -521,7 +596,7 @@ struct CompressedClusterApply
         comp_scalar_t invDiag = block.template readSingle<comp_scalar_t>();
         lno_t* rowEntries = block.template getArray<lno_t>(rowSize);
         comp_scalar_t* rowValues = block.template getArray<comp_scalar_t>(rowSize);
-        constexpr lno_t colBatchSize = 8;
+        constexpr lno_t colBatchSize = 4;
         scalar_t accum[colBatchSize] = {0};
         scalar_t coef = omega * invDiag;
         for(lno_t batch_start = 0; batch_start < num_vecs; batch_start += colBatchSize)

@@ -1042,12 +1042,25 @@ public:
     using ApplyFunctor = typename std::conditional<permuted,
     typename CompressionApply::PermuteApplyRange,
       typename CompressionApply::ApplyRange>::type;
-    for(color_t i = 0; i < numColors; i++)
+    if(x.extent(1) == 1)
     {
-      color_t c = isForward ? i : (numColors - 1 - i);
-      Kokkos::parallel_for(
-          range_policy_t(colorOffsets(c), colorOffsets(c + 1)),
-          ApplyFunctor(streamOffsets, streamData, x, y, omega));
+      for(color_t i = 0; i < numColors; i++)
+      {
+        color_t c = isForward ? i : (numColors - 1 - i);
+        Kokkos::parallel_for(
+            Kokkos::RangePolicy<exec_space, CGS_SingleVec_Tag>(colorOffsets(c), colorOffsets(c + 1)),
+            ApplyFunctor(streamOffsets, streamData, x, y, omega));
+      }
+    }
+    else
+    {
+      for(color_t i = 0; i < numColors; i++)
+      {
+        color_t c = isForward ? i : (numColors - 1 - i);
+        Kokkos::parallel_for(
+            Kokkos::RangePolicy<exec_space, CGS_MultiVec_Tag>(colorOffsets(c), colorOffsets(c + 1)),
+            ApplyFunctor(streamOffsets, streamData, x, y, omega));
+      }
     }
   }
 
@@ -1061,10 +1074,11 @@ public:
       bool isForward,
       scalar_t omega)
   {
-    //Build the functor
     using ApplyFunctor = typename std::conditional<permuted,
       typename CompressionApply::PermuteApplyTeam,
       typename CompressionApply::ApplyTeam>::type;
+    //NOTE: unlike Range-based apply, Team uses a manually unrolled loop over vectors.
+    //So the 1-vector case is still optimal, using the same functor
     ApplyFunctor f(streamOffsets, streamData, x, y, omega);
     //Decide the best team, thread size
     int threadSize = KokkosKernels::Impl::kk_get_suggested_vector_size(
