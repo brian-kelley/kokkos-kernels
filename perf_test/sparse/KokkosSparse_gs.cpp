@@ -62,12 +62,13 @@ using namespace KokkosSparse;
 
 static char* getNextArg(int& i, int argc, char** argv)
 {
+  i++;
   if(i >= argc)
   {
     std::cerr << "Error: expected additional command-line argument!\n";
     exit(1);
   }
-  return argv[i++];
+  return argv[i];
 }
 
 struct GS_Parameters
@@ -212,8 +213,9 @@ int main(int argc, char** argv)
   //device is just the name of the execution space, lowercase
   string deviceName;
   GS_Parameters params;
-  int i = 1;
+  int i = 0;
   params.matrix_path = getNextArg(i, argc, argv);
+  i++;
   for(; i < argc; i++)
   {
     if(!strcmp(argv[i], "--serial"))
@@ -233,7 +235,9 @@ int main(int argc, char** argv)
     else if(!strcmp(argv[i], "--backward"))
       params.direction = GS_BACKWARD;
     else if(!strcmp(argv[i], "--sweeps"))
-      params.sweeps = atoi(getNextArg(++i, argc, argv));
+    {
+      params.sweeps = atoi(getNextArg(i, argc, argv));
+    }
     else if(!strcmp(argv[i], "--point"))
       params.algo = GS_POINT;
     else if(!strcmp(argv[i], "--cluster"))
@@ -251,7 +255,7 @@ int main(int argc, char** argv)
       params.compact_scalars = false;
     else if(!strcmp(argv[i], "--cgs-apply"))
     {
-      const char* cgsApply = getNextArg(++i, argc, argv);
+      const char* cgsApply = getNextArg(i, argc, argv);
       if(!strcmp(cgsApply, "range"))
         params.cgs_algo = CGS_RANGE;
       else if(!strcmp(cgsApply, "team"))
@@ -263,13 +267,13 @@ int main(int argc, char** argv)
       else
       {
         std::cout << "\"" << cgsApply << "\" is not a valid cluster GS apply algorithm.\n";
-        std::cout << "Valid choices are: range, team, permuted-range, permuted-team.\\n";
+        std::cout << "Valid choices are: range, team, permuted-range, permuted-team.\n";
         Kokkos::finalize();
         exit(1);
       }
     }
     else if(!strcmp(argv[i], "--cluster-size"))
-      params.cluster_size = atoi(getNextArg(++i, argc, argv));
+      params.cluster_size = atoi(getNextArg(i, argc, argv));
     else
     {
       cout << "Error: unknown argument " << argv[i] << '\n';
