@@ -729,6 +729,15 @@ void spadd_symbolic(KernelHandle* handle, const AMatrix& A, const BMatrix& B,
   using entries_type = typename CMatrix::index_type::non_const_type;
   using values_type  = typename CMatrix::values_type::non_const_type;
 
+  //Check that A,B dimensions match
+  if(A.numRows() != B.numRows() || A.numCols() != B.numCols())
+  {
+    char msg[256];
+    sprintf(msg, "SpAdd: A+B is not defined, since A is %dx%d but B is %dx%d.",
+        (int) A.numRows(), (int) A.numCols(), (int) B.numRows(), (int) B.numCols());
+    throw std::invalid_argument(std::string(msg));
+  }
+
   // Create the row_map of C, no need to initialize it
   row_map_type row_mapC(Kokkos::ViewAllocateWithoutInitializing("row map"),
                         A.numRows() + 1);
@@ -744,17 +753,14 @@ void spadd_symbolic(KernelHandle* handle, const AMatrix& A, const BMatrix& B,
   // views so we can build a graph and then matrix C
   // and subsequently construct C.
   auto addHandle = handle->get_spadd_handle();
-  entries_type entriesC(Kokkos::ViewAllocateWithoutInitializing("entries"),
-                        addHandle->get_c_nnz());
-  graph_type graphC(entriesC, row_mapC);
-  C = CMatrix("matrix", graphC);
+  auto c_nnz = addHandle->get_c_nnz();
+  entries_type entriesC(Kokkos::ViewAllocateWithoutInitializing("Centries"), c_nnz);
 
   // Finally since we already have the number of nnz handy
   // we can go ahead and allocate C's values and set them.
-  values_type valuesC(Kokkos::ViewAllocateWithoutInitializing("values"),
-                      addHandle->get_c_nnz());
+  values_type valuesC(Kokkos::ViewAllocateWithoutInitializing("Cvalues"), c_nnz);
 
-  C.values = valuesC;
+  C = CMatrix("C=Sum", A.numRows(), A.numCols(), c_nnz, valuesC, row_mapC, entriesC);
 }
 
 // Symbolic: count entries in each row in C to produce rowmap
@@ -784,6 +790,7 @@ crsMat_t spadd(const crsMat_t& A, const crsMat_t& B,
   using KernelHandle = KokkosKernels::Experimental::KokkosKernelsHandle<size_type, lno_t, scalar_t, exec_space, mem_space, mem_space>;
   KernelHandle kh;
   kh.create_spadd_handle(bothSorted);
+  crsMat_t C;
   spadd_symbolic(&kh, A, B, C);
   spadd_numeric(&kh, alpha, A, beta, B, C);
   return C;

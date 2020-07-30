@@ -238,13 +238,13 @@ void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_
   {
     //Symmetrize on host, rather than relying on the parallel versions (those can be tested for symmetric=false)
     crsMat_t A_trans = KokkosKernels::Impl::transpose_matrix(A);
-    A = KokkosSparse::Experimental::spadd(A, A_trans);
+    A = KokkosSparse::spadd(A, A_trans, false);
   }
   //Create random LHS vector (x)
   x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols());
   create_x_vector(x);
   //do a SPMV to find the RHS vector (y)
-  y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols());
+  y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numRows());
   create_y_vector(A, x, y);
 }
 
@@ -268,13 +268,13 @@ void create_problem(int numRows, int num_vecs, bool symmetric, crsMat_t& A, vec_
   {
     //Symmetrize on host, rather than relying on the parallel versions (those can be tested for symmetric=false)
     crsMat_t A_trans = KokkosKernels::Impl::transpose_matrix(A);
-    A = KokkosSparse::Experimental::spadd(A, A_trans);
+    A = KokkosSparse::spadd(A, A_trans, false);
   }
   //Create random LHS vector (x)
   x = vec_t(Kokkos::ViewAllocateWithoutInitializing("X"), A.numCols(), num_vecs);
   create_x_vector(x);
   //do a SPMV to find the RHS vector (y)
-  y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numCols(), num_vecs);
+  y = vec_t(Kokkos::ViewAllocateWithoutInitializing("Y"), A.numRows(), num_vecs);
   create_y_vector(A, x, y);
 }
 
