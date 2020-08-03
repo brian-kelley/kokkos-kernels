@@ -104,9 +104,6 @@ public:
    * \param result_nnz_size: size of the output matrix.
    */
   void set_c_nnz(size_type result_nnz_size_){
-#ifdef KOKKOS_ENABLE_DEPRECATED_CODE
-    this->max_nnz_inresult = result_nnz_size_;
-#endif
     this->result_nnz_size = result_nnz_size_;
   }
 
