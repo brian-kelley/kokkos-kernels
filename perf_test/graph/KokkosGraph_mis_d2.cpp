@@ -313,7 +313,9 @@ void run_mis2(const MIS2Parameters& params)
       if(verifyD2MIS
         <lno_t, size_type, decltype(rowmapHost), decltype(entriesHost), decltype(misHost)>
         (numVerts, rowmapHost, entriesHost, misHost))
+      {
         std::cout << "MIS-2 is correct.\n";
+      }
       else
         std::cout << "*** MIS-2 not correct! ***\n";
     }
@@ -379,3 +381,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+

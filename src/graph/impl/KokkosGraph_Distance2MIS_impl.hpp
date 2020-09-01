@@ -135,8 +135,8 @@ struct D2_MIS_Luby
 
   struct RefreshRowStatus
   {
-    RefreshRowStatus(const status_view_t& rowStatus_, const lno_view_t& worklist_, lno_t nvBits_, int round)
-      : rowStatus(rowStatus_), worklist(worklist_), nvBits(nvBits_)
+    RefreshRowStatus(const status_view_t& rowStatus_, const rowmap_t& rowmap_, const lno_view_t& worklist_, lno_t nvBits_, int round, lno_t avgDeg_)
+      : rowStatus(rowStatus_), rowmap(rowmap_), worklist(worklist_), nvBits(nvBits_), avgDeg(avgDeg_)
     {
       hashedRound = xorshiftHash(round);
     }
@@ -144,23 +144,36 @@ struct D2_MIS_Luby
     KOKKOS_INLINE_FUNCTION void operator()(lno_t w) const
     {
       lno_t i = worklist(w);
+      lno_t degree = rowmap(i + 1) - rowmap(i);
       //Combine vertex and round to get some pseudorandom priority bits that change each round
       status_t priority = xorshiftHash(i + hashedRound);
+      status_t newStatus = i + 1;
       //Generate unique status per row, with IN_SET < status < OUT_SET,
-      int priorityBits = sizeof(status_t) * 8 - nvBits;
-      status_t priorityMask = 1;
-      priorityMask <<= priorityBits;
-      priorityMask--;
-      status_t newStatus = (status_t) (i + 1) + ((priority & priorityMask) << nvBits);
+      int priorityBits = sizeof(status_t) * 8 - nvBits - 1;
+      if(priorityBits > 0)
+      {
+        status_t priorityMask = 1;
+        priorityMask <<= priorityBits;
+        priorityMask--;
+        newStatus |= ((priority & priorityMask) << nvBits);
+        if(priorityBits > 1)
+        {
+          //have space for the highest bit to represent whether degree is larger than average
+          status_t highDegBit = (degree > avgDeg) ? ((status_t) 1 << (sizeof(status_t) * 8 - 1)) : (status_t) 0;
+          newStatus |= highDegBit;
+        }
+      }
       if(newStatus == OUT_SET)
         newStatus--;
       rowStatus(i) = newStatus;
     }
 
     status_view_t rowStatus;
+    rowmap_t rowmap;
     lno_view_t worklist;
     int nvBits;
     uint32_t hashedRound;
+    lno_t avgDeg;
   };
 
   struct RefreshColStatus
@@ -334,10 +347,11 @@ struct D2_MIS_Luby
     int round = 0;
     lno_t rowWorkLen = numVerts;
     lno_t colWorkLen = numVerts;
+    lno_t avgDegree = entries.extent(0) / numVerts;
     while(true)
     {
       //Compute new row statuses
-      Kokkos::parallel_for(range_pol(0, rowWorkLen), RefreshRowStatus(rowStatus, rowWorklist, nvBits, round));
+      Kokkos::parallel_for(range_pol(0, rowWorkLen), RefreshRowStatus(rowStatus, rowmap, rowWorklist, nvBits, round, avgDegree));
       //Compute new col statuses
       Kokkos::parallel_for(range_pol(0, colWorkLen), RefreshColStatus(colStatus, colWorklist, rowStatus, rowmap, entries, numVerts));
       //Decide row statuses
