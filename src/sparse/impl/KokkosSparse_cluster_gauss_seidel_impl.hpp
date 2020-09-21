@@ -493,8 +493,8 @@ public:
         {
           case CLUSTER_MIS2:
           {
-            vertClusters = KokkosGraph::Experimental::graph_mis2_coarsen<MyExecSpace, raw_rowmap_t, raw_colinds_t, nnz_view_t>
-              (raw_sym_xadj, raw_sym_adj, numClusters, KokkosGraph::MIS2_FAST);
+            vertClusters = KokkosGraph::Experimental::graph_mis2_coarsen<exec_space, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
+              (this->row_map, this->entries, numClusters, KokkosGraph::MIS2_FAST);
             break;
           }
           case CLUSTER_BALLOON:
