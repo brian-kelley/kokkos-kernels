@@ -96,9 +96,17 @@ graph_mis2_coarsen(const rowmap_t& rowmap, const colinds_t& colinds, typename co
     //there are no vertices to label
     return labels_t();
   }
+  Kokkos::Timer t;
   labels_t mis2 = graph_d2_mis<device_t, rowmap_t, colinds_t, labels_t>(rowmap, colinds, algo);
+  typename device_t::execution_space().fence();
+  double mt = t.seconds();
+  std::cout << "*** MIS2 time: " << mt << '\n';
+  t.reset();
   numClusters = mis2.extent(0);
   Impl::D2_MIS_Coarsening<device_t, rowmap_t, colinds_t, labels_t> coarsening(rowmap, colinds, mis2);
+  typename device_t::execution_space().fence();
+  double ct = t.seconds();
+  std::cout << "*** Coarsening time: " << ct << '\n';
   return coarsening.compute();
 }
 

@@ -318,26 +318,43 @@ void test_cluster(int numRows, bool symmetric)
   vec_t y;
   std::vector<int> clusterSizes = {2, 4, 19};
   std::vector<CGSAlgorithm> algos = {CGS_RANGE, CGS_TEAM, CGS_PERMUTED_RANGE, CGS_PERMUTED_TEAM};
+  std::vector<CoarseningAlgorithm> coarseAlgos = {CLUSTER_MIS2, CLUSTER_BALLOON};
   create_problem(numRows, num_vecs, symmetric, A, x, y);
   //Do one run with CGS_DEFAULT, just to test the default algorithm logic
+  /*
   {
     Handle kh;
     kh.create_gs_handle(CGS_DEFAULT, CLUSTER_BALLOON, false, 5);
     run_and_verify<Handle, crsMat_t, vec_t>(&kh, A, x, y, symmetric, 0);
     kh.destroy_gs_handle();
   }
+  */
   for(int direction = 0; direction < 3; direction++)
   {
     for(CGSAlgorithm apply_algo : algos)
     {
-      for(int clusterSize : clusterSizes)
       {
-        for(int mixed_prec = 0; mixed_prec < 2; mixed_prec++)
+        int clusterSize = 2;
+        CoarseningAlgorithm coarse_algo = CLUSTER_MIS2;
+      /*
+      for(CoarseningAlgorithm coarse_algo : coarseAlgos)
+      {
+        for(int clusterSize : clusterSizes)
+        */
         {
-          Handle kh;
-          kh.create_gs_handle(apply_algo, CLUSTER_BALLOON, mixed_prec, clusterSize);
-          run_and_verify<Handle, crsMat_t, vec_t>(&kh, A, x, y, symmetric, direction);
-          kh.destroy_gs_handle();
+          for(int mixed_prec = 0; mixed_prec < 2; mixed_prec++)
+          {
+            std::cout << "Running with direction " << direction << ", apply algo " << apply_algo << ", clusterSize " << clusterSize << ", mixed " << mixed_prec << '\n';
+            Handle kh;
+            kh.create_gs_handle(apply_algo, coarse_algo, mixed_prec, clusterSize);
+            run_and_verify<Handle, crsMat_t, vec_t>(&kh, A, x, y, symmetric, direction);
+            kh.destroy_gs_handle();
+          }
+          if(coarse_algo == CLUSTER_MIS2)
+          {
+            //skip other cluster sizes, since that setting has no effect
+            break;
+          }
         }
       }
     }

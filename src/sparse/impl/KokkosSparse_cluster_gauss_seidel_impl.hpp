@@ -247,7 +247,7 @@ public:
       if(clusterSizes(tentCluster) <= targetSize)
       {
         //Cluster is not overfull, so just keep the label
-        Kokkos::atomic_increment(&clusterCounters(currentCluster));
+        Kokkos::atomic_increment(&clusterCounters(tentCluster));
         vertClusters(i) = tentCluster;
       }
     }
@@ -261,8 +261,8 @@ public:
 
   struct ClusterBalanceStep2
   {
-    ClusterBalanceStep2(const ordinal_view_t& tentVertClusters_, const ordinal_view_t& vertClusters_, const ordinal_view_t& clusterSizes_, const ordinal_view_t& clusterCounters_, const unmanaged_offset_view_t& rowmap_, const unmanaged_ordinal_view_t& colinds_, lno_t targetSize_, lno_t numRows_)
-      : tentVertClusters(tentVertClusters_), vertClusters(vertClusters_), clusterSizes(clusterSizes_), clusterCounters(clusterCounters_), rowmap(rowmap_), colinds(colinds_), targetSize(targetSize_), numRows(numRows_)
+    ClusterBalanceStep2(const ordinal_view_t& tentVertClusters_, const ordinal_view_t& vertClusters_, const ordinal_view_t& clusterSizes_, const ordinal_view_t& clusterCounters_, const unmanaged_offset_view_t& rowmap_, const unmanaged_ordinal_view_t& entries_, lno_t targetSize_, lno_t numRows_)
+      : tentVertClusters(tentVertClusters_), vertClusters(vertClusters_), clusterSizes(clusterSizes_), clusterCounters(clusterCounters_), rowmap(rowmap_), entries(entries_), targetSize(targetSize_), numRows(numRows_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
@@ -276,7 +276,7 @@ public:
         lno_t newCluster = tentCluster;
         for(size_type j = rowBegin; j < rowEnd; j++)
         {
-          lno_t nei = colinds(j);
+          lno_t nei = entries(j);
           if(nei >= numRows || nei == i)
             continue;
           lno_t neiCluster = tentVertClusters(nei);
@@ -298,7 +298,7 @@ public:
     ordinal_view_t clusterSizes;
     ordinal_view_t clusterCounters;
     unmanaged_offset_view_t rowmap;
-    unmanaged_ordinal_view_t colinds;
+    unmanaged_ordinal_view_t entries;
     lno_t targetSize;
     lno_t numRows;
   };
@@ -322,8 +322,8 @@ public:
 
   struct BuildCrossClusterMaskFunctor
   {
-    BuildCrossClusterMaskFunctor(const unmanaged_offset_view_t& rowmap_, const unmanaged_ordinal_view_t& colinds_, const ordinal_view_t& clusterOffsets_, const ordinal_view_t& clusterVerts_, const ordinal_view_t& vertClusters_, const bitset_t& mask_)
-      : numRows(rowmap_.extent(0) - 1), rowmap(rowmap_), colinds(colinds_), clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_), vertClusters(vertClusters_), mask(mask_)
+    BuildCrossClusterMaskFunctor(const unmanaged_offset_view_t& rowmap_, const unmanaged_ordinal_view_t& entries_, const ordinal_view_t& clusterOffsets_, const ordinal_view_t& clusterVerts_, const ordinal_view_t& vertClusters_, const bitset_t& mask_)
+      : numRows(rowmap_.extent(0) - 1), rowmap(rowmap_), entries(entries_), clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_), vertClusters(vertClusters_), mask(mask_)
     {}
 
     //Used a fixed-size hash set in shared memory
@@ -393,7 +393,7 @@ public:
           Kokkos::parallel_for(Kokkos::ThreadVectorRange(t, rowDeg),
             [&] (const lno_t j)
             {
-              lno_t nei = colinds(rowmap(row) + j);
+              lno_t nei = entries(rowmap(row) + j);
               //Remote neighbors are not included
               if(nei >= numRows)
                 return;
@@ -421,7 +421,7 @@ public:
 
     lno_t numRows;
     unmanaged_offset_view_t rowmap;
-    unmanaged_ordinal_view_t colinds;
+    unmanaged_ordinal_view_t entries;
     ordinal_view_t clusterOffsets;
     ordinal_view_t clusterVerts;
     ordinal_view_t vertClusters;
@@ -431,8 +431,8 @@ public:
   struct FillClusterEntriesFunctor
   {
     FillClusterEntriesFunctor(
-        const unmanaged_offset_view_t& rowmap_, const unmanaged_ordinal_view_t& colinds_, const offset_view_t& clusterRowmap_, const ordinal_view_t& clusterEntries_, const ordinal_view_t& clusterOffsets_, const ordinal_view_t& clusterVerts_, const ordinal_view_t& vertClusters_, const bitset_t& edgeMask_)
-      : rowmap(rowmap_), colinds(colinds_), clusterRowmap(clusterRowmap_), clusterEntries(clusterEntries_), clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_), vertClusters(vertClusters_), edgeMask(edgeMask_)
+        const unmanaged_offset_view_t& rowmap_, const unmanaged_ordinal_view_t& entries_, const offset_view_t& clusterRowmap_, const ordinal_view_t& clusterEntries_, const ordinal_view_t& clusterOffsets_, const ordinal_view_t& clusterVerts_, const ordinal_view_t& vertClusters_, const bitset_t& edgeMask_)
+      : rowmap(rowmap_), entries(entries_), clusterRowmap(clusterRowmap_), clusterEntries(clusterEntries_), clusterOffsets(clusterOffsets_), clusterVerts(clusterVerts_), vertClusters(vertClusters_), edgeMask(edgeMask_)
     {}
     //Run this scan over entries in clusterVerts (reordered point rows)
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t i, lno_t& lcount, const bool& finalPass) const
@@ -466,7 +466,7 @@ public:
         {
           if(edgeMask.test(j))
           {
-            clusterEntries(clusterEdge++) = vertClusters(colinds(j));
+            clusterEntries(clusterEdge++) = vertClusters(entries(j));
           }
         }
       }
@@ -479,7 +479,7 @@ public:
       }
     }
     unmanaged_offset_view_t rowmap;
-    unmanaged_ordinal_view_t colinds;
+    unmanaged_ordinal_view_t entries;
     offset_view_t  clusterRowmap;
     ordinal_view_t clusterEntries;
     ordinal_view_t clusterOffsets;
@@ -490,6 +490,8 @@ public:
 
   void initialize_symbolic()
   {
+    if(this->num_rows == 0)
+      return;
     CGSHandle* gsHandle = get_gs_handle();
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
     Kokkos::Impl::Timer timer;
@@ -511,52 +513,58 @@ public:
       std::cout << "SYMMETRIZING TIME: " << timer.seconds() << std::endl;
       timer.reset();
 #endif
-        }
-        //Now that a symmetric graph is available, build the cluster graph (also symmetric)
+    }
+    //Now that a symmetric graph is available, build the cluster graph (also symmetric)
+    lno_t numClusters;
+    ordinal_view_t clusterOffsets;
+    ordinal_view_t clusterVerts(Kokkos::ViewAllocateWithoutInitializing("Cluster -> vertices"), this->num_rows);
+    ordinal_view_t vertClusters;
+    auto clusterAlgo = gsHandle->get_clustering_algo();
+    if(clusterAlgo == CLUSTER_DEFAULT)
+      clusterAlgo = CLUSTER_MIS2;
+    switch(clusterAlgo)
+    {
+      case CLUSTER_MIS2:
+      {
+        //Raw MIS2 sometimes gives an imbalanced coarsening, enough to slow down apply performance. So run a balancing pass over it.
+        auto imbalancedVertClusters = KokkosGraph::Experimental::graph_mis2_coarsen<exec_space, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
+          (this->row_map, this->entries, numClusters, KokkosGraph::MIS2_FAST);
+        Kokkos::Timer balanceTimer;
+        //this will round to nearest int
+        lno_t targetSize = 0.5 + (double) this->num_rows / numClusters;
+        //MIS2 coarsening by itself doesn't give very good balance, so apply a single fast balancing pass
+        ordinal_view_t clusterSizes("ClusterSizes", numClusters);
+        Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterSizes, imbalancedVertClusters));
+        ordinal_view_t clusterCounters("ClusterCounters", numClusters);
+        vertClusters = ordinal_view_t(Kokkos::ViewAllocateWithoutInitializing("Cluster labels"), this->num_rows);
+        Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterBalanceStep1(imbalancedVertClusters, vertClusters, clusterSizes, clusterCounters, targetSize));
+        Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterBalanceStep2(imbalancedVertClusters, vertClusters, clusterSizes, clusterCounters, this->row_map, this->entries, targetSize, this->num_rows));
+        exec_space().fence();
+        double balTime = balanceTimer.seconds();
+        std::cout << "*** Balancing time: " << balTime << '\n';
+        break;
+      }
+      case CLUSTER_BALLOON:
+      {
         lno_t clusterSize = gsHandle->get_cluster_size();
-        lno_t numClusters = (this->num_rows + clusterSize - 1) / clusterSize;
-        ordinal_view_t clusterOffsets("Cluster offsets", numClusters + 1);
-        ordinal_view_t clusterVerts(Kokkos::ViewAllocateWithoutInitializing("Cluster -> vertices"), this->num_rows);
-        ordinal_view_t vertClusters;
-        auto clusterAlgo = gsHandle->get_clustering_algo();
-        if(clusterAlgo == CLUSTER_DEFAULT)
-          clusterAlgo = CLUSTER_MIS2;
-        switch(clusterAlgo)
-        {
-          case CLUSTER_MIS2:
-          {
-            //Raw MIS2 sometimes gives an imbalanced coarsening, enough to slow down apply performance. So run a balancing pass over it.
-            auto imbalancedVertClusters = KokkosGraph::Experimental::graph_mis2_coarsen<exec_space, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
-              (this->row_map, this->entries, numClusters, KokkosGraph::MIS2_FAST);
-            //this will round to nearest int
-            lno_t targetSize = 0.5 + (double) this->num_rows / numClusters;
-            //MIS2 coarsening by itself doesn't give very good balance, so apply a single fast balancing pass
-            ordinal_view_t clusterSizes("ClusterSizes", numClusters);
-            Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterSizes, vertClusters));
-            ordinal_view_t clusterCounters("ClusterCounters", numClusters);
-            vertClusters = ordinal_view_t(Kokkos::ViewAllocateWithoutInitializing("Cluster labels"), this->num_rows);
-            Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterBalanceStep1(imbalancedVertClusters, vertClusters, clusterSizes, clusterCounters, targetSize));
-            Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterBalanceStep2(imbalancedVertClusters, vertClusters, clusterSizes, clusterCounters, this->row_map, this->colinds, targetSize, this->num_rows));
-            break;
-          }
-          case CLUSTER_BALLOON:
-          {
-            BalloonClustering<HandleType, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
-              balloon(this->num_rows, this->row_map, this->entries);
-            vertClusters = balloon.run(clusterSize);
-            break;
-          }
-          case CLUSTER_DEFAULT:
-          {
-            throw std::logic_error("Logic to choose default clustering algorithm never got called");
-          }
-          default:
-            throw std::runtime_error("Clustering algo " + std::to_string((int) clusterAlgo) + " is not implemented");
-        }
+        numClusters = (this->num_rows + clusterSize - 1) / clusterSize;
+        BalloonClustering<HandleType, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
+          balloon(this->num_rows, this->row_map, this->entries);
+        vertClusters = balloon.run(clusterSize);
+        break;
+      }
+      case CLUSTER_DEFAULT:
+      {
+        throw std::logic_error("Logic to choose default clustering algorithm never got called");
+      }
+      default:
+        throw std::runtime_error("Clustering algo " + std::to_string((int) clusterAlgo) + " is not implemented");
+    }
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
     std::cout << "Graph clustering: " << timer.seconds() << '\n';
     timer.reset();
 #endif
+    clusterOffsets = ordinal_view_t("Cluster offsets", numClusters + 1);
     //DEBUGGING: sanity check the coarsening labels
     std::cout << "Constructed coarsening with " << numClusters << " clusters.\n";
     auto labelsHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), vertClusters);
@@ -586,7 +594,7 @@ public:
       }
       clusterStdev /= numClusters;
       clusterStdev = sqrt(clusterStdev);
-      std::cout << "Standard deviation of cluster size: " << clusterStdev << '\n';
+      std::cout << "Mean and standard deviation of cluster size: " << ((double) this->num_rows / numClusters) << ", " << clusterStdev << '\n';
     }
 #if KOKKOSSPARSE_IMPL_PRINTDEBUG
     {
@@ -621,7 +629,7 @@ public:
       numClusterEdges = crossClusterEdgeMask.count();
     }
     offset_view_t clusterRowmap(Kokkos::ViewAllocateWithoutInitializing("Cluster graph rowmap"), numClusters + 1);
-    ordinal_view_t clusterEntries(Kokkos::ViewAllocateWithoutInitializing("Cluster graph colinds"), numClusterEdges);
+    ordinal_view_t clusterEntries(Kokkos::ViewAllocateWithoutInitializing("Cluster graph entries"), numClusterEdges);
     Kokkos::parallel_scan(range_policy_t(0, this->num_rows), FillClusterEntriesFunctor
         (this->row_map, this->entries, clusterRowmap, clusterEntries, clusterOffsets, clusterVerts, vertClusters, crossClusterEdgeMask));
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
@@ -702,7 +710,7 @@ public:
         const ordinal_view_t& clusterVerts_,
         const ordinal_view_t& vertClusters_,
         const unmanaged_offset_view_t& rowmap_,
-        const unmanaged_ordinal_view_t& colinds_,
+        const unmanaged_ordinal_view_t& entries_,
         const unmanaged_scalar_view_t& values_,
         const lno_t numRows_,
         const mag_view_t& weights_) :
@@ -710,7 +718,7 @@ public:
       clusterVerts(clusterVerts_),
       vertClusters(vertClusters_),
       rowmap(rowmap_),
-      colinds(colinds_),
+      entries(entries_),
       values(values_),
       numRows(numRows_),
       weights(weights_)
@@ -734,7 +742,7 @@ public:
         [&](size_type j, mag_t& lweight)
         {
           const size_type ent = rowBegin + j;
-          const lno_t col = colinds(ent);
+          const lno_t col = entries(ent);
           if(col < numRows && col != row && vertClusters(col) == cluster)
           {
             lweight += KAT::abs(values(ent));
@@ -789,7 +797,7 @@ public:
           [&](size_type k, mag_t& lweight)
           {
             size_type ent = rowBegin + k;
-            lno_t col = colinds(ent);
+            lno_t col = entries(ent);
             if(col == elimRow)
               lweight += KAT::abs(values(ent));
           }, w);
@@ -809,7 +817,7 @@ public:
     ordinal_view_t vertClusters;
     //Input matrix
     unmanaged_offset_view_t rowmap;
-    unmanaged_ordinal_view_t colinds;
+    unmanaged_ordinal_view_t entries;
     unmanaged_scalar_view_t values;
     lno_t numRows;
     //Intra-cluster absolute sum of edge weights, per vertex
@@ -879,6 +887,8 @@ public:
 
   void initialize_numeric()
   {
+    if(this->num_rows == 0)
+      return;
     auto gsHandle = get_gs_handle();
     if(!gsHandle->is_symbolic_called())
     {
@@ -1228,6 +1238,12 @@ public:
       bool apply_backward = true,
       bool update_y_vector = true)
   {
+    if(this->num_rows == 0)
+    {
+      if(init_zero_x_vector)
+        Kokkos::deep_copy(x, KAT::zero());
+      return;
+    }
     auto gsHandle = get_gs_handle();
     colmajor_vector_t perm_x;
     rowmajor_vector_t perm_y;
