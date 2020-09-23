@@ -235,6 +235,76 @@ public:
     ordinal_view_t vertClusters;
   };
 
+  //Compute the quota for number of vertices to join each cluster in order to balance
+  struct ClusterQuotaFunctor
+  {
+    ClusterQuotaFunctor(const ordinal_view_t& vertClusters_, const ordinal_view_t& clusterQuotas_)
+      : vertClusters(vertClusters_), clusterQuotas(clusterQuotas_)
+    {}
+
+    KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
+    {
+      Kokkos::atomic_decrement(&clusterQuotas(vertClusters(i)));
+    }
+
+    ordinal_view_t vertClusters;
+    ordinal_view_t clusterQuotas;
+  };
+
+  //Given quotas for how much each cluster's size should change, balance by switching
+  //vertex labels to that of the neighbor with the highest quota
+  struct ClusterBalanceFunctor
+  {
+    ClusterBalanceFunctor(const ordinal_view_t& vertClusters_, const ordinal_view_t& clusterQuotas_, const unmanaged_offset_view_t& rowmap_, const unmanaged_ordinal_view_t& colinds_, lno_t numRows_)
+      : vertClusters(vertClusters_), clusterQuotas(clusterQuotas_), rowmap(rowmap_), colinds(colinds_), numRows(numRows_)
+    {}
+
+    KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
+    {
+      lno_t currentCluster = vertClusters(i);
+      //decide whether vertex i should leave its current cluster and join a neighboring one
+      if(clusterQuotas(currentCluster) >= 0)
+      {
+        //its current cluster is already too small or the right size, so stay in it
+        return;
+      }
+      //find the neighboring cluster with the highest quota
+      lno_t maxQuota = 0;
+      lno_t bestCluster = currentCluster;
+      size_type rowBegin = rowmap(i);
+      size_type rowEnd = rowmap(i + 1);
+      for(size_type j = rowBegin; j < rowEnd; j++)
+      {
+        lno_t nei = colinds(j);
+        if(nei >= numRows || nei == i)
+          continue;
+        lno_t neiCluster = vertClusters(nei);
+        lno_t q = clusterQuotas(neiCluster);
+        if(q > maxQuota)
+        {
+          maxQuota = q;
+          bestCluster = neiCluster;
+        }
+      }
+      if(bestCluster != currentCluster)
+      {
+        if(Kokkos::atomic_fetch_add(&clusterQuotas(bestCluster), -1) + 1 > Kokkos::atomic_fetch_add(&clusterQuotas(currentCluster), 1))
+          vertClusters(i) = bestCluster;
+        else
+        {
+          Kokkos::atomic_increment(&clusterQuotas(bestCluster));
+          Kokkos::atomic_decrement(&clusterQuotas(currentCluster));
+        }
+      }
+    }
+
+    ordinal_view_t vertClusters;
+    ordinal_view_t clusterQuotas;
+    unmanaged_offset_view_t rowmap;
+    unmanaged_ordinal_view_t colinds;
+    lno_t numRows;
+  };
+
   struct FillClusterVertsFunctor
   {
     FillClusterVertsFunctor(const ordinal_view_t& clusterOffsets_, const ordinal_view_t& clusterVerts_, const ordinal_view_t& vertClusters_, const ordinal_view_t& insertCounts_)
@@ -484,7 +554,7 @@ public:
         lno_t clusterSize = gsHandle->get_cluster_size();
         lno_t numClusters = (this->num_rows + clusterSize - 1) / clusterSize;
         ordinal_view_t clusterOffsets("Cluster offsets", numClusters + 1);
-        ordinal_view_t clusterVerts("Cluster -> vertices", this->num_rows);
+        ordinal_view_t clusterVerts(Kokkos::ViewAllocateWithoutInitializing("Cluster -> vertices"), this->num_rows);
         ordinal_view_t vertClusters;
         auto clusterAlgo = gsHandle->get_clustering_algo();
         if(clusterAlgo == CLUSTER_DEFAULT)
@@ -495,6 +565,12 @@ public:
           {
             vertClusters = KokkosGraph::Experimental::graph_mis2_coarsen<exec_space, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
               (this->row_map, this->entries, numClusters, KokkosGraph::MIS2_FAST);
+            //MIS2 coarsening by itself doesn't give very good balance, so apply a single fast balancing pass
+            ordinal_view_t clusterQuotas(Kokkos::ViewAllocateWithoutInitializing("ClusterSizeChangeQuotas"), numClusters);
+            //initially, fill quotas with the target cluster size, rounded to nearest int
+            Kokkos::deep_copy(clusterQuotas, (double) this->num_rows / numClusters + 0.5);
+            Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterQuotaFunctor(vertClusters, clusterQuotas));
+            Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterBalanceFunctor(vertClusters, clusterQuotas, this->row_map, this->entries, this->num_rows));
             break;
           }
           case CLUSTER_BALLOON:
@@ -515,12 +591,36 @@ public:
     std::cout << "Graph clustering: " << timer.seconds() << '\n';
     timer.reset();
 #endif
+    //DEBUGGING: sanity check the coarsening labels
+    std::cout << "Constructed coarsening with " << numClusters << " clusters.\n";
+    auto labelsHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), vertClusters);
+    for(int i = 0; i < this->num_rows; i++)
+    {
+      if(labelsHost(i) < 0 || labelsHost(i) >= numClusters)
+      {
+        std::cout << "Cluster label for row " << i << " is out of bounds (is " << labelsHost(i) << ", should be nonnegative and less than " << numClusters << '\n';
+      }
+    }
     //Construct the cluster offset and vertex array. These allow fast iteration over all vertices in a given cluster.
     Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterOffsets, vertClusters));
     KokkosKernels::Impl::exclusive_parallel_prefix_sum<ordinal_view_t, exec_space>(numClusters + 1, clusterOffsets);
     {
       ordinal_view_t tempInsertCounts("Temporary cluster insert counts", numClusters);
       Kokkos::parallel_for(range_policy_t(0, this->num_rows), FillClusterVertsFunctor(clusterOffsets, clusterVerts, vertClusters, tempInsertCounts));
+    }
+    {
+      double clusterStdev = 0;
+      double clusterMean = (double) this->num_rows / numClusters;
+      auto clusterOffsetsHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), clusterOffsets);
+      for(lno_t i = 0; i < numClusters; i++)
+      {
+        double cs = clusterOffsetsHost(i + 1) - clusterOffsetsHost(i);
+        double diff = clusterMean - cs;
+        clusterStdev += diff * diff;
+      }
+      clusterStdev /= numClusters;
+      clusterStdev = sqrt(clusterStdev);
+      std::cout << "Standard deviation of cluster size: " << clusterStdev << '\n';
     }
 #if KOKKOSSPARSE_IMPL_PRINTDEBUG
     {

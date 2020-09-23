@@ -74,7 +74,7 @@ static char* getNextArg(int& i, int argc, char** argv)
 struct GS_Parameters
 {
   const char* matrix_path;
-  bool graph_symmetric = true;
+  bool graph_symmetric = false;
   int sweeps = 1;
   GSAlgorithm algo = GS_POINT;
   GSDirection direction = GS_FORWARD;
