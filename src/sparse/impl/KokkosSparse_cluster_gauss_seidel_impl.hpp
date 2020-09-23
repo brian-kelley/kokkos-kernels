@@ -235,73 +235,71 @@ public:
     ordinal_view_t vertClusters;
   };
 
-  //Compute the quota for number of vertices to join each cluster in order to balance
-  struct ClusterQuotaFunctor
+  struct ClusterBalanceStep1
   {
-    ClusterQuotaFunctor(const ordinal_view_t& vertClusters_, const ordinal_view_t& clusterQuotas_)
-      : vertClusters(vertClusters_), clusterQuotas(clusterQuotas_)
+    ClusterBalanceStep1(const ordinal_view_t& tentVertClusters_, const ordinal_view_t& vertClusters_, const ordinal_view_t& clusterSizes_, const ordinal_view_t& clusterCounters_, lno_t targetSize_)
+      : tentVertClusters(tentVertClusters_), vertClusters(vertClusters_), clusterSizes(clusterSizes_), clusterCounters(clusterCounters_), targetSize(targetSize_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
     {
-      Kokkos::atomic_decrement(&clusterQuotas(vertClusters(i)));
+      lno_t tentCluster = tentVertClusters(i);
+      if(clusterSizes(tentCluster) <= targetSize)
+      {
+        //Cluster is not overfull, so just keep the label
+        Kokkos::atomic_increment(&clusterCounters(currentCluster));
+        vertClusters(i) = tentCluster;
+      }
     }
 
+    ordinal_view_t tentVertClusters;
     ordinal_view_t vertClusters;
-    ordinal_view_t clusterQuotas;
+    ordinal_view_t clusterSizes;
+    ordinal_view_t clusterCounters;
+    lno_t targetSize;
   };
 
-  //Given quotas for how much each cluster's size should change, balance by switching
-  //vertex labels to that of the neighbor with the highest quota
-  struct ClusterBalanceFunctor
+  struct ClusterBalanceStep2
   {
-    ClusterBalanceFunctor(const ordinal_view_t& vertClusters_, const ordinal_view_t& clusterQuotas_, const unmanaged_offset_view_t& rowmap_, const unmanaged_ordinal_view_t& colinds_, lno_t numRows_)
-      : vertClusters(vertClusters_), clusterQuotas(clusterQuotas_), rowmap(rowmap_), colinds(colinds_), numRows(numRows_)
+    ClusterBalanceStep2(const ordinal_view_t& tentVertClusters_, const ordinal_view_t& vertClusters_, const ordinal_view_t& clusterSizes_, const ordinal_view_t& clusterCounters_, const unmanaged_offset_view_t& rowmap_, const unmanaged_ordinal_view_t& colinds_, lno_t targetSize_, lno_t numRows_)
+      : tentVertClusters(tentVertClusters_), vertClusters(vertClusters_), clusterSizes(clusterSizes_), clusterCounters(clusterCounters_), rowmap(rowmap_), colinds(colinds_), targetSize(targetSize_), numRows(numRows_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
     {
-      lno_t currentCluster = vertClusters(i);
-      //decide whether vertex i should leave its current cluster and join a neighboring one
-      if(clusterQuotas(currentCluster) >= 0)
+      lno_t tentCluster = tentVertClusters(i);
+      if(clusterSizes(tentCluster) > targetSize)  //note: this condition is exactly disjoint with the one from Step1
       {
-        //its current cluster is already too small or the right size, so stay in it
-        return;
-      }
-      //find the neighboring cluster with the highest quota
-      lno_t maxQuota = 0;
-      lno_t bestCluster = currentCluster;
-      size_type rowBegin = rowmap(i);
-      size_type rowEnd = rowmap(i + 1);
-      for(size_type j = rowBegin; j < rowEnd; j++)
-      {
-        lno_t nei = colinds(j);
-        if(nei >= numRows || nei == i)
-          continue;
-        lno_t neiCluster = vertClusters(nei);
-        lno_t q = clusterQuotas(neiCluster);
-        if(q > maxQuota)
+        //Tentative cluster is overfull, so attempt to copy a neighbor's label
+        size_type rowBegin = rowmap(i);
+        size_type rowEnd = rowmap(i + 1);
+        lno_t newCluster = tentCluster;
+        for(size_type j = rowBegin; j < rowEnd; j++)
         {
-          maxQuota = q;
-          bestCluster = neiCluster;
+          lno_t nei = colinds(j);
+          if(nei >= numRows || nei == i)
+            continue;
+          lno_t neiCluster = tentVertClusters(nei);
+          if(neiCluster == tentCluster || clusterSizes(neiCluster) > targetSize)
+            continue;
+          //Attempt to copy this label
+          if(Kokkos::atomic_fetch_add(&clusterCounters(neiCluster), 1) <= targetSize)
+          {
+            newCluster = neiCluster;
+            break;
+          }
         }
-      }
-      if(bestCluster != currentCluster)
-      {
-        if(Kokkos::atomic_fetch_add(&clusterQuotas(bestCluster), -1) + 1 > Kokkos::atomic_fetch_add(&clusterQuotas(currentCluster), 1))
-          vertClusters(i) = bestCluster;
-        else
-        {
-          Kokkos::atomic_increment(&clusterQuotas(bestCluster));
-          Kokkos::atomic_decrement(&clusterQuotas(currentCluster));
-        }
+        vertClusters(i) = newCluster;
       }
     }
 
+    ordinal_view_t tentVertClusters;
     ordinal_view_t vertClusters;
-    ordinal_view_t clusterQuotas;
+    ordinal_view_t clusterSizes;
+    ordinal_view_t clusterCounters;
     unmanaged_offset_view_t rowmap;
     unmanaged_ordinal_view_t colinds;
+    lno_t targetSize;
     lno_t numRows;
   };
 
@@ -490,42 +488,6 @@ public:
     const_bitset_t edgeMask;
   };
 
-  //Assign cluster labels to vertices, given that the vertices are naturally
-  //ordered so that contiguous groups of vertices form decent clusters.
-  struct NaturalCoarseningFunctor
-  {
-    NaturalCoarseningFunctor(const ordinal_view_t& vertClusters_, lno_t clusterSize_) :
-        vertClusters(vertClusters_),
-        numRows(vertClusters.extent(0)),
-        clusterSize(clusterSize_)
-    {}
-    KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
-    {
-      vertClusters(i) = i / clusterSize;
-    }
-    ordinal_view_t vertClusters;
-    lno_t numRows;
-    lno_t clusterSize;
-  };
-
-  struct ReorderedClusteringFunctor
-  {
-    ReorderedClusteringFunctor(const ordinal_view_t& vertClusters_, const ordinal_view_t& ordering_, lno_t clusterSize_) :
-        vertClusters(vertClusters_),
-        ordering(ordering_),
-        numRows(vertClusters.extent(0)),
-        clusterSize(clusterSize_)
-    {}
-    KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
-    {
-      vertClusters(i) = ordering(i) / clusterSize;
-    }
-    ordinal_view_t vertClusters;
-    ordinal_view_t ordering;
-    lno_t numRows;
-    lno_t clusterSize;
-  };
-
   void initialize_symbolic()
   {
     CGSHandle* gsHandle = get_gs_handle();
@@ -563,14 +525,18 @@ public:
         {
           case CLUSTER_MIS2:
           {
-            vertClusters = KokkosGraph::Experimental::graph_mis2_coarsen<exec_space, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
+            //Raw MIS2 sometimes gives an imbalanced coarsening, enough to slow down apply performance. So run a balancing pass over it.
+            auto imbalancedVertClusters = KokkosGraph::Experimental::graph_mis2_coarsen<exec_space, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
               (this->row_map, this->entries, numClusters, KokkosGraph::MIS2_FAST);
+            //this will round to nearest int
+            lno_t targetSize = 0.5 + (double) this->num_rows / numClusters;
             //MIS2 coarsening by itself doesn't give very good balance, so apply a single fast balancing pass
-            ordinal_view_t clusterQuotas(Kokkos::ViewAllocateWithoutInitializing("ClusterSizeChangeQuotas"), numClusters);
-            //initially, fill quotas with the target cluster size, rounded to nearest int
-            Kokkos::deep_copy(clusterQuotas, (double) this->num_rows / numClusters + 0.5);
-            Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterQuotaFunctor(vertClusters, clusterQuotas));
-            Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterBalanceFunctor(vertClusters, clusterQuotas, this->row_map, this->entries, this->num_rows));
+            ordinal_view_t clusterSizes("ClusterSizes", numClusters);
+            Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterSizes, vertClusters));
+            ordinal_view_t clusterCounters("ClusterCounters", numClusters);
+            vertClusters = ordinal_view_t(Kokkos::ViewAllocateWithoutInitializing("Cluster labels"), this->num_rows);
+            Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterBalanceStep1(imbalancedVertClusters, vertClusters, clusterSizes, clusterCounters, targetSize));
+            Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterBalanceStep2(imbalancedVertClusters, vertClusters, clusterSizes, clusterCounters, this->row_map, this->colinds, targetSize, this->num_rows));
             break;
           }
           case CLUSTER_BALLOON:
