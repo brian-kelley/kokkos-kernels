@@ -565,16 +565,6 @@ public:
     timer.reset();
 #endif
     clusterOffsets = ordinal_view_t("Cluster offsets", numClusters + 1);
-    //DEBUGGING: sanity check the coarsening labels
-    std::cout << "Constructed coarsening with " << numClusters << " clusters.\n";
-    auto labelsHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), vertClusters);
-    for(int i = 0; i < this->num_rows; i++)
-    {
-      if(labelsHost(i) < 0 || labelsHost(i) >= numClusters)
-      {
-        std::cout << "Cluster label for row " << i << " is out of bounds (is " << labelsHost(i) << ", should be nonnegative and less than " << numClusters << '\n';
-      }
-    }
     //Construct the cluster offset and vertex array. These allow fast iteration over all vertices in a given cluster.
     Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterOffsets, vertClusters));
     KokkosKernels::Impl::exclusive_parallel_prefix_sum<ordinal_view_t, exec_space>(numClusters + 1, clusterOffsets);
@@ -582,6 +572,7 @@ public:
       ordinal_view_t tempInsertCounts("Temporary cluster insert counts", numClusters);
       Kokkos::parallel_for(range_policy_t(0, this->num_rows), FillClusterVertsFunctor(clusterOffsets, clusterVerts, vertClusters, tempInsertCounts));
     }
+    /*
     {
       double clusterStdev = 0;
       double clusterMean = (double) this->num_rows / numClusters;
@@ -596,6 +587,7 @@ public:
       clusterStdev = sqrt(clusterStdev);
       std::cout << "Mean and standard deviation of cluster size: " << ((double) this->num_rows / numClusters) << ", " << clusterStdev << '\n';
     }
+    */
 #if KOKKOSSPARSE_IMPL_PRINTDEBUG
     {
       auto clusterOffsetsHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), clusterOffsets);
