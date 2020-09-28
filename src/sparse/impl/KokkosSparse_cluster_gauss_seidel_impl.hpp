@@ -244,7 +244,7 @@ public:
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
     {
       lno_t tentCluster = tentVertClusters(i);
-      if(clusterSizes(tentCluster) <= targetSize)
+      if(clusterSizes(tentCluster) <= targetSize + 1)
       {
         //Cluster is not overfull, so just keep the label
         Kokkos::atomic_increment(&clusterCounters(tentCluster));
@@ -268,7 +268,7 @@ public:
     KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
     {
       lno_t tentCluster = tentVertClusters(i);
-      if(clusterSizes(tentCluster) > targetSize)  //note: this condition is exactly disjoint with the one from Step1
+      if(clusterSizes(tentCluster) > targetSize + 1)  //note: this condition is exactly disjoint with the one from Step1
       {
         //Tentative cluster is overfull, so attempt to copy a neighbor's label
         size_type rowBegin = rowmap(i);
@@ -488,6 +488,88 @@ public:
     const_bitset_t edgeMask;
   };
 
+  void printClusteringStatistics(const ordinal_view_t& vc, lno_t numClusters)
+  {
+    double clusterStdev = 0;
+    double clusterMean = (double) this->num_rows / numClusters;
+    lno_t minCluster = this->num_rows;
+    lno_t maxCluster = 0;
+    auto vch = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), vc);
+    std::vector<int> clusterSizes(numClusters, 0);
+    for(lno_t i = 0; i < this->num_rows; i++)
+      clusterSizes[vch(i)]++;
+    for(lno_t i = 0; i < numClusters; i++)
+    {
+      lno_t cs = clusterSizes[i];
+      if(cs > maxCluster)
+        maxCluster = cs;
+      if(cs < minCluster)
+        minCluster = cs;
+      double diff = clusterMean - cs;
+      clusterStdev += diff * diff;
+    }
+    clusterStdev /= numClusters;
+    clusterStdev = sqrt(clusterStdev);
+    std::cout << "Mean and standard deviation of cluster size: " << ((double) this->num_rows / numClusters) << ", " << clusterStdev << '\n';
+    std::cout << "Min, max cluster size: " << minCluster << ", " << maxCluster << '\n';
+  }
+
+  //Break up large clusters into clusters <= maxSize. Just take naturally ordered
+  void serialFission(ordinal_view_t& vc, int& numClusters, int maxSize)
+  {
+    auto vch = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), vc);
+    std::vector<int> clusterSizes(numClusters, 0);
+    for(int i = 0; i < vch.extent(0); i++)
+    {
+      clusterSizes[vch(i)]++;
+    }
+    std::vector<int> fissionFactors(numClusters);
+    for(int i = 0; i < numClusters; i++)
+    {
+      fissionFactors[i] = clusterSizes[i] / maxSize + 1;
+    }
+    std::vector<int> newLabelOffsets(numClusters);
+    int accum = 0;
+    for(int i = 0; i < numClusters; i++)
+    {
+      newLabelOffsets[i] = accum;
+      accum += fissionFactors[i];
+    }
+    std::vector<int> counters(numClusters, 0);
+    //New number of clusters
+    numClusters = accum;
+    //update labels
+    for(int i = 0; i < vch.extent(0); i++)
+    {
+      int oldLabel = vch(i);
+      int offset = newLabelOffsets[oldLabel];
+      int oldSize = clusterSizes[oldLabel];
+      vch(i) = offset + ((double) counters[oldLabel] / oldSize) * fissionFactors[oldLabel];
+      counters[oldLabel]++;
+    }
+    Kokkos::deep_copy(vc, vch);
+    std::cout << "Fission increased number of clusters from " << clusterSizes.size() << " to " << numClusters << '\n';
+  }
+
+  struct ClusterFissionOffsets
+  {
+    ClusterFissionOffsets(const ordinal_view_t& clusterSizes_, const ordinal_view_t& 
+  };
+
+  struct ClusterSizeComparator
+  {
+    ClusterSizeComparator(const ordinal_view_t& clusterSizes_)
+      : clusterSizes(clusterSizes_)
+    {}
+
+    KOKKOS_INLINE_FUNCTION bool operator()(lno_t c1, lno_t c2) const
+    {
+      return clusterSizes(c1) > clusterSizes(c2);
+    }
+
+    ordinal_view_t clusterSizes;
+  };
+
   void initialize_symbolic()
   {
     if(this->num_rows == 0)
@@ -527,21 +609,14 @@ public:
       case CLUSTER_MIS2:
       {
         //Raw MIS2 sometimes gives an imbalanced coarsening, enough to slow down apply performance. So run a balancing pass over it.
-        auto imbalancedVertClusters = KokkosGraph::Experimental::graph_mis2_coarsen<exec_space, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
+        vertClusters = KokkosGraph::Experimental::graph_mis2_coarsen<exec_space, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
           (this->row_map, this->entries, numClusters, KokkosGraph::MIS2_FAST);
-        Kokkos::Timer balanceTimer;
-        //this will round to nearest int
-        lno_t targetSize = 0.5 + (double) this->num_rows / numClusters;
-        //MIS2 coarsening by itself doesn't give very good balance, so apply a single fast balancing pass
-        ordinal_view_t clusterSizes("ClusterSizes", numClusters);
-        Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterSizes, imbalancedVertClusters));
-        ordinal_view_t clusterCounters("ClusterCounters", numClusters);
-        vertClusters = ordinal_view_t(Kokkos::ViewAllocateWithoutInitializing("Cluster labels"), this->num_rows);
-        Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterBalanceStep1(imbalancedVertClusters, vertClusters, clusterSizes, clusterCounters, targetSize));
-        Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterBalanceStep2(imbalancedVertClusters, vertClusters, clusterSizes, clusterCounters, this->row_map, this->entries, targetSize, this->num_rows));
-        exec_space().fence();
-        double balTime = balanceTimer.seconds();
-        std::cout << "*** Balancing time: " << balTime << '\n';
+        std::cout << "Before fission, clustering statistics:\n";
+        printClusteringStatistics(vertClusters, numClusters);
+        //This value for max size keeps all large cluster sizes between 2/3 and 4/3 of the original average
+        serialFission(vertClusters, numClusters, 4.0 / 3 * this->num_rows / numClusters);
+        std::cout << "After fission, clustering statistics:\n";
+        printClusteringStatistics(vertClusters, numClusters);
         break;
       }
       case CLUSTER_BALLOON:
@@ -564,6 +639,8 @@ public:
     std::cout << "Graph clustering: " << timer.seconds() << '\n';
     timer.reset();
 #endif
+    std::cout << "*** Final coarsening Statistics:\n";
+    printClusteringStatistics(vertClusters, numClusters);
     clusterOffsets = ordinal_view_t("Cluster offsets", numClusters + 1);
     //Construct the cluster offset and vertex array. These allow fast iteration over all vertices in a given cluster.
     Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterOffsets, vertClusters));
@@ -572,22 +649,6 @@ public:
       ordinal_view_t tempInsertCounts("Temporary cluster insert counts", numClusters);
       Kokkos::parallel_for(range_policy_t(0, this->num_rows), FillClusterVertsFunctor(clusterOffsets, clusterVerts, vertClusters, tempInsertCounts));
     }
-    /*
-    {
-      double clusterStdev = 0;
-      double clusterMean = (double) this->num_rows / numClusters;
-      auto clusterOffsetsHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), clusterOffsets);
-      for(lno_t i = 0; i < numClusters; i++)
-      {
-        double cs = clusterOffsetsHost(i + 1) - clusterOffsetsHost(i);
-        double diff = clusterMean - cs;
-        clusterStdev += diff * diff;
-      }
-      clusterStdev /= numClusters;
-      clusterStdev = sqrt(clusterStdev);
-      std::cout << "Mean and standard deviation of cluster size: " << ((double) this->num_rows / numClusters) << ", " << clusterStdev << '\n';
-    }
-    */
 #if KOKKOSSPARSE_IMPL_PRINTDEBUG
     {
       auto clusterOffsetsHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), clusterOffsets);
@@ -665,6 +726,7 @@ public:
     colors = coloringHandle->get_vertex_colors();
     numColors = coloringHandle->get_num_colors();
     kh.destroy_graph_coloring_handle();
+    std::cout << "# colors used for coarse graph " << numColors << '\n';
 #endif
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
     std::cout << "Coloring: " << timer.seconds() << '\n';
@@ -676,13 +738,23 @@ public:
       <typename HandleType::GraphColoringHandleType::color_view_t,
        ordinal_view_t, exec_space>
       (numClusters, numColors, colors, color_xadj, color_adj);
+    //Get color set offsets on host
+    host_ordinal_view_t color_xadj_host(Kokkos::ViewAllocateWithoutInitializing("Color xadj"), color_xadj.extent(0));
+    Kokkos::deep_copy(color_xadj_host, color_xadj);
+    //Within each color set, sort descending by cluster size.
+    ordinal_view_t clusterSizes("Cluster sizes", numClusters);
+    Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterSizes, vertClusters));
+    ClusterSizeComparator compareByClusterSize(clusterSizes);
+    for(int c = 0; c < numColors; c++)
+    {
+      auto colorSet = Kokkos::subview(color_adj, Kokkos::make_pair(color_xadj_host(c), color_xadj_host(c + 1)));
+      KokkosKernels::Impl::bitonicSort<decltype(colorSet), exec_space, lno_t, ClusterSizeComparator>(colorSet, compareByClusterSize);
+    }
     exec_space().fence();
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
     std::cout << "CREATE_REVERSE_MAP:" << timer.seconds() << std::endl;
     timer.reset();
 #endif
-    host_ordinal_view_t color_xadj_host(Kokkos::ViewAllocateWithoutInitializing("Color xadj"), color_xadj.extent(0));
-    Kokkos::deep_copy(color_xadj_host, color_xadj);
     gsHandle->set_color_xadj(color_xadj_host);
     gsHandle->set_color_adj(color_adj);
     gsHandle->set_num_colors(numColors);

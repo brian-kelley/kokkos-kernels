@@ -67,7 +67,7 @@ struct GS_Parameters
 {
   string matrix_path;
   int sweeps = 1; //GS sweeps per CG iteration
-  bool graph_symmetric = true;
+  bool graph_symmetric = false;
   //Whether to use any preconditioner
   bool precondition = true;
   //Whether to use sequential GS
@@ -77,6 +77,7 @@ struct GS_Parameters
   GSDirection direction = GS_FORWARD;
   //Cluster:
   CGSAlgorithm cgs_algo = CGS_DEFAULT;
+  CoarseningAlgorithm coarse_algo = CLUSTER_DEFAULT;
   int cluster_size = 10;
   bool compact_scalars = true;
   //Two stage:
@@ -150,7 +151,7 @@ void runPCG(const GS_Parameters& params)
           kh.set_gs_twostage(!params.classic, nrows);
       }
       else
-        kh.create_gs_handle(params.cgs_algo, CLUSTER_BALLOON, params.compact_scalars, params.cluster_size);
+        kh.create_gs_handle(params.cgs_algo, params.coarse_algo, params.compact_scalars, params.cluster_size);
     }
     else
     {
@@ -487,6 +488,8 @@ int main(int argc, char** argv)
     cout << "  --cgs-apply ALGO\n";
     cout << "     ALGO may be: \"range\", \"team\", \"permuted-range\" or \"permuted-team\".\n";
     cout << "     Default is chosen by the library.\n";
+    cout << "  --coarse-algo ALGO\n";
+    cout << "     ALGO may be: \"mis2\", \"balloon\"\n";
     return 0;
   }
   Kokkos::initialize(argc, argv);
@@ -547,6 +550,20 @@ int main(int argc, char** argv)
       {
         std::cout << "\"" << cgsApply << "\" is not a valid cluster GS apply algorithm.\n";
         std::cout << "Valid choices are: range, team, permuted-range, permuted-team.\\n";
+        Kokkos::finalize();
+        exit(1);
+      }
+    }
+    else if(!strcmp(argv[i], "--coarse-algo"))
+    {
+      const char* algo = getNextArg(++i, argc, argv);
+      if(!strcmp(algo, "balloon"))
+        params.coarse_algo = CLUSTER_BALLOON;
+      else if(!strcmp(algo, "mis2"))
+        params.coarse_algo = CLUSTER_MIS2;
+      else
+      {
+        std::cout << "Error: invalid coarsening algorithm. Options are balloon and mis2.\n";
         Kokkos::finalize();
         exit(1);
       }

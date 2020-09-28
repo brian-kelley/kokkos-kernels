@@ -104,10 +104,11 @@ graph_mis2_coarsen(const rowmap_t& rowmap, const colinds_t& colinds, typename co
   t.reset();
   numClusters = mis2.extent(0);
   Impl::D2_MIS_Coarsening<device_t, rowmap_t, colinds_t, labels_t> coarsening(rowmap, colinds, mis2);
+  labels_t labels = coarsening.compute();
   typename device_t::execution_space().fence();
   double ct = t.seconds();
   std::cout << "*** Coarsening time: " << ct << '\n';
-  return coarsening.compute();
+  return labels;
 }
 
 }  // end namespace Experimental
