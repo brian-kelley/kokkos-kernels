@@ -553,7 +553,48 @@ public:
 
   struct ClusterFissionOffsets
   {
-    ClusterFissionOffsets(const ordinal_view_t& clusterSizes_, const ordinal_view_t& 
+    ClusterFissionOffsets(const ordinal_view_t& clusterSizes_, const ordinal_view_t& fissionOffsets_, lno_t maxSize_)
+      : clusterSizes(clusterSizes_), fissionOffsets(fissionOffsets_), maxSize(maxSize_)
+    {}
+
+    KOKKOS_INLINE_FUNCTION void operator()(lno_t i, lno_t& loffset, bool finalPass) const
+    {
+      lno_t origSize = clusterSizes(i);
+      lno_t splittingFactor = origSize / maxSize + 1;
+      if(finalPass)
+      {
+        fissionOffsets(i) = loffset;
+        if(i == clusterSizes.extent(0) - 1)
+          fissionOffsets(i + 1) = loffset + splittingFactor;
+      }
+      loffset += splittingFactor;
+    }
+
+    ordinal_view_t clusterSizes;
+    ordinal_view_t fissionOffsets;
+    lno_t maxSize;
+  };
+
+  struct ClusterFissionRelabel
+  {
+    ClusterFissionRelabel(const ordinal_view_t& vertClusters_, const ordinal_view_t& fissionOffsets_, const ordinal_view_t& clusterSizes_, const ordinal_view_t& counters_)
+      : vertClusters(vertClusters_), fissionOffsets(fissionOffsets_), clusterSizes(clusterSizes_), counters(counters_)
+    {}
+
+    KOKKOS_INLINE_FUNCTION void operator()(const lno_t i) const
+    {
+      lno_t oldLabel = vertClusters(i);
+      lno_t counter = Kokkos::atomic_fetch_add(&counters(oldLabel), 1);
+      lno_t beginOffset = fissionOffsets(oldLabel);
+      lno_t splittingFactor = fissionOffsets(oldLabel + 1) - beginOffset;
+      //clusterSizes(oldLabel) is split into splittingFactor different clusters, equally sized
+      vertClusters(i) = beginOffset + ((float) counter / clusterSizes(oldLabel)) * splittingFactor;
+    }
+
+    ordinal_view_t vertClusters;
+    ordinal_view_t fissionOffsets;
+    ordinal_view_t clusterSizes;
+    ordinal_view_t counters;
   };
 
   struct ClusterSizeComparator
@@ -584,6 +625,7 @@ public:
     //symmetric and non-symmetric input cases.
     if(!this->is_symmetric)
     {
+      Kokkos::Timer t;
       KokkosKernels::Impl::symmetrize_graph_symbolic_hashmap
         <unmanaged_offset_view_t, unmanaged_ordinal_view_t, offset_view_t, ordinal_view_t, exec_space>
         (this->num_rows, this->row_map, this->entries, this->sym_row_map, this->sym_entries);
@@ -591,6 +633,7 @@ public:
       //this is a mutable -> const conversion
       this->row_map = unmanaged_offset_view_t(sym_row_map.data(), sym_row_map.extent(0));
       this->entries = unmanaged_ordinal_view_t(sym_entries.data(), sym_entries.extent(0));
+      std::cout << "*** Symmetrize graph time: " << t.seconds() << " s\n";
 #ifdef KOKKOSSPARSE_IMPL_TIME_REVERSE
       std::cout << "SYMMETRIZING TIME: " << timer.seconds() << std::endl;
       timer.reset();
@@ -611,12 +654,19 @@ public:
         //Raw MIS2 sometimes gives an imbalanced coarsening, enough to slow down apply performance. So run a balancing pass over it.
         vertClusters = KokkosGraph::Experimental::graph_mis2_coarsen<exec_space, unmanaged_offset_view_t, unmanaged_ordinal_view_t, ordinal_view_t>
           (this->row_map, this->entries, numClusters, KokkosGraph::MIS2_FAST);
-        std::cout << "Before fission, clustering statistics:\n";
-        printClusteringStatistics(vertClusters, numClusters);
         //This value for max size keeps all large cluster sizes between 2/3 and 4/3 of the original average
-        serialFission(vertClusters, numClusters, 4.0 / 3 * this->num_rows / numClusters);
-        std::cout << "After fission, clustering statistics:\n";
-        printClusteringStatistics(vertClusters, numClusters);
+        Kokkos::Timer fissionTimer;
+        ordinal_view_t clusterSizes("clusterSizes", numClusters);
+        Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterSizes, vertClusters));
+        lno_t newNumClusters;
+        ordinal_view_t fissionOffsets(Kokkos::ViewAllocateWithoutInitializing("Fission offsets"), numClusters + 1);
+        double maxClusterSize = 4.0 / 3.0 * this->num_rows / numClusters;
+        Kokkos::parallel_scan(range_policy_t(0, numClusters), ClusterFissionOffsets(clusterSizes, fissionOffsets, maxClusterSize), newNumClusters);
+        ordinal_view_t counters("Counters", numClusters);
+        Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterFissionRelabel(vertClusters, fissionOffsets, clusterSizes, counters));
+        numClusters = newNumClusters;
+        double ft = fissionTimer.seconds();
+        std::cout << "*** Fission time: " << ft << " s\n";
         break;
       }
       case CLUSTER_BALLOON:
@@ -639,8 +689,6 @@ public:
     std::cout << "Graph clustering: " << timer.seconds() << '\n';
     timer.reset();
 #endif
-    std::cout << "*** Final coarsening Statistics:\n";
-    printClusteringStatistics(vertClusters, numClusters);
     clusterOffsets = ordinal_view_t("Cluster offsets", numClusters + 1);
     //Construct the cluster offset and vertex array. These allow fast iteration over all vertices in a given cluster.
     Kokkos::parallel_for(range_policy_t(0, this->num_rows), ClusterSizeFunctor(clusterOffsets, vertClusters));
