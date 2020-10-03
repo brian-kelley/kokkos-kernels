@@ -146,7 +146,9 @@ struct MaximalMatching
       }
       if(minStat == IN_SET)
         minStat = OUT_SET;
-      vertStatus(i) = minStat;
+      //Never overwrite a value of OUT_SET with a lower value.
+      if(vertStatus(i) != OUT_SET)
+        vertStatus(i) = minStat;
     }
 
     status_view_t vertStatus;
@@ -160,8 +162,8 @@ struct MaximalMatching
 
   struct DecideMatchesFunctor
   {
-    DecideMatchesFunctor(const status_view_t& rowStatus_, const status_view_t& colStatus_, const rowmap_t& rowmap_, const entries_t& entries_, lno_t nv_, const worklist_t& worklist_, lno_t worklistLen_)
-      : rowStatus(rowStatus_), colStatus(colStatus_), rowmap(rowmap_), entries(entries_), nv(nv_), worklist(worklist_), worklistLen(worklistLen_)
+    DecideMatchesFunctor(const status_view_t& vertStatus_, const rowmap_t& rowmap_, const entries_t& entries_, lno_t nv_, const worklist_t& worklist_, status_t hashedRound_, status_t hashMask_)
+      : vertStatus(vertStatus_), rowmap(rowmap_), entries(entries_), nv(nv_), worklist(worklist_), hashedRound(hashedRound_), hashMask(hashMask_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(lno_t w) const
@@ -170,97 +172,45 @@ struct MaximalMatching
       //Processing row i.
       //Iterate over each edge. If nei > i, compute the edge status and check if it's the minimum for both endpoints.
       //If it is, match nei with i, then mark 
-      status_t s = rowStatus(i);
-      if(s == IN_SET || s == OUT_SET)
-        return;
+      status_t iStat = vertStatus(i);
       //s is the status which must be the minimum among all neighbors
       //to decide that i is IN_SET.
       size_type rowBegin = rowmap(i);
       size_type rowEnd = rowmap(i + 1);
-      bool neiOut = false;
-      bool neiMismatchS = false;
-      for(size_type j = rowBegin; j <= rowEnd; j++)
+      lno_t mergeNei = i;
+      for(size_type j = rowBegin; j < rowEnd; j++)
       {
-        lno_t nei = (j == rowEnd) ? i : entries(j);
-        if(nei >= nv)
+        lno_t nei = entries(j);
+        //Only want to identify edges once in this loop, so only consider (i, nei) with i<nei
+        if(nei <= i || nei >= nv)
           continue;
-        status_t neiStat = colStatus(nei);
-        if(neiStat == OUT_SET)
+        status_t neiStat = vertStatus(nei);
+        status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv);
+        if(edgeStatus == iStat && edgeStatus == neiStat)
         {
-          neiOut = true;
+          mergeNei = nei;
           break;
         }
-        else if(neiStat != s)
-        {
-          neiMismatchS = true;
-        }
       }
-      if(neiOut)
+      if(mergeNei != i)
       {
-        //In order to make future progress, need to update the
-        //col statuses for all neighbors of i.
-        rowStatus(i) = OUT_SET;
-      }
-      else if(!neiMismatchS)
-      {
-        //all neighboring col statuses match s, therefore s is the minimum status among all d2 neighbors
-        rowStatus(i) = IN_SET;
+        //Merge the edge. Mark endpoints as OUT_SET.
+        //This means that any edges incident to i or mergeNei will also have status OUT_SET.
+        merges(i) = i;
+        merges(mergeNei) = i;
+        vertStatus(i) = OUT_SET;
+        vertStatus(mergeNei) = OUT_SET;
       }
     }
 
-    KOKKOS_INLINE_FUNCTION void operator()(const team_mem& t) const
-    {
-      using OrReducer = Kokkos::BOr<int>;
-      lno_t w = t.league_rank() * t.team_size() + t.team_rank();
-      if(w >= worklistLen)
-        return;
-      lno_t i = worklist(w);
-      //Processing row i.
-      status_t s = rowStatus(i);
-      if(s == IN_SET || s == OUT_SET)
-        return;
-      //s is the status which must be the minimum among all neighbors
-      //to decide that i is IN_SET.
-      size_type rowBegin = rowmap(i);
-      size_type rowEnd = rowmap(i + 1);
-      lno_t rowLen = rowEnd - rowBegin;
-      int flags = 0;
-      Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(t, rowLen + 1),
-      [&](lno_t j, int& lflags)
-      {
-        lno_t nei = (j == rowLen) ? i : entries(rowBegin + j);
-        if(nei >= nv)
-          return;
-        status_t neiStat = colStatus(nei);
-        if(neiStat == OUT_SET)
-          lflags |= NEI_OUT_SET;
-        else if(neiStat != s)
-          lflags |= NEI_DIFFERENT_STATUS;
-      }, OrReducer(flags));
-      Kokkos::single(Kokkos::PerThread(t),
-      [&]()
-      {
-        if(flags & NEI_OUT_SET)
-        {
-          //In order to make future progress, need to update the
-          //col statuses for all neighbors of i.
-          rowStatus(i) = OUT_SET;
-        }
-        else if(!(flags & NEI_DIFFERENT_STATUS))
-        {
-          //all neighboring col statuses match s, therefore s is the minimum status among all d2 neighbors
-          rowStatus(i) = IN_SET;
-        }
-      });
-    }
-
-    status_view_t rowStatus;
-    status_view_t colStatus;
+    status_view_t vertStatus;
     rowmap_t rowmap;
     entries_t entries;
     lno_t nv;
+    status_t hashedRound;
+    status_t hashMask;
     worklist_t worklist;
-    lno_t worklistLen;
+    lno_view_t merges;
   };
 
   struct CountInSet
