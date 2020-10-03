@@ -61,7 +61,7 @@ struct MaximalMatching
   using size_type = typename rowmap_t::non_const_value_type;
   using lno_t = typename entries_t::non_const_value_type;
   //The type of status/priority values.
-  using status_t = size_type;
+  using status_t = uint64_t;
   using status_view_t = Kokkos::View<status_t*, mem_space>;
   using range_pol = Kokkos::RangePolicy<exec_space>;
   using team_pol = Kokkos::TeamPolicy<exec_space>;
@@ -100,7 +100,7 @@ struct MaximalMatching
     : rowmap(rowmap_), entries(entries_), numVerts(rowmap.extent(0) - 1)
   {
     //Find #bits to represent maximum value possible for a unique edge ID.
-    status_t i = (status_t) (numVerts - 1) * (numVerts - 1) + 1;
+    status_t i = (status_t) (numVerts - 2) * (numVerts - 1) + 1;
     int idBits = 0;
     while(i)
     {
@@ -112,6 +112,7 @@ struct MaximalMatching
     hashMask <<= idBits;
     hashMask--;
     hashMask = ~hashMask;
+    printf("Hash mask: %llx\n", hashMask);
     vertStatus = status_view_t(Kokkos::ViewAllocateWithoutInitializing("VertStatus"), numVerts);
     allWorklists = Kokkos::View<lno_t**, Kokkos::LayoutLeft, mem_space>(Kokkos::ViewAllocateWithoutInitializing("AllWorklists"), numVerts, 2);
     matches = lno_view_t(Kokkos::ViewAllocateWithoutInitializing("Matches"), numVerts);
@@ -141,7 +142,7 @@ struct MaximalMatching
     KOKKOS_INLINE_FUNCTION void operator()(lno_t w) const
     {
       lno_t i = worklist(w);
-      size_type minStat = OUT_SET;
+      status_t minStat = OUT_SET;
       size_type rowBegin = rowmap(i);
       size_type rowEnd = rowmap(i + 1);
       for(size_type j = rowBegin; j < rowEnd; j++)
@@ -298,7 +299,7 @@ struct MaximalMatching
   status_view_t vertStatus;
   all_worklists_t allWorklists;
   lno_view_t matches;
-  size_type hashMask;
+  status_t hashMask;
 };
 
 }}}
