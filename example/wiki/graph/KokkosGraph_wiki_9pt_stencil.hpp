@@ -23,8 +23,8 @@ using Handle  = KokkosKernels::Experimental::
 
 namespace GraphDemo
 {
-  constexpr Ordinal gridX = 15;
-  constexpr Ordinal gridY = 25;
+  constexpr Ordinal gridX = 20;
+  constexpr Ordinal gridY = 15;
   constexpr Ordinal numVertices = gridX * gridY;
 
   //Helper to get the vertex ID given grid coordinates
@@ -82,6 +82,81 @@ namespace GraphDemo
           printf("# ");
       }
       putchar('\n');
+    }
+  }
+
+  template<typename Matching>
+  void printMatching(Matching matches, bool unicode)
+  {
+    std::string horizontal = unicode ? "\u2500" : "-";
+    std::string vertical = unicode ? "\u2502" : "|";
+    std::string slash = unicode ? "\u2571" : "/";
+    std::string backslash = unicode ? "\u2572" : "\\";
+    std::string square = unicode ? "\u2588" : "*";
+    //Read colors on host
+    auto matchesHost = Kokkos::create_mirror_view_and_copy(HostSpace(), matches);
+    //Create a dense representation of the edges which are in the matching
+    std::vector<bool> matchEdges(numVertices * numVertices);
+    for(Ordinal i = 0; i < matchesHost.extent(0); i++)
+    {
+      if(matchesHost(i) != i)
+      {
+        //i was matched with some other vertex, so insert this edgee
+        Ordinal from = matchesHost(i);
+        Ordinal to = i;
+        matchEdges[from * numVertices + to] = true;
+        matchEdges[to * numVertices + from] = true;
+      }
+    }
+    //Now, print out a double spaced grid of '+' marking every vertex.
+    //Draw '-', '|', '\' or '/' to represnt edges.
+    for(Ordinal y = 0; y < gridY; y++)
+    {
+      for(Ordinal x = 0; x < gridX; x++)
+      {
+        Ordinal left = getVertexID(x, y);
+        bool edgeRight = false;
+        if(x < gridX - 1)
+        {
+          Ordinal right = getVertexID(x + 1, y);
+          if(matchEdges[left * numVertices + right])
+            edgeRight = true;
+        }
+        std::cout << square;
+        if(edgeRight)
+          std::cout << horizontal;
+        else
+          std::cout << ' ';
+      }
+      std::cout << '\n';
+      for(Ordinal x = 0; x < gridX; x++)
+      {
+        //Check for vertical edge
+        if(y < gridY - 1)
+        {
+          Ordinal up = getVertexID(x, y);
+          Ordinal down = getVertexID(x, y + 1);
+          if(matchEdges[up * numVertices + down])
+            std::cout << vertical;
+          else
+            std::cout << ' ';
+        }
+        //If not at the last column, check for diagonal edge
+        if(x < gridX - 1 && y < gridY - 1)
+        {
+          Ordinal upLeft = getVertexID(x, y);
+          Ordinal upRight = getVertexID(x + 1, y);
+          Ordinal downLeft = getVertexID(x, y + 1);
+          Ordinal downRight = getVertexID(x + 1, y + 1);
+          if(matchEdges[upLeft * numVertices + downRight])
+            std::cout << backslash;
+          else if(matchEdges[upRight * numVertices + downLeft])
+            std::cout << slash;
+          else
+            std::cout << ' ';
+        }
+      }
+      std::cout << '\n';
     }
   }
 

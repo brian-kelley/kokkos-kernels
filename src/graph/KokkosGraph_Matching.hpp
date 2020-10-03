@@ -45,7 +45,7 @@
 #ifndef _KOKKOSGRAPH_DISTANCE2_MIS_HPP
 #define _KOKKOSGRAPH_DISTANCE2_MIS_HPP
 
-#include "KokkosGraph_Distance2MIS_impl.hpp"
+#include "KokkosGraph_Matching_impl.hpp"
 
 namespace KokkosGraph{
 namespace Experimental{
@@ -55,44 +55,17 @@ namespace Experimental{
 //
 // Column indices >= num_verts are ignored.
 
-template <typename device_t, typename rowmap_t, typename colinds_t, typename lno_view_t = typename colinds_t::non_const_type>
-lno_view_t
-graph_d2_mis(const rowmap_t& rowmap, const colinds_t& colinds, MIS2_Algorithm algo = MIS2_FAST)
-{
-  if(rowmap.extent(0) <= 1)
-  {
-    //zero vertices means the MIS is empty.
-    return lno_view_t();
-  }
-  switch(algo)
-  {
-    case MIS2_QUALITY:
-    {
-      Impl::D2_MIS_FixedPriority<device_t, rowmap_t, colinds_t, lno_view_t> mis(rowmap, colinds);
-      return mis.compute();
-    }
-    case MIS2_FAST:
-    {
-      Impl::D2_MIS_RandomPriority<device_t, rowmap_t, colinds_t, lno_view_t> mis(rowmap, colinds);
-      return mis.compute();
-    }
-  }
-  throw std::invalid_argument("graph_d2_mis: invalid algorithm");
-}
-
 template <typename device_t, typename rowmap_t, typename colinds_t, typename labels_t = typename colinds_t::non_const_type>
 labels_t
-graph_mis2_coarsen(const rowmap_t& rowmap, const colinds_t& colinds, typename colinds_t::non_const_value_type& numClusters, MIS2_Algorithm algo = MIS2_FAST)
+graph_match(const rowmap_t& rowmap, const colinds_t& colinds)
 {
   if(rowmap.extent(0) <= 1)
   {
     //there are no vertices to label
     return labels_t();
   }
-  labels_t mis2 = graph_d2_mis<device_t, rowmap_t, colinds_t, labels_t>(rowmap, colinds, algo);
-  numClusters = mis2.extent(0);
-  Impl::D2_MIS_Coarsening<device_t, rowmap_t, colinds_t, labels_t> coarsening(rowmap, colinds, mis2);
-  return coarsening.compute();
+  Impl::MaximalMatching<device_t, rowmap_t, colinds_t, labels_t> matching(rowmap, colinds);
+  return matching.compute();
 }
 
 }  // end namespace Experimental
