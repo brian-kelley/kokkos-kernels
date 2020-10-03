@@ -877,8 +877,8 @@ struct D2_MIS_Coarsening
   //Phase 1 (over 0...numClusters) labels roots and immediate neighbors of roots.
   struct Phase1Functor
   {
-    Phase1Functor(const rowmap_t& rowmap_, const entries_t& entries_, const labels_t& mis2_, lno_t numVerts_, const labels_t& labels_)
-      : rowmap(rowmap_), entries(entries_), mis2(mis2_), numVerts(numVerts_), labels(labels_)
+    Phase1Functor(const rowmap_t& rowmap_, const entries_t& entries_, const labels_t& mis2_, lno_t numVerts_, const labels_t& labels_, const bitset_t& rootNeighbor_)
+      : rowmap(rowmap_), entries(entries_), mis2(mis2_), numVerts(numVerts_), labels(labels_), rootNeighbor(rootNeighbor_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(lno_t i) const
@@ -893,6 +893,7 @@ struct D2_MIS_Coarsening
         if(nei != root && nei < numVerts)
         {
           labels(nei) = i;
+          rootNeighbor.set(nei);
         }
       }
     }
@@ -902,6 +903,7 @@ struct D2_MIS_Coarsening
     labels_t mis2;
     lno_t numVerts;
     labels_t labels;
+    bitset_t rootNeighbor;
   };
 
   KOKKOS_INLINE_FUNCTION static uint32_t xorshiftHash(uint32_t in)
@@ -913,11 +915,13 @@ struct D2_MIS_Coarsening
     return x;
   }
 
-  //Phase 2 (over 0...numVerts) joins unlabeled vertices to the smallest adjacent cluster
+  //Phase 2 (over 0...numVerts) joins unlabeled vertices to the cluster of a random adjacent vertex which is a neighbor of a root.
+  //There is always guaranteed to be at least 1 neighbor which is a neighbor of a root.
+  //This way, each cluster has a diameter of 4 or less.
   struct Phase2Functor
   {
-    Phase2Functor(const rowmap_t& rowmap_, const entries_t& entries_, const labels_t& mis2_, lno_t numVerts_, const labels_t& labels_)
-      : rowmap(rowmap_), entries(entries_), mis2(mis2_), numVerts(numVerts_), labels(labels_)
+    Phase2Functor(const rowmap_t& rowmap_, const entries_t& entries_, const labels_t& mis2_, lno_t numVerts_, const labels_t& labels_, const const_bitset_t& rootNeighbor_)
+      : rowmap(rowmap_), entries(entries_), mis2(mis2_), numVerts(numVerts_), labels(labels_), rootNeighbor(rootNeighbor_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(lno_t i) const
@@ -931,7 +935,7 @@ struct D2_MIS_Coarsening
       for(size_type j = rowBegin; j < rowEnd; j++)
       {
         lno_t nei = entries(j);
-        if(nei == i || nei >= numVerts)
+        if(nei == i || nei >= numVerts || !rootNeighbor.test(nei))
           continue;
         lno_t neiCluster = labels(nei);
         if(neiCluster != -1 && neiCluster != cluster)
@@ -953,13 +957,15 @@ struct D2_MIS_Coarsening
     labels_t mis2;
     lno_t numVerts;
     labels_t labels;
+    const_bitset_t rootNeighbor;
   };
 
   labels_t compute()
   {
     lno_t numClusters = mis2.extent(0);
-    Kokkos::parallel_for(range_pol(0, numClusters), Phase1Functor(rowmap, entries, mis2, numVerts, labels));
-    Kokkos::parallel_for(range_pol(0, numVerts), Phase2Functor(rowmap, entries, mis2, numVerts, labels));
+    bitset_t rootNeighbor(numVerts);
+    Kokkos::parallel_for(range_pol(0, numClusters), Phase1Functor(rowmap, entries, mis2, numVerts, labels, rootNeighbor));
+    Kokkos::parallel_for(range_pol(0, numVerts), Phase2Functor(rowmap, entries, mis2, numVerts, labels, const_bitset_t(rootNeighbor)));
     return labels;
   }
 
