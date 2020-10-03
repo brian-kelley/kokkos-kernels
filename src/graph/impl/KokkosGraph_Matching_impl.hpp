@@ -284,7 +284,6 @@ struct MaximalMatching
       Kokkos::parallel_scan(range_pol(0, workLen), CompactWorklistFunctor(vertWorklist, tempWorklist, vertStatus), workLen);
       if(workLen == 0)
         break;
-      std::cout << "Worklist length after round " << round << ": " << workLen << '\n';
       std::swap(vertWorklist, tempWorklist);
       round++;
       if(round == 1000)

@@ -27,7 +27,8 @@ int main(int argc, char* argv[])
         if(i != (size_t) matchesHost(i))
           numMatches++;
       }
-      std::cout << "Matched " << numMatches * 2 << " vertices out of " << numVertices << '\n';
+      std::cout << "Matched " << numMatches * 2 << " vertices out of " << numVertices;
+      printf(" (%.1f%%)\n", 100.0 * numMatches * 2 / numVertices);
       //coarsening labels can be printed in the same way as colors
       std::cout << "Grid with connections between matched vertices:\n\n";
       GraphDemo::printMatching(matches, unicode);
