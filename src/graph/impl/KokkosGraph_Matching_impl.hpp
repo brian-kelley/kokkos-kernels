@@ -112,7 +112,6 @@ struct MaximalMatching
     hashMask <<= idBits;
     hashMask--;
     hashMask = ~hashMask;
-    printf("Hash mask: %llx\n", hashMask);
     vertStatus = status_view_t(Kokkos::ViewAllocateWithoutInitializing("VertStatus"), numVerts);
     allWorklists = Kokkos::View<lno_t**, Kokkos::LayoutLeft, mem_space>(Kokkos::ViewAllocateWithoutInitializing("AllWorklists"), numVerts, 2);
     matches = lno_view_t(Kokkos::ViewAllocateWithoutInitializing("Matches"), numVerts);
@@ -145,21 +144,25 @@ struct MaximalMatching
       status_t minStat = OUT_SET;
       size_type rowBegin = rowmap(i);
       size_type rowEnd = rowmap(i + 1);
+      if(!firstRound && vertStatus(i) == OUT_SET)
+        return;
       for(size_type j = rowBegin; j < rowEnd; j++)
       {
         lno_t nei = entries(j);
         if(nei == i || nei >= nv)
           continue;
-        status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv);
-        if(edgeStatus < minStat)
-          minStat = edgeStatus;
+        //If nei is OUT_SET, then so is the edge to it.
+        //The result is to not change the minimum for i.
+        if(vertStatus(nei) != OUT_SET)
+        {
+          status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv);
+          if(edgeStatus < minStat)
+            minStat = edgeStatus;
+        }
       }
-      if(minStat == IN_SET)
-        minStat = OUT_SET;
       //In the first round, overwrite every status.
       //In later rounds, never overwrite a value of OUT_SET with a lower value.
-      if(firstRound || vertStatus(i) != OUT_SET)
-        vertStatus(i) = minStat;
+      vertStatus(i) = minStat;
     }
 
     status_view_t vertStatus;
@@ -209,7 +212,6 @@ struct MaximalMatching
         //This means that any edges incident to i or mergeNei will also have status OUT_SET.
         matches(i) = i;
         matches(mergeNei) = i;
-        printf("Matching %d and %d.\n", (int) i, (int) mergeNei);
         vertStatus(i) = OUT_SET;
         vertStatus(mergeNei) = OUT_SET;
       }
@@ -279,13 +281,11 @@ struct MaximalMatching
       //Then find matches
       Kokkos::parallel_for(range_pol(0, workLen), DecideMatchesFunctor(vertStatus, rowmap, entries, numVerts, vertWorklist, matches, hashedRound, hashMask));
       //Compact worklist (keep vertices which are not OUT_SET)
-      /*
       Kokkos::parallel_scan(range_pol(0, workLen), CompactWorklistFunctor(vertWorklist, tempWorklist, vertStatus), workLen);
-      */
       if(workLen == 0)
         break;
-      //std::cout << "Worklist length after round " << round << ": " << workLen << '\n';
-      //std::swap(vertWorklist, tempWorklist);
+      std::cout << "Worklist length after round " << round << ": " << workLen << '\n';
+      std::swap(vertWorklist, tempWorklist);
       round++;
       if(round == 1000)
         break;
