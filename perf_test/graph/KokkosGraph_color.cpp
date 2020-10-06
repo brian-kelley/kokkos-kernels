@@ -83,6 +83,7 @@ void print_options(std::ostream &os, const char *app_name, unsigned int indent =
        << std::endl
        << spaces << "      --algorithm <algorithm_name>   Set the algorithm to use.  Allowable values are:" << std::endl
        << spaces << "                 COLORING_DEFAULT  - Use the default coloring method, architecture dependent." << std::endl
+       << spaces << "                 COLORING_PRIORITY - Use the priority-based (non-speculative) algorithm." << std::endl
        << spaces << "                 COLORING_SERIAL   - Use the serial algorithm." << std::endl
        << spaces << "                 COLORING_VB       - Use the parallel vertex-based method." << std::endl
        << spaces << "                 COLORING_VBBIT    - Use the parallel vertex-based with bit vectors method." << std::endl
@@ -123,7 +124,7 @@ int parse_inputs (KokkosKernels::Experiment::Parameters &params, int argc, char 
       params.use_threads = atoi(getNextArg(i, argc, argv));
     }
     else if ( 0 == strcasecmp( argv[i] , "--serial" ) ) {
-      params.use_serial = atoi(getNextArg(i, argc, argv));
+      params.use_serial = 1;
     }
     else if ( 0 == strcasecmp( argv[i] , "--openmp" ) ) {
       params.use_openmp = atoi(getNextArg(i, argc, argv));
@@ -182,6 +183,9 @@ int parse_inputs (KokkosKernels::Experiment::Parameters &params, int argc, char 
       }
       else if ( 0 == strcasecmp( argv[i] , "COLORING_VBDBIT" ) ) {
         params.algorithm = 8;
+      }
+      else if ( 0 == strcasecmp( argv[i] , "COLORING_PRIORITY" ) ) {
+        params.algorithm = 9;
       }
       else if ( 0 == strcasecmp( argv[i], "--help") || 0 == strcasecmp(argv[i], "-h") )
       {
@@ -304,6 +308,10 @@ void run_experiment(
 
     case 8:
       kh.create_graph_coloring_handle(COLORING_VBDBIT);
+      break;
+
+    case 9:
+      kh.create_graph_coloring_handle(COLORING_PRIORITY);
       break;
 
     default:

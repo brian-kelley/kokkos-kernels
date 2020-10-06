@@ -85,6 +85,11 @@ void graph_color_symbolic(
     gc = new BaseGraphColoring(num_rows, entries.extent(0), row_map, entries, gch);
     break;
 
+  case COLORING_PRIORITY:
+    typedef typename Impl::GraphColor_Priority<typename KernelHandle::GraphColoringHandleType, lno_row_view_t_, lno_nnz_view_t_> PriorityGraphColoring;
+    gc = new PriorityGraphColoring(num_rows, entries.extent(0), row_map, entries, gch);
+    break;
+
   case COLORING_VB:
   case COLORING_VBBIT:
   case COLORING_VBCS:

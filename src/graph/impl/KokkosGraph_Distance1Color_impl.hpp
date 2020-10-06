@@ -45,6 +45,7 @@
 #include <Kokkos_Core.hpp>
 #include <Kokkos_Atomic.hpp>
 #include <impl/Kokkos_Timer.hpp>
+#include <KokkosKernels_BitUtils.hpp>
 #include <Kokkos_MemoryTraits.hpp>
 #include <vector>
 #include "KokkosGraph_Distance1ColorHandle.hpp"
@@ -3031,6 +3032,193 @@ public:
       kokcol(ii) = i + kokcolset(ii) * color_size;
     }
   };
+};
+
+template <typename HandleType, typename in_rowmap_t, typename in_entries_t>
+class GraphColor_Priority : public GraphColor<HandleType, in_rowmap_t, in_entries_t>
+{
+public:
+  using color_view_t = typename HandleType::color_view_t;
+  using size_type = typename HandleType::size_type;
+  using lno_t = typename HandleType::nnz_lno_t;
+  using color_t = typename HandleType::color_t;
+  using exec_space = typename HandleType::HandleExecSpace;
+  using mem_space = typename HandleType::HandleTempMemorySpace;
+  using range_pol = Kokkos::RangePolicy<exec_space>;
+  using rowmap_t = typename in_rowmap_t::const_type;
+  using entries_t = typename in_entries_t::const_type;
+  using status_t = uint32_t;
+  using status_view_t = Kokkos::View<status_t*, mem_space>;
+  using all_worklists_t = Kokkos::View<lno_t**, Kokkos::LayoutLeft, mem_space>;
+  using worklist_t = Kokkos::View<lno_t*, Kokkos::LayoutLeft, mem_space>;
+
+  // Setings from handle
+  bool ticToc;
+  int maxIters;
+
+  /**
+   * \brief GraphColor_Priority constructor.
+   * \param nv_: number of vertices in the graph
+   * \param ne_: number of edges in the graph
+   * \param row_map: the xadj array of the graph. Its size is nv_ +1
+   * \param entries: adjacency array of the graph. Its size is ne_
+   * \param coloring_handle: GraphColoringHandle object that holds the specification about the graph coloring,
+   *    including parameters.
+   */
+  GraphColor_Priority(
+      lno_t nv_, size_type ne_,
+      rowmap_t row_map, entries_t entries,
+      HandleType *coloring_handle)
+    : GraphColor<HandleType, in_rowmap_t, in_entries_t>(nv_, ne_, row_map, entries, coloring_handle),
+    ticToc(coloring_handle->get_tictoc()),
+    maxIters(coloring_handle->get_max_number_of_iterations())
+    {}
+
+  virtual ~GraphColor_Priority(){}
+
+  /** \brief Function to color the vertices of the graphs. Performs a vertex-based coloring.
+   * \param colors is the output array corresponding the color of each vertex. Size is this->nv.
+   *   Attn: Color array must be nonnegative numbers. If there is no initial colors,
+   *   it should be all initialized with zeros. Any positive value in the given array, will make the
+   *   algorithm to assume that the color is fixed for the corresponding vertex.
+   * \param num_phases: The number of iterations (phases) that algorithm takes to converge.
+   */
+
+  KOKKOS_FORCEINLINE_FUNCTION static uint32_t xorshift32(uint32_t in)
+  {
+    uint32_t x = in;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return x;
+  }
+
+  struct ColorFunctor
+  {
+    ColorFunctor(const color_view_t& colors_, const worklist_t& worklist_, const rowmap_t& xadj_, const entries_t& adj_, status_t hashedRound_, lno_t numVerts_)
+      : colors(colors_), worklist(worklist_), xadj(xadj_), adj(adj_), hashedRound(hashedRound_), numVerts(numVerts_)
+    {}
+
+    static constexpr status_t MAX_STATUS = ~status_t(0);
+
+    KOKKOS_INLINE_FUNCTION void operator()(lno_t w) const
+    {
+      lno_t i = worklist(w);
+      size_type rowBegin = xadj(i);
+      size_type rowEnd = xadj(i + 1);
+      status_t iStatus = xorshift32(hashedRound + (status_t) i);
+      lno_t minNei = i;
+      status_t minNeiStatus = iStatus;
+      for(size_type j = rowBegin; j < rowEnd; j++)
+      {
+        lno_t nei = adj(j);
+        //Only consider uncolored neighbors when computing min status
+        if(nei >= numVerts || nei == i || colors(nei) != 0)
+          continue;
+        status_t neiStat = xorshift32(hashedRound + (status_t) nei);
+        if(neiStat < minNeiStatus || (neiStat == minNeiStatus && nei < minNei))
+        {
+          minNei = nei;
+          minNeiStatus = neiStat;
+        }
+      }
+      if(minNei == i)
+      {
+        //this vertex can be colored in this round without introducing conflicts.
+        for(color_t colorSet = 1;; colorSet += 64)
+        {
+          uint64_t forbidden = 0;
+          for(size_type j = rowBegin; j < rowEnd; j++)
+          {
+            lno_t nei = adj(j);
+            if(nei >= numVerts || nei == i)
+              continue;
+            color_t neiColor = colors(nei);
+            if(neiColor >= colorSet && neiColor < colorSet + 64)
+              forbidden |= uint64_t(1) << (neiColor - colorSet);
+          }
+          forbidden = ~forbidden;
+          if(forbidden)
+          {
+            colors(i) = colorSet + KokkosKernels::Impl::least_set_bit(forbidden) - 1;
+            break;
+          }
+        }
+      }
+    }
+
+    color_view_t colors;
+    worklist_t worklist;
+    rowmap_t xadj;
+    entries_t adj;
+    status_t hashedRound;
+    lno_t numVerts;
+  };
+
+  struct InitWorklistFunctor
+  {
+    InitWorklistFunctor(const worklist_t& worklist_)
+      : worklist(worklist_)
+    {}
+    KOKKOS_INLINE_FUNCTION void operator()(lno_t i) const
+    {
+      worklist(i) = i;
+    }
+    worklist_t worklist;
+  };
+
+  struct CompactWorklistFunctor
+  {
+    CompactWorklistFunctor(const worklist_t& src_, const worklist_t& dst_, const color_view_t& colors_)
+      : src(src_), dst(dst_), colors(colors_)
+    {}
+
+    KOKKOS_INLINE_FUNCTION void operator()(lno_t w, lno_t& lNumInSet, bool finalPass) const
+    {
+      lno_t i = src(w);
+      if(colors(i) == 0)
+      {
+        //next worklist needs to contain i
+        if(finalPass)
+          dst(lNumInSet) = i;
+        lNumInSet++;
+      }
+    }
+
+    worklist_t src;
+    worklist_t dst;
+    color_view_t colors;
+  };
+
+  void color_graph(color_view_t colors, int &num_loops) override
+  {
+    Kokkos::Timer timer;
+    //Create double-buffered worklists
+    //nv, ne, xadj, adj
+    all_worklists_t bothWorklists(Kokkos::ViewAllocateWithoutInitializing("DoubleWorklist"), this->nv, 2);
+    worklist_t vertWorklist = Kokkos::subview(bothWorklists, Kokkos::ALL(), 0);
+    worklist_t tempWorklist = Kokkos::subview(bothWorklists, Kokkos::ALL(), 1);
+    Kokkos::parallel_for(range_pol(0, this->nv), InitWorklistFunctor(vertWorklist));
+    lno_t workLen = this->nv;
+    for(num_loops = 0; num_loops < maxIters; num_loops++)
+    {
+      std::cout << "Iter " << num_loops << " worklist length: " << workLen << '\n';
+      //Basic skeleton:
+      //  -In parallel for all vertices v in the worklist, decide if v has the minimum status among its uncolored neighbors
+      //    -If it is, decide a color for it (calculate forbidden from colored neighbors)
+      //  -Compact worklist down to contain only uncolored vertices
+      Kokkos::parallel_for(range_pol(0, workLen), ColorFunctor(colors, vertWorklist, this->xadj, this->adj, xorshift32(num_loops), this->nv));
+      Kokkos::parallel_scan(range_pol(0, workLen), CompactWorklistFunctor(vertWorklist, tempWorklist, colors), workLen);
+      if(workLen == 0)
+        break;
+      std::swap(vertWorklist, tempWorklist);
+    }
+    exec_space().fence();
+    double coloringTime = timer.seconds();
+    if(ticToc)
+      std::cout << "Total coloring time: " << coloringTime << '\n';
+    this->cp->add_to_overall_coloring_time_phase1(coloringTime);
+  }
 };
 
 }

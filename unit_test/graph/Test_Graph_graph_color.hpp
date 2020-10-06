@@ -126,6 +126,7 @@ void test_coloring(lno_t numRows,size_type nnz, lno_t bandwidth, lno_t row_size_
   input_mat = crsMat_t("CrsMatrix", numCols, newValues, static_graph);
 
   std::vector<ColoringAlgorithm> coloring_algorithms = { COLORING_DEFAULT 
+                                                       , COLORING_PRIORITY
                                                        , COLORING_SERIAL 
                                                        , COLORING_VB 
                                                        , COLORING_VBBIT 

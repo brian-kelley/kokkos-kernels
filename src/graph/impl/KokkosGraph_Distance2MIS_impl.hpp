@@ -466,34 +466,6 @@ struct D2_MIS_RandomPriority
   int nvBits;
 };
 
-//    UNUSED CODE
-//    Version of RefreshRowStatus, which does linear interpolation between a degree-based score and a random score.
-//    By gradually increasing the interpolation coefficient in favor of random, the MIS can converge much faster than
-//    constant priorities.
-//
-//    KOKKOS_INLINE_FUNCTION void operator()(lno_t w) const
-//    {
-//      lno_t i = worklist(w);
-//      int degBits = sizeof(status_t) * 8 - nvBits;
-//      if(degBits == 0)
-//      {
-//        //no space to store degree information. Algorithm will still work but will
-//        //probably produce a lower quality MIS.
-//        rowStatus(i) = i + 1;
-//        return;
-//      }
-//      //Combine vertex and round to get some pseudorandom priority bits that change each round
-//      status_t maxDegRange = (((status_t) 1) << degBits) - 2;
-//      lno_t deg = rowmap(i + 1) - rowmap(i);
-//      //Compute degree-based score and random score
-//      float degScore = (float) (deg - minDeg) * invDegRange;
-//      float randScore = (xorshiftHash(i + hashedRound) & 0xFFFF) / 65536.f;
-//      //Then linearly interpolate using k
-//      float finalScore = k * randScore + (1.f - k) * degScore;
-//      rowStatus(i) = (status_t) (i + 1) + (((status_t) (finalScore * maxDegRange)) << nvBits);
-//    }
-//    */
-
 template<typename device_t, typename rowmap_t, typename entries_t, typename lno_view_t>
 struct D2_MIS_FixedPriority
 {
