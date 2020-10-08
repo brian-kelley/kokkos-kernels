@@ -50,8 +50,6 @@
 #include <vector>
 #include "KokkosGraph_Distance1ColorHandle.hpp"
 
-#include <bitset>
-
 #ifndef _KOKKOSCOLORINGIMP_HPP
 #define _KOKKOSCOLORINGIMP_HPP
 
@@ -3048,7 +3046,9 @@ public:
   using rowmap_t = typename in_rowmap_t::const_type;
   using entries_t = typename in_entries_t::const_type;
   using status_t = uint32_t;
-  using status_view_t = Kokkos::View<status_t*, mem_space>;
+  using device_t = Kokkos::Device<exec_space, mem_space>;
+  using bitset_t = Kokkos::Bitset<device_t>;
+  using const_bitset_t = Kokkos::ConstBitset<device_t>;
   using all_worklists_t = Kokkos::View<lno_t**, Kokkos::LayoutLeft, mem_space>;
   using worklist_t = Kokkos::View<lno_t*, Kokkos::LayoutLeft, mem_space>;
 
@@ -3084,7 +3084,7 @@ public:
    * \param num_phases: The number of iterations (phases) that algorithm takes to converge.
    */
 
-  KOKKOS_FORCEINLINE_FUNCTION static uint32_t xorshift32(uint32_t in)
+  KOKKOS_INLINE_FUNCTION static uint32_t xorshift32(uint32_t in)
   {
     uint32_t x = in;
     x ^= x << 13;
@@ -3095,11 +3095,9 @@ public:
 
   struct ColorFunctor
   {
-    ColorFunctor(const color_view_t& colors_, const worklist_t& worklist_, const rowmap_t& xadj_, const entries_t& adj_, status_t hashedRound_, lno_t numVerts_)
-      : colors(colors_), worklist(worklist_), xadj(xadj_), adj(adj_), hashedRound(hashedRound_), numVerts(numVerts_)
+    ColorFunctor(const color_view_t& colors_, const worklist_t& worklist_, const const_bitset_t& isColored_, const rowmap_t& xadj_, const entries_t& adj_, status_t hashedRound_, lno_t numVerts_)
+      : colors(colors_), worklist(worklist_), isColored(isColored_), xadj(xadj_), adj(adj_), hashedRound(hashedRound_), numVerts(numVerts_)
     {}
-
-    static constexpr status_t MAX_STATUS = ~status_t(0);
 
     KOKKOS_INLINE_FUNCTION void operator()(lno_t w) const
     {
@@ -3108,12 +3106,12 @@ public:
       size_type rowEnd = xadj(i + 1);
       status_t iStatus = xorshift32(hashedRound + (status_t) i);
       lno_t minNei = i;
-      status_t minNeiStatus = iStatus;
+      status_t minNeiStatus = ~status_t(0);
       for(size_type j = rowBegin; j < rowEnd; j++)
       {
         lno_t nei = adj(j);
         //Only consider uncolored neighbors when computing min status
-        if(nei >= numVerts || nei == i || colors(nei) != 0)
+        if(nei >= numVerts || nei == i || isColored.test(nei) != 0)
           continue;
         status_t neiStat = xorshift32(hashedRound + (status_t) nei);
         if(neiStat < minNeiStatus || (neiStat == minNeiStatus && nei < minNei))
@@ -3122,7 +3120,7 @@ public:
           minNeiStatus = neiStat;
         }
       }
-      if(minNei == i)
+      if(minNeiStatus > iStatus || (minNeiStatus == iStatus && minNei > i))
       {
         //this vertex can be colored in this round without introducing conflicts.
         for(color_t colorSet = 1;; colorSet += 64)
@@ -3134,8 +3132,8 @@ public:
             if(nei >= numVerts || nei == i)
               continue;
             color_t neiColor = colors(nei);
-            if(neiColor >= colorSet && neiColor < colorSet + 64)
-              forbidden |= uint64_t(1) << (neiColor - colorSet);
+            if(colorSet <= neiColor && neiColor < colorSet + 64)
+              forbidden |= (uint64_t(1) << (neiColor - colorSet));
           }
           forbidden = ~forbidden;
           if(forbidden)
@@ -3149,6 +3147,7 @@ public:
 
     color_view_t colors;
     worklist_t worklist;
+    const_bitset_t isColored;
     rowmap_t xadj;
     entries_t adj;
     status_t hashedRound;
@@ -3169,8 +3168,8 @@ public:
 
   struct CompactWorklistFunctor
   {
-    CompactWorklistFunctor(const worklist_t& src_, const worklist_t& dst_, const color_view_t& colors_)
-      : src(src_), dst(dst_), colors(colors_)
+    CompactWorklistFunctor(const worklist_t& src_, const worklist_t& dst_, const color_view_t& colors_, const bitset_t& isColored_)
+      : src(src_), dst(dst_), colors(colors_), isColored(isColored_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(lno_t w, lno_t& lNumInSet, bool finalPass) const
@@ -3183,11 +3182,17 @@ public:
           dst(lNumInSet) = i;
         lNumInSet++;
       }
+      else if(finalPass)
+      {
+        //mark as colored
+        isColored.set(i);
+      }
     }
 
     worklist_t src;
     worklist_t dst;
     color_view_t colors;
+    bitset_t isColored;
   };
 
   void color_graph(color_view_t colors, int &num_loops) override
@@ -3200,15 +3205,11 @@ public:
     worklist_t tempWorklist = Kokkos::subview(bothWorklists, Kokkos::ALL(), 1);
     Kokkos::parallel_for(range_pol(0, this->nv), InitWorklistFunctor(vertWorklist));
     lno_t workLen = this->nv;
+    bitset_t isColored(this->nv);
     for(num_loops = 0; num_loops < maxIters; num_loops++)
     {
-      std::cout << "Iter " << num_loops << " worklist length: " << workLen << '\n';
-      //Basic skeleton:
-      //  -In parallel for all vertices v in the worklist, decide if v has the minimum status among its uncolored neighbors
-      //    -If it is, decide a color for it (calculate forbidden from colored neighbors)
-      //  -Compact worklist down to contain only uncolored vertices
-      Kokkos::parallel_for(range_pol(0, workLen), ColorFunctor(colors, vertWorklist, this->xadj, this->adj, xorshift32(num_loops), this->nv));
-      Kokkos::parallel_scan(range_pol(0, workLen), CompactWorklistFunctor(vertWorklist, tempWorklist, colors), workLen);
+      Kokkos::parallel_for(range_pol(0, workLen), ColorFunctor(colors, vertWorklist, const_bitset_t(isColored), this->xadj, this->adj, xorshift32(num_loops), this->nv));
+      Kokkos::parallel_scan(range_pol(0, workLen), CompactWorklistFunctor(vertWorklist, tempWorklist, colors, isColored), workLen);
       if(workLen == 0)
         break;
       std::swap(vertWorklist, tempWorklist);
@@ -3216,7 +3217,10 @@ public:
     exec_space().fence();
     double coloringTime = timer.seconds();
     if(ticToc)
+    {
       std::cout << "Total coloring time: " << coloringTime << '\n';
+      std::cout << "#Iterations: " << num_loops << '\n';
+    }
     this->cp->add_to_overall_coloring_time_phase1(coloringTime);
   }
 };

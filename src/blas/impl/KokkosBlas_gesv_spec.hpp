@@ -113,9 +113,9 @@ template<class AMatrix,
          class IPIVV>
 struct GESV<AMatrix, BXMV, IPIVV, false, KOKKOSKERNELS_IMPL_COMPILE_LIBRARY>{
   static void
-  gesv (const AMatrix& A,
-        const BXMV& B,
-        const IPIVV& IPIV)
+  gesv (const AMatrix& /* A */,
+        const BXMV& /* B */,
+        const IPIVV& /* IPIV */)
   {
    //NOTE: Might add the implementation of KokkosBlas::gesv later
   }

@@ -238,7 +238,7 @@ struct SPMV2D1D<AlphaType, AMatrix, XVector, BetaType, YVector, Kokkos::LayoutRi
 
 template<class AlphaType, class AMatrix, class XVector, class BetaType, class YVector>
 void
-spmv (KokkosKernels::Experimental::Controls controls,
+spmv (KokkosKernels::Experimental::Controls /* controls */,
       const char mode[],
       const AlphaType& alpha,
       const AMatrix& A,

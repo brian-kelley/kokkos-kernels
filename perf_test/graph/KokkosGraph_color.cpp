@@ -276,6 +276,7 @@ void run_experiment(
 
   std::cout << "algorithm: " << algorithm << std::endl;
 
+  double totalTime = 0;
   for (int i = 0; i < repeat; ++i){
 
     switch (algorithm){
@@ -318,7 +319,7 @@ void run_experiment(
       kh.create_graph_coloring_handle(COLORING_DEFAULT);
 
     }
-
+    kh.get_graph_coloring_handle()->set_max_number_of_iterations(10000);
     graph_color_symbolic(&kh,crsGraph.numRows(), num_cols, crsGraph.row_map, crsGraph.entries);
 
     std::cout << std::endl <<
@@ -331,7 +332,9 @@ void run_experiment(
       std::ofstream os(params.coloring_output_file, std::ofstream::out);
       KokkosKernels::Impl::print_1Dview(os, kh.get_graph_coloring_handle()->get_vertex_colors(), true, "\n"); 
     }
+    totalTime += kh.get_graph_coloring_handle()->get_overall_coloring_time();
   }
+  std::cout << "** Coloring time (average over " << repeat << " trials): " << totalTime / repeat << '\n';
 }
 
 template <typename size_type, typename lno_t,

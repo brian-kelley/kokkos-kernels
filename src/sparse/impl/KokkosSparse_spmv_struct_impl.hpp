@@ -780,8 +780,8 @@ template<class AMatrix,
          int dobeta,
          bool conjugate>
 static void
-spmv_struct_beta_transpose (const int stencil_type,
-                            const Kokkos::View<typename AMatrix::non_const_ordinal_type*, Kokkos::HostSpace>& structure,
+spmv_struct_beta_transpose (const int /* stencil_type */,
+                            const Kokkos::View<typename AMatrix::non_const_ordinal_type*, Kokkos::HostSpace>& /* structure */,
                             typename YVector::const_value_type& alpha,
                             const AMatrix& A,
                             const XVector& x,
@@ -989,7 +989,7 @@ struct SPMV_MV_Struct_Transpose_Functor {
 
     template<int UNROLL>
     KOKKOS_INLINE_FUNCTION void
-    strip_mine (const team_member& dev, const ordinal_type& iRow, const ordinal_type& kk) const
+    strip_mine (const team_member& /* dev */, const ordinal_type& iRow, const ordinal_type& kk) const
     {
       y_value_type sum[UNROLL];
 
@@ -1142,7 +1142,7 @@ struct SPMV_MV_Struct_Transpose_Functor {
     }
 
     KOKKOS_INLINE_FUNCTION void
-    strip_mine_1 (const team_member& dev, const ordinal_type& iRow) const
+    strip_mine_1 (const team_member& /* dev */, const ordinal_type& iRow) const
     {
       y_value_type sum = Kokkos::Details::ArithTraits<y_value_type>::zero ();
 

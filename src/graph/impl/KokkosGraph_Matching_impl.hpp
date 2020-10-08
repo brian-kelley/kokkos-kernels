@@ -190,7 +190,8 @@ struct MaximalMatching
       status_t iStat = vertStatus(i);
       //s is the status which must be the minimum among all neighbors
       //to decide that i is IN_SET.
-      size_type rowBegin = rowmap(i); size_type rowEnd = rowmap(i + 1);
+      size_type rowBegin = rowmap(i);
+      size_type rowEnd = rowmap(i + 1);
       lno_t mergeNei = i;
       for(size_type j = rowBegin; j < rowEnd; j++)
       {
@@ -212,8 +213,10 @@ struct MaximalMatching
         //This means that any edges incident to i or mergeNei will also have status OUT_SET.
         matches(i) = i;
         matches(mergeNei) = i;
-        vertStatus(i) = OUT_SET;
-        vertStatus(mergeNei) = OUT_SET;
+        //TODO: can't modify vertStatus in this functor - causes problematic race conditions, since it can change
+        //edge statuses. Should instead mark matched vertices in a separate bitset, which can then be in RefreshVertexStatus to decide OUT_SET.
+        //vertStatus(i) = OUT_SET;
+        //vertStatus(mergeNei) = OUT_SET;
       }
     }
 
@@ -286,9 +289,8 @@ struct MaximalMatching
         break;
       std::swap(vertWorklist, tempWorklist);
       round++;
-      if(round == 1000)
-        break;
     }
+    std::cout << "Completed in " << round << " rounds.\n";
     return matches;
   }
 

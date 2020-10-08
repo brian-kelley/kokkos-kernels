@@ -16,6 +16,10 @@ KOKKOSKERNELS_ADD_EXECUTABLE(
   SOURCES KokkosGraph_mis_d2.cpp       
   )
 
+KOKKOSKERNELS_ADD_EXECUTABLE(
+  graph_matching
+  SOURCES KokkosGraph_matching.cpp       
+  )
 
 #Below will probably fail on GPUs.
 #KOKKOSKERNELS_ADD_EXECUTABLE(
