@@ -312,12 +312,13 @@ struct MaximalMatching
     }
 
     status_view_t vertStatus;
-    rowmap_t rowmap; entries_t entries;
+    rowmap_t rowmap;
+    entries_t entries;
     lno_t nv;
-    status_t hashedRound;
-    status_t hashMask;
     worklist_t worklist;
     lno_view_t matches;
+    status_t hashedRound;
+    status_t hashMask;
     bool_view_t isMatched;
     lno_t workLen;
   };
