@@ -418,7 +418,6 @@ struct D2_MIS_RandomPriority
     }
     while(true)
     {
-      std::cout << "Worklist length at iter " << round << ": " << rowWorkLen << '\n';
       //Compute new row statuses
       Kokkos::parallel_for(range_pol(0, rowWorkLen), RefreshRowStatus(rowStatus, rowWorklist, nvBits, round));
       //Compute new col statuses

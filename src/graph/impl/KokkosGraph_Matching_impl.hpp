@@ -367,11 +367,6 @@ struct MaximalMatching
 
   lno_view_t compute()
   {
-    double init = 0;
-    double refresh = 0;
-    double decide = 0;
-    double worklist = 0;
-    Kokkos::Timer t;
     auto execSpaceEnum = KokkosKernels::Impl::kk_get_exec_space_type<exec_space>();
     bool useTeams = (execSpaceEnum == KokkosKernels::Impl::Exec_CUDA) && (entries.extent(0) / numVerts >= 16);
     //Initialize first worklist to 0...numVerts
@@ -399,12 +394,8 @@ struct MaximalMatching
     Kokkos::parallel_for(range_pol(0, numVerts), InitWorklistFunctor(matches));
     status_t round = 0;
     lno_t workLen = numVerts;
-    init = t.seconds();
-    Kokkos::Timer t2;
     while(true)
     {
-      t.reset();
-      t2.reset();
       //Compute new vertex statuses
       status_t hashedRound = xorshift64(round);
       {
@@ -414,8 +405,6 @@ struct MaximalMatching
         else
           Kokkos::parallel_for(range_pol(0, workLen), refreshVert);
       }
-      refresh += t.seconds();
-      t.reset();
       //Then find matches
       {
         DecideMatchesFunctor decideMatches(vertStatus, rowmap, entries, numVerts, vertWorklist, matches, hashedRound, hashMask, isMatched, workLen);
@@ -424,23 +413,13 @@ struct MaximalMatching
         else
           Kokkos::parallel_for(range_pol(0, workLen), decideMatches);
       }
-      decide += t.seconds();
-      t.reset();
       //Compact worklist (keep vertices which are not OUT_SET)
       Kokkos::parallel_scan(range_pol(0, workLen), CompactWorklistFunctor(vertWorklist, tempWorklist, isMatched, vertStatus), workLen);
-      worklist += t.seconds();
-      double roundTime = t2.seconds();
-      std::cout << "Round " << round << " time: " << roundTime << '\n';
       if(workLen == 0)
         break;
       std::swap(vertWorklist, tempWorklist);
       round++;
     }
-    std::cout << "Complete in " << round << " rounds.\n";
-    printf("Time init: %.3e\n", init);
-    printf("Time refresh: %.3e\n", refresh);
-    printf("Time decide: %.3e\n", decide);
-    printf("Time worklist: %.3e\n", worklist);
     return matches;
   }
 

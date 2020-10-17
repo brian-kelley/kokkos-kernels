@@ -196,6 +196,8 @@ class GraphColorDistance2
         {
           case COLORING_D2_VB_BIT_EF:
             using_edge_filtering = true;
+            compute_d2_coloring_vb(colors_out);
+            break;
           case COLORING_D2_VB_BIT:
           case COLORING_D2_VB:
             compute_d2_coloring_vb(colors_out);
