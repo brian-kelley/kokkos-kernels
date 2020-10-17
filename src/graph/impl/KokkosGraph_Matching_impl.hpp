@@ -122,7 +122,7 @@ struct MaximalMatching
     matches = lno_view_t(Kokkos::ViewAllocateWithoutInitializing("Matches"), numVerts);
   }
 
-  static KOKKOS_FORCEINLINE_FUNCTION status_t computeEdgeStatus(status_t v1, status_t v2, status_t hashedRound, status_t hashMask, status_t numVerts)
+  static KOKKOS_FORCEINLINE_FUNCTION status_t computeEdgeStatus(status_t v1, status_t v2, status_t hashedRound, status_t hashMask_, status_t numVerts_)
   {
     if(v1 > v2)
     {
@@ -134,7 +134,7 @@ struct MaximalMatching
     //  -Most significant bits should be pseudorandom
     //  -No collisions should be possible between any two edges.
     //  -So, the least significant bits will hold v1 * numVerts + v2 + 1.
-    return (xorshift64(v1 ^ xorshift64(v2 ^ hashedRound)) & hashMask) | (v1 * numVerts + v2 + 1);
+    return (xorshift64(v1 ^ xorshift64(v2 ^ hashedRound)) & hashMask_) | (v1 * numVerts_ + v2 + 1);
   }
 
   struct RefreshVertexStatus
