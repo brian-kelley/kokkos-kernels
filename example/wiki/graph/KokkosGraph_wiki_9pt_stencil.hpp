@@ -93,6 +93,7 @@ namespace GraphDemo
     std::string slash = unicode ? "\u2571" : "/";
     std::string backslash = unicode ? "\u2572" : "\\";
     std::string square = unicode ? "\u2588" : "*";
+    std::string cross = unicode ? "\u2573" : "X";
     //Read colors on host
     auto matchesHost = Kokkos::create_mirror_view_and_copy(HostSpace(), matches);
     //Create a dense representation of the edges which are in the matching
@@ -148,9 +149,13 @@ namespace GraphDemo
           Ordinal upRight = getVertexID(x + 1, y);
           Ordinal downLeft = getVertexID(x, y + 1);
           Ordinal downRight = getVertexID(x + 1, y + 1);
-          if(matchEdges[upLeft * numVertices + downRight])
+          bool diag1 = matchEdges[upLeft * numVertices + downRight];
+          bool diag2 = matchEdges[upRight * numVertices + downLeft];
+          if(diag1 && diag2)
+            std::cout << cross;
+          else if(diag1)
             std::cout << backslash;
-          else if(matchEdges[upRight * numVertices + downLeft])
+          else if(diag2)
             std::cout << slash;
           else
             std::cout << ' ';
