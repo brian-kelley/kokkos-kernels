@@ -16,7 +16,6 @@ int main(int argc, char* argv[])
     GraphDemo::generate9pt(rowmapDevice, colindsDevice);
     //Step 2: Run maximal matching and display the result
     {
-      Ordinal numClusters = 0;
       auto matches = KokkosGraph::Experimental::graph_match<ExecSpace, RowmapType, ColindsType>(
           rowmapDevice, colindsDevice);
       //Count the matches.

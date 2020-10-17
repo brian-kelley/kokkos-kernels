@@ -97,7 +97,7 @@ namespace GraphDemo
     auto matchesHost = Kokkos::create_mirror_view_and_copy(HostSpace(), matches);
     //Create a dense representation of the edges which are in the matching
     std::vector<bool> matchEdges(numVertices * numVertices);
-    for(Ordinal i = 0; i < matchesHost.extent(0); i++)
+    for(Ordinal i = 0; i < (Ordinal) matchesHost.extent(0); i++)
     {
       if(matchesHost(i) != i)
       {
