@@ -83,7 +83,6 @@ void print_options(std::ostream &os, const char *app_name, unsigned int indent =
        << std::endl
        << spaces << "      --algorithm <algorithm_name>   Set the algorithm to use.  Allowable values are:" << std::endl
        << spaces << "                 COLORING_DEFAULT  - Use the default coloring method, architecture dependent." << std::endl
-       << spaces << "                 COLORING_PRIORITY - Use the priority-based (non-speculative) algorithm." << std::endl
        << spaces << "                 COLORING_SERIAL   - Use the serial algorithm." << std::endl
        << spaces << "                 COLORING_VB       - Use the parallel vertex-based method." << std::endl
        << spaces << "                 COLORING_VBBIT    - Use the parallel vertex-based with bit vectors method." << std::endl
@@ -124,7 +123,7 @@ int parse_inputs (KokkosKernels::Experiment::Parameters &params, int argc, char 
       params.use_threads = atoi(getNextArg(i, argc, argv));
     }
     else if ( 0 == strcasecmp( argv[i] , "--serial" ) ) {
-      params.use_serial = 1;
+      params.use_serial = atoi(getNextArg(i, argc, argv));
     }
     else if ( 0 == strcasecmp( argv[i] , "--openmp" ) ) {
       params.use_openmp = atoi(getNextArg(i, argc, argv));
@@ -183,9 +182,6 @@ int parse_inputs (KokkosKernels::Experiment::Parameters &params, int argc, char 
       }
       else if ( 0 == strcasecmp( argv[i] , "COLORING_VBDBIT" ) ) {
         params.algorithm = 8;
-      }
-      else if ( 0 == strcasecmp( argv[i] , "COLORING_PRIORITY" ) ) {
-        params.algorithm = 9;
       }
       else if ( 0 == strcasecmp( argv[i], "--help") || 0 == strcasecmp(argv[i], "-h") )
       {
@@ -276,7 +272,6 @@ void run_experiment(
 
   std::cout << "algorithm: " << algorithm << std::endl;
 
-  double totalTime = 0;
   for (int i = 0; i < repeat; ++i){
 
     switch (algorithm){
@@ -311,15 +306,11 @@ void run_experiment(
       kh.create_graph_coloring_handle(COLORING_VBDBIT);
       break;
 
-    case 9:
-      kh.create_graph_coloring_handle(COLORING_PRIORITY);
-      break;
-
     default:
       kh.create_graph_coloring_handle(COLORING_DEFAULT);
 
     }
-    kh.get_graph_coloring_handle()->set_max_number_of_iterations(10000);
+
     graph_color_symbolic(&kh,crsGraph.numRows(), num_cols, crsGraph.row_map, crsGraph.entries);
 
     std::cout << std::endl <<
@@ -332,9 +323,7 @@ void run_experiment(
       std::ofstream os(params.coloring_output_file, std::ofstream::out);
       KokkosKernels::Impl::print_1Dview(os, kh.get_graph_coloring_handle()->get_vertex_colors(), true, "\n"); 
     }
-    totalTime += kh.get_graph_coloring_handle()->get_overall_coloring_time();
   }
-  std::cout << "** Coloring time (average over " << repeat << " trials): " << totalTime / repeat << '\n';
 }
 
 template <typename size_type, typename lno_t,

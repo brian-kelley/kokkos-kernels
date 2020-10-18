@@ -56,7 +56,6 @@ namespace KokkosGraph {
 
 enum ColoringAlgorithm { COLORING_DEFAULT,
                          COLORING_SERIAL,                     // Serial Greedy Coloring
-                         COLORING_PRIORITY,                   // Neighborhood priority based Coloring (similar to Luby MIS, MIS2 and Matching)
                          COLORING_VB,                         // Vertex Based Coloring
                          COLORING_VBBIT,                      // Vertex Based Coloring with bit array
                          COLORING_VBCS,                       // Vertex Based Color Set
@@ -614,7 +613,6 @@ private:
     case COLORING_VBD:
     case COLORING_VBDBIT:
     case COLORING_SERIAL:
-    case COLORING_PRIORITY:
       this->conflict_list_type = COLORING_ATOMIC;
       this->min_reduction_for_conflictlist = 0.35;
       this->min_elements_for_conflictlist = 1000;
@@ -637,10 +635,11 @@ private:
       this->eb_num_initial_colors = 1;
       break;
     default:
-      throw std::runtime_error ("Unknown Coloring Algorithm");
+      throw std::runtime_error ("Unknown Coloring Algorithm\n");
       //break;
     }
   }
+
 
   virtual ~GraphColoringHandle(){};
 
