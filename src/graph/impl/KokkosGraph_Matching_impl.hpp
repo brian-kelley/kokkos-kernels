@@ -323,18 +323,6 @@ struct MaximalMatching
     lno_t workLen;
   };
 
-  struct InitWorklistFunctor
-  {
-    InitWorklistFunctor(const worklist_t& worklist_)
-      : worklist(worklist_)
-    {}
-    KOKKOS_INLINE_FUNCTION void operator()(lno_t i) const
-    {
-      worklist(i) = i;
-    }
-    worklist_t worklist;
-  };
-
   struct CompactWorklistFunctor
   {
     CompactWorklistFunctor(const worklist_t& src_, const worklist_t& dst_, const bool_view_t& isMatched_, const status_view_t& vertStatus_)
@@ -370,7 +358,6 @@ struct MaximalMatching
   {
     auto execSpaceEnum = KokkosKernels::Impl::kk_get_exec_space_type<exec_space>();
     bool useTeams = (execSpaceEnum == KokkosKernels::Impl::Exec_CUDA) && (entries.extent(0) / numVerts >= 16);
-    //Initialize first worklist to 0...numVerts
     worklist_t vertWorklist = Kokkos::subview(allWorklists, Kokkos::ALL(), 0);
     worklist_t tempWorklist = Kokkos::subview(allWorklists, Kokkos::ALL(), 1);
     bool_view_t isMatched("isMatched", numVerts);
@@ -390,9 +377,10 @@ struct MaximalMatching
         decideTeamSize = dummyPolicy.team_size_max(decideMatches, Kokkos::ParallelForTag());
       }
     }
-    Kokkos::parallel_for(range_pol(0, numVerts), InitWorklistFunctor(vertWorklist));
-    //Also init the matches: start with every vertex unmatched
-    Kokkos::parallel_for(range_pol(0, numVerts), InitWorklistFunctor(matches));
+    //Initialize first worklist to 0...numVerts
+    KokkosKernels::Impl::sequential_fill(vertWorklist);
+    //Also init the matches: start with every vertex unmatched (represented as being matched with itself)
+    KokkosKernels::Impl::sequential_fill(matches);
     status_t round = 0;
     lno_t workLen = numVerts;
     while(true)

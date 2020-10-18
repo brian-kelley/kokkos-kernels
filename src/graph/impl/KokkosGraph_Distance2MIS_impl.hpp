@@ -351,18 +351,6 @@ struct D2_MIS_RandomPriority
     lno_view_t setList;
   };
 
-  struct InitWorklistFunctor
-  {
-    InitWorklistFunctor(const worklist_t& worklist_)
-      : worklist(worklist_)
-    {}
-    KOKKOS_INLINE_FUNCTION void operator()(lno_t i) const
-    {
-      worklist(i) = i;
-    }
-    worklist_t worklist;
-  };
-
   struct CompactWorklistFunctor
   {
     CompactWorklistFunctor(const worklist_t& src_, const worklist_t& dst_, const status_view_t& status_)
@@ -391,9 +379,9 @@ struct D2_MIS_RandomPriority
   {
     //Initialize first worklist to 0...numVerts
     worklist_t rowWorklist = Kokkos::subview(allWorklists, Kokkos::ALL(), 0);
-    Kokkos::parallel_for(range_pol(0, numVerts), InitWorklistFunctor(rowWorklist));
     worklist_t colWorklist = Kokkos::subview(allWorklists, Kokkos::ALL(), 1);
-    Kokkos::parallel_for(range_pol(0, numVerts), InitWorklistFunctor(colWorklist));
+    KokkosKernels::Impl::sequential_fill(rowWorklist);
+    KokkosKernels::Impl::sequential_fill(colWorklist);
     worklist_t thirdWorklist = Kokkos::subview(allWorklists, Kokkos::ALL(), 2);
     auto execSpaceEnum = KokkosKernels::Impl::kk_get_exec_space_type<exec_space>();
     bool useTeams = (execSpaceEnum == KokkosKernels::Impl::Exec_CUDA) && (entries.extent(0) / numVerts >= 16);
@@ -727,18 +715,6 @@ struct D2_MIS_FixedPriority
     lno_t nv;
   };
 
-  struct InitWorklistFunctor
-  {
-    InitWorklistFunctor(const lno_view_t& worklist_)
-      : worklist(worklist_)
-    {}
-    KOKKOS_INLINE_FUNCTION void operator()(lno_t i) const
-    {
-      worklist(i) = i;
-    }
-    lno_view_t worklist;
-  };
-
   struct CountInSet
   {
     CountInSet(const status_view_t& rowStatus_)
@@ -773,7 +749,7 @@ struct D2_MIS_FixedPriority
   lno_view_t compute()
   {
     //Initialize first worklist to 0...numVerts
-    Kokkos::parallel_for(range_pol(0, numVerts), InitWorklistFunctor(worklist1));
+    KokkosKernels::Impl::sequential_fill(worklist1);
     lno_t workRemain = numVerts;
     int numIter = 0;
     while(workRemain)

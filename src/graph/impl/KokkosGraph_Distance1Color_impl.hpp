@@ -369,9 +369,7 @@ public:
         nnz_lno_temp_work_view_t(Kokkos::ViewAllocateWithoutInitializing("vertexList"), this->nv);
 
     //init vertexList sequentially.
-    Kokkos::parallel_for("KokkosGraph::GraphColoring::InitList",
-        my_exec_space(0, this->nv), functorInitList<nnz_lno_temp_work_view_t> (current_vertexList));
-
+    KokkosKernels::Impl::sequential_fill(current_vertexList);
 
     // the next iteration's conflict list
     nnz_lno_temp_work_view_t next_iteration_recolorList;
@@ -1709,22 +1707,6 @@ public:
       }
     }
   };      // functorFindConflicts_Atomic_IMP (end)
-
-  //Helper Functors
-  /**
-   * Functor to init a list sequentialy, that is list[i] = i
-   */
-  template <typename view_type>
-  struct functorInitList{
-    view_type _vertexList;
-    functorInitList (view_type vertexList) : _vertexList(vertexList) { }
-    KOKKOS_INLINE_FUNCTION
-    void operator()(const nnz_lno_t i) const {
-      // Natural order
-      _vertexList(i) = i;
-    }
-  };
-
 
   template <typename view_type>
   struct ppsWorklistFunctorVB {

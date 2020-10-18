@@ -247,7 +247,7 @@ class GraphColorDistance2
             Kokkos::ViewAllocateWithoutInitializing("vertexList"), this->nr);
 
         // init conflictlist sequentially.
-        Kokkos::parallel_for("InitList", range_policy_type(0, this->nr), functorInitList<lno_view_t>(current_vertexList));
+        KokkosKernels::Impl::sequential_fill(current_vertexList);
 
         // Next iteratons's conflictList
         lno_view_t next_iteration_recolorList(Kokkos::ViewAllocateWithoutInitializing("recolorList"), this->nr);
@@ -694,8 +694,7 @@ class GraphColorDistance2
       Kokkos::deep_copy(worklen, this->nr);
 
       // init conflictlist sequentially.
-      Kokkos::parallel_for("InitList", range_policy_type(0, this->nr),
-          functorInitList<lno_view_t>(worklist));
+      KokkosKernels::Impl::sequential_fill(worklist);
 
       //Estimate the number of colors that will be needed
       //The algorithm can't use more colors than the max distance-2 degree,
@@ -1190,24 +1189,6 @@ class GraphColorDistance2
     // ------------------------------------------------------
     // Functors: Distance-2 Graph Coloring
     // ------------------------------------------------------
-
-    /**
-     * Functor to init a list sequentialy, that is list[i] = i
-     */
-    template<typename view_type>
-    struct functorInitList
-    {
-        view_type _vertexList;
-        functorInitList(view_type vertexList) : _vertexList(vertexList) {}
-
-        KOKKOS_INLINE_FUNCTION
-        void operator()(const lno_t i) const
-        {
-            // Natural order
-            _vertexList(i) = i;
-        }
-    };      // struct functorInitList (end)
-
 
     /**
      * Functor for VB algorithm speculative coloring without edge filtering.

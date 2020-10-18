@@ -68,6 +68,36 @@ graph_match(const rowmap_t& rowmap, const colinds_t& colinds)
   return matching.compute();
 }
 
+//Run matching-based coarsening for numSteps iterations, producing coarsening labels with clusters of max size 2^numSteps.
+template <typename device_t, typename rowmap_t, typename colinds_t, typename labels_t = typename colinds_t::non_const_type>
+labels_t
+graph_match_coarsen(const rowmap_t& rowmap, const colinds_t& colinds, int numSteps)
+{
+  //Basic idea:
+  //
+  //Let L' = identity labels (iota)
+  //For each step:
+  //  Run matching on G
+  //  Compress labels of G to form valid coarsening labels L
+  //  Let L' = L(L')
+  //  G := explicit coarsening of G with the labels
+  //return L'
+  using MMC = Impl::MaximalMatchCoarsening<device_t, rowmap_t, colinds_t, labels_t>;
+  if(rowmap.extent(0) <= 1)
+  {
+    //there are no vertices to label
+    return labels_t();
+  }
+  if(steps == 0)
+  {
+    labels_t l(Kokkos::ViewAllocateWithoutInitializing("CoarseLabels"), rowmap.extent(0) - 1);
+    KokkosKernels::Impl::sequential_fill(l);
+    return l;
+  }
+  MMC mc(rowmap, colinds);
+  return mc.compute(numSteps);
+}
+
 }  // end namespace Experimental
 }  // end namespace KokkosGraph
 
