@@ -71,7 +71,7 @@ graph_match(const rowmap_t& rowmap, const colinds_t& colinds)
 //Run matching-based coarsening for numSteps iterations, producing coarsening labels with clusters of max size 2^numSteps.
 template <typename device_t, typename rowmap_t, typename colinds_t, typename labels_t = typename colinds_t::non_const_type>
 labels_t
-graph_match_coarsen(const rowmap_t& rowmap, const colinds_t& colinds, int numSteps)
+graph_match_coarsen(const rowmap_t& rowmap, const colinds_t& colinds, int numSteps, typename colinds_t::non_const_value_type& numClusters)
 {
   //Basic idea:
   //
@@ -95,7 +95,7 @@ graph_match_coarsen(const rowmap_t& rowmap, const colinds_t& colinds, int numSte
     return l;
   }
   MMC mc(rowmap, colinds);
-  return mc.compute(numSteps);
+  return mc.compute(numSteps, numClusters);
 }
 
 }  // end namespace Experimental

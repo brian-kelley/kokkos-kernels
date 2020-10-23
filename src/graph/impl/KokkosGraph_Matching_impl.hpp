@@ -421,6 +421,123 @@ struct MaximalMatching
   status_t hashMask;
 };
 
+template<typename device_t, typename rowmap_t, typename entries_t, typename lno_view_t>
+struct MaximalMatchCoarsening
+{
+  using exec_space = typename device_t::execution_space;
+  using mem_space = typename device_t::memory_space;
+  using size_type = typename rowmap_t::non_const_value_type;
+  using lno_t = typename entries_t::non_const_value_type;
+  using unmanaged_rowmap_t = Kokkos::View<size_type*, mem_space, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
+  using unmanaged_entries_t = Kokkos::View<lno_t*, mem_space, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
+  using owned_rowmap_t = Kokkos::View<size_type*, mem_space>;
+  using owned_entries_t = Kokkos::View<lno_t*, mem_space>;
+  //The type of status/priority values.
+  using status_t = uint64_t;
+  using status_view_t = Kokkos::View<status_t*, mem_space>;
+  using range_pol = Kokkos::RangePolicy<exec_space>;
+  using team_pol = Kokkos::TeamPolicy<exec_space>;
+  using team_mem = typename team_pol::member_type;
+  using all_worklists_t = Kokkos::View<lno_t**, Kokkos::LayoutLeft, mem_space>;
+  using worklist_t = Kokkos::View<lno_t*, Kokkos::LayoutLeft, mem_space>;
+  using bool_view_t = Kokkos::View<int8_t*, mem_space>;
+
+  // Priority values 0 and max are special, they mean the vertex is
+  // in the independent set or eliminated from consideration, respectively.
+  // Values in between represent a priority for being added to the set,
+  // based on degree and vertex ID as a tiebreak
+  //   (higher priority = less preferred to being in the independent set)
+
+  static constexpr status_t IN_SET = 0;
+  static constexpr status_t OUT_SET = ~IN_SET;
+
+  MaximalMatching(const rowmap_t& rowmap_, const entries_t& entries_)
+    : rowmap(rowmap_), entries(entries_), numVerts(rowmap.extent(0) - 1)
+  {
+  }
+
+  struct FindRootsFunctor
+  {
+    FindRootsFunctor(const lno_view_t& matches_, const lno_view_t& labels_)
+      : matches(matches_), labels(labels_)
+    {}
+
+    KOKKOS_INLINE_FUNCTION void operator()(lno_t i, lno_t& lindex, bool finalPass) const
+    {
+      if(matches(i) == i)
+      {
+        //i is a root
+        if(finalPass)
+          labels(i) = lindex;
+        lindex++;
+      }
+    }
+
+    lno_view_t matches;
+    lno_view_t labels;
+  };
+
+  struct AssignNonRootsFunctor
+  {
+    AssignNonRootsFunctor(const lno_view_t& matches_, const lno_view_t& labels_)
+      : matches(matches_), labels(labels_)
+    {}
+
+    KOKKOS_INLINE_FUNCTION void operator()(lno_t i) const
+    {
+      lno_t match = matches(i);
+      if(match != i)
+      {
+        //i is not a root, so its label is the label of its match
+        labels(i) = labels(match);
+      }
+    }
+
+    lno_view_t matches;
+    lno_view_t labels;
+  };
+
+  lno_view_t compute(int numSteps, lno_t& numClusters)
+  {
+    unmanaged_rowmap_t g_rowmap = rowmap;
+    unmanaged_entries_t g_entries = entries;
+    lno_t g_nv = numVerts;
+    owned_rowmap_t temp_rowmap;
+    owned_entries_t temp_entries;
+    lno_view_t finalLabels;
+    lno_t finalNumClusters;
+    for(int step = 0; step < numSteps; step++)
+    {
+      //Run matching on g
+      MaximalMatching<device_t, unmanaged_rowmap_t, unmanaged_entries_t, lno_view_t> matching(g_rowmap, g_colinds);
+      lno_view_t matches = matching.compute();
+      lno_view_t labels(Kokkos::ViewAllocateWithoutInitializing("Labels"), g_nv);
+      lno_t coarse_nv;
+      Kokkos::parallel_scan(range_pol(0, g_nv), FindRootsFunctor(matches, labels), coarse_nv);
+      Kokkos::parallel_for(range_pol(0, g_nv), AssignNonRootsFunctor(matches, labels));
+      if(step == numSteps - 1)
+      {
+        finalLabels = labels;
+        numClusters = coarse_nv;
+      }
+      else
+      {
+        //Generate the next g, one level coarser
+        
+      }
+    }
+    return finalLabels;
+  }
+
+  rowmap_t rowmap;
+  entries_t entries;
+  lno_t numVerts;
+  status_view_t vertStatus;
+  all_worklists_t allWorklists;
+  lno_view_t labels;
+  status_t hashMask;
+};
+
 }}}
 
 #endif
