@@ -42,11 +42,12 @@
 //@HEADER
 */
 
-#ifndef _KOKKOSGRAPH_MATCHING_HPP
-#define _KOKKOSGRAPH_MATCHING_HPP
+#ifndef _KOKKOSGRAPH_MATCHING_IMPL_HPP
+#define _KOKKOSGRAPH_MATCHING_IMPL_HPP
 
 #include "Kokkos_Core.hpp"
 #include "KokkosKernels_Utils.hpp"
+#include "KokkosGraph_ExplicitCoarsening.hpp"
 #include <cstdint>
 
 namespace KokkosGraph {
@@ -451,10 +452,9 @@ struct MaximalMatchCoarsening
   static constexpr status_t IN_SET = 0;
   static constexpr status_t OUT_SET = ~IN_SET;
 
-  MaximalMatching(const rowmap_t& rowmap_, const entries_t& entries_)
+  MaximalMatchCoarsening(const rowmap_t& rowmap_, const entries_t& entries_)
     : rowmap(rowmap_), entries(entries_), numVerts(rowmap.extent(0) - 1)
-  {
-  }
+  {}
 
   struct FindRootsFunctor
   {
@@ -497,6 +497,21 @@ struct MaximalMatchCoarsening
     lno_view_t labels;
   };
 
+  struct PropagateLabelsFunctor
+  {
+    PropagateLabelsFunctor(const lno_view_t& fineLabels_, const lno_view_t& coarseLabels_)
+      : fineLabels(fineLabels_), coarseLabels(coarseLabels_)
+    {}
+
+    KOKKOS_INLINE_FUNCTION void operator()(lno_t i) const
+    {
+      fineLabels(i) = coarseLabels(fineLabels(i));
+    }
+
+    lno_view_t fineLabels;
+    lno_view_t coarseLabels;
+  };
+
   lno_view_t compute(int numSteps, lno_t& numClusters)
   {
     unmanaged_rowmap_t g_rowmap = rowmap;
@@ -505,25 +520,42 @@ struct MaximalMatchCoarsening
     owned_rowmap_t temp_rowmap;
     owned_entries_t temp_entries;
     lno_view_t finalLabels;
-    lno_t finalNumClusters;
     for(int step = 0; step < numSteps; step++)
     {
       //Run matching on g
-      MaximalMatching<device_t, unmanaged_rowmap_t, unmanaged_entries_t, lno_view_t> matching(g_rowmap, g_colinds);
+      MaximalMatching<device_t, unmanaged_rowmap_t, unmanaged_entries_t, lno_view_t> matching(g_rowmap, g_entries);
       lno_view_t matches = matching.compute();
       lno_view_t labels(Kokkos::ViewAllocateWithoutInitializing("Labels"), g_nv);
       lno_t coarse_nv;
       Kokkos::parallel_scan(range_pol(0, g_nv), FindRootsFunctor(matches, labels), coarse_nv);
       Kokkos::parallel_for(range_pol(0, g_nv), AssignNonRootsFunctor(matches, labels));
-      if(step == numSteps - 1)
+      //First, propagate labels to the finest level
+      if(step == 0)
       {
         finalLabels = labels;
+      }
+      else
+      {
+        Kokkos::parallel_for(range_pol(0, numVerts), PropagateLabelsFunctor(finalLabels, labels));
+      }
+      //Then finalize or coarsen the graph
+      if(step == numSteps - 1)
+      {
         numClusters = coarse_nv;
       }
       else
       {
         //Generate the next g, one level coarser
-        
+        owned_rowmap_t next_rowmap;
+        owned_entries_t next_entries;
+        graph_explicit_coarsen<device_t, unmanaged_rowmap_t, unmanaged_entries_t, lno_view_t, owned_rowmap_t, owned_entries_t>
+          (g_rowmap, g_entries, labels, coarse_nv, next_rowmap, next_entries, false);
+        //Replace g (setting temp_rowmap/temp_entries also so that they don't get deallocated)
+        temp_rowmap = next_rowmap;
+        temp_entries = next_entries;
+        g_rowmap = temp_rowmap;
+        g_entries = temp_entries;
+        g_nv = coarse_nv;
       }
     }
     return finalLabels;

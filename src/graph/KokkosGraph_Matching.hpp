@@ -42,8 +42,8 @@
 //@HEADER
 */
 
-#ifndef _KOKKOSGRAPH_DISTANCE2_MIS_HPP
-#define _KOKKOSGRAPH_DISTANCE2_MIS_HPP
+#ifndef _KOKKOSGRAPH_MATCHING_HPP
+#define _KOKKOSGRAPH_MATCHING_HPP
 
 #include "KokkosGraph_Matching_impl.hpp"
 
@@ -88,7 +88,7 @@ graph_match_coarsen(const rowmap_t& rowmap, const colinds_t& colinds, int numSte
     //there are no vertices to label
     return labels_t();
   }
-  if(steps == 0)
+  if(numSteps == 0)
   {
     labels_t l(Kokkos::ViewAllocateWithoutInitializing("CoarseLabels"), rowmap.extent(0) - 1);
     KokkosKernels::Impl::sequential_fill(l);

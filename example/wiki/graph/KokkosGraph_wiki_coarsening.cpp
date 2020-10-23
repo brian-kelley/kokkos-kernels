@@ -1,5 +1,6 @@
 #include "KokkosGraph_wiki_9pt_stencil.hpp"
 #include "KokkosGraph_MIS2.hpp"
+#include "KokkosGraph_Matching.hpp"
 
 int main(int argc, char* argv[])
 {
