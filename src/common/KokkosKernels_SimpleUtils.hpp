@@ -350,6 +350,50 @@ void kk_view_reduce_max(size_t num_elements, view_type view_to_reduce, typename 
   Kokkos::parallel_reduce( "KokkosKernels::Common::ReduceMax", my_exec_space(0,num_elements), ReduceMaxFunctor<view_type>(view_to_reduce), max_reduction);
 }
 
+//xorshift hash/pseudorandom function (supported for 32- and 64-bit integer types only)
+template <typename Value>
+KOKKOS_FORCEINLINE_FUNCTION Value xorshiftHash(Value v)
+{
+  using PlainUnsignedValue = typename std::make_unsigned<typename std::remove_cv<Value>::type>::type;
+  static_assert(std::is_same<PlainUnsignedValue, uint32_t>::value || std::is_same<PlainUnsignedValue, uint64_t>::value,
+      "KokkosKernels::Impl::xorshiftHash(): value type must be a 32- or 64-bit integer.");
+  if(std::is_same<Value, uint32_t>::value)
+  {
+    v ^= v << 13;
+    v ^= v >> 17;
+    v ^= v << 5;
+    return static_cast<Value>(v); //ignore possible change in sign
+  }
+  else if(std::is_same<Value, uint64_t>::value)
+  {
+    v ^= v << 13;
+    v ^= v >> 7;
+    v ^= v << 17;
+    return static_cast<Value>(v); //ignore possible change in sign
+  }
+  //cannot get here without triggering static_assert
+  return Value();
+}
+
+template <typename V>
+struct SequentialFillFunctor
+{
+  using size_type = typename V::size_type;
+  using val_type = typename V::non_const_value_type;
+  SequentialFillFunctor(const V& v_, val_type start_) : v(v_), start(start_) {}
+  KOKKOS_INLINE_FUNCTION void operator()(size_type i) const
+  {
+    v(i) = start + (val_type) i;
+  }
+  V v;
+  val_type start;
+};
+
+template<typename V>
+void sequential_fill(const V& v, typename V::non_const_value_type start = 0)
+{
+  Kokkos::parallel_for(Kokkos::RangePolicy<typename V::execution_space>(0, v.extent(0)), SequentialFillFunctor<V>(v, start));
+}
 
 }
 }
