@@ -249,7 +249,6 @@ void run_mis2(const MIS2Parameters& params)
     using mem_space = typename device_t::memory_space;
     using crsMat_t = typename KokkosSparse::CrsMatrix<default_scalar, default_lno_t, device_t, void, default_size_type>;
     using lno_view_t = typename crsMat_t::index_type::non_const_type;
-    using KKH = KokkosKernels::Experimental::KokkosKernelsHandle<size_type, lno_t, double, exec_space, mem_space, mem_space>;
  
     crsMat_t A = KokkosKernels::Impl::read_kokkos_crst_matrix<crsMat_t>(params.mtx_file);
     /*

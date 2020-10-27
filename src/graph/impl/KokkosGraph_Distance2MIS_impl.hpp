@@ -974,7 +974,7 @@ struct D2_MIS_Bell
   using gen_t = typename pool_t::generator_type;
 
   using lno_view_t = Kokkos::View<lno_t*, mem_space>;
-  using char_view = Kokkos::View<char*, mem_space>;
+  using char_view = Kokkos::View<int8_t*, mem_space>;
   using unsigned_view = Kokkos::View<uint32_t*, mem_space>;
 
   labels_t compute(const rowmap_t& rowmap, const entries_t& entries, int* numRounds)
@@ -1107,7 +1107,7 @@ struct D2_MIS_Randomized
   using hash_t = typename std::make_unsigned<lno_t>::type;
   using hash_view_t = Kokkos::View<hash_t*, mem_space>;
   using lno_view_t = Kokkos::View<lno_t*, mem_space>;
-  using char_view = Kokkos::View<char*, mem_space>;
+  using char_view = Kokkos::View<int8_t*, mem_space>;
 
   labels_t compute(const rowmap_t& rowmap, const entries_t& entries, int* numRounds)
   {
@@ -1231,7 +1231,7 @@ struct D2_MIS_Worklist
   using hash_t = typename std::make_unsigned<lno_t>::type;
   using hash_view_t = Kokkos::View<hash_t*, mem_space>;
   using lno_view_t = Kokkos::View<lno_t*, mem_space>;
-  using char_view = Kokkos::View<char*, mem_space>;
+  using char_view = Kokkos::View<int8_t*, mem_space>;
   using all_worklists_t = Kokkos::View<lno_t**, Kokkos::LayoutLeft, mem_space>;
 
   labels_t compute(const rowmap_t& rowmap, const entries_t& entries, int* numRounds)
