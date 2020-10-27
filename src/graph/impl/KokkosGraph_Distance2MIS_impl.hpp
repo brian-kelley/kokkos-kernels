@@ -48,13 +48,14 @@
 #include "Kokkos_Core.hpp"
 #include "Kokkos_Bitset.hpp"
 #include "KokkosKernels_Utils.hpp"
+#include "Kokkos_Random.hpp"
 #include <cstdint>
 
 namespace KokkosGraph {
 namespace Experimental {
 namespace Impl {
 
-template<typename device_t, typename rowmap_t, typename entries_t, typename lno_view_t>
+template<typename device_t, typename rowmap_t, typename entries_t, typename lno_view_t, bool allowTeams>
 struct D2_MIS_RandomPriority
 {
   using exec_space = typename device_t::execution_space;
@@ -71,15 +72,6 @@ struct D2_MIS_RandomPriority
   using team_mem = typename team_pol::member_type;
   using all_worklists_t = Kokkos::View<lno_t**, Kokkos::LayoutLeft, mem_space>;
   using worklist_t = Kokkos::View<lno_t*, Kokkos::LayoutLeft, mem_space>;
-
-  KOKKOS_INLINE_FUNCTION static uint32_t xorshiftHash(uint32_t in)
-  {
-    uint32_t x = in;
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    return x;
-  }
 
   // Priority values 0 and max are special, they mean the vertex is
   // in the independent set or eliminated from consideration, respectively.
@@ -113,14 +105,14 @@ struct D2_MIS_RandomPriority
     RefreshRowStatus(const status_view_t& rowStatus_, const worklist_t& worklist_, lno_t nvBits_, int round)
       : rowStatus(rowStatus_), worklist(worklist_), nvBits(nvBits_)
     {
-      hashedRound = xorshiftHash(round);
+      hashedRound = KokkosKernels::Impl::xorshiftHash(round);
     }
 
     KOKKOS_INLINE_FUNCTION void operator()(lno_t w) const
     {
       lno_t i = worklist(w);
       //Combine vertex and round to get some pseudorandom priority bits that change each round
-      status_t priority = xorshiftHash(i + hashedRound);
+      status_t priority = KokkosKernels::Impl::xorshiftHash(i + hashedRound);
       //Generate unique status per row, with IN_SET < status < OUT_SET,
       int priorityBits = sizeof(status_t) * 8 - nvBits;
       status_t priorityMask = 1;
@@ -387,7 +379,7 @@ struct D2_MIS_RandomPriority
     status_view_t status;
   };
 
-  lno_view_t compute()
+  lno_view_t compute(int* numRounds)
   {
     //Initialize first worklist to 0...numVerts
     worklist_t rowWorklist = Kokkos::subview(allWorklists, Kokkos::ALL(), 0);
@@ -396,7 +388,7 @@ struct D2_MIS_RandomPriority
     Kokkos::parallel_for(range_pol(0, numVerts), InitWorklistFunctor(colWorklist));
     worklist_t thirdWorklist = Kokkos::subview(allWorklists, Kokkos::ALL(), 2);
     auto execSpaceEnum = KokkosKernels::Impl::kk_get_exec_space_type<exec_space>();
-    bool useTeams = (execSpaceEnum == KokkosKernels::Impl::Exec_CUDA) && (entries.extent(0) / numVerts >= 16);
+    bool useTeams = allowTeams && (execSpaceEnum == KokkosKernels::Impl::Exec_CUDA) && (entries.extent(0) / numVerts >= 16);
     int vectorLength = KokkosKernels::Impl::kk_get_suggested_vector_size(numVerts, entries.extent(0), execSpaceEnum);
     int round = 0;
     lno_t rowWorkLen = numVerts;
@@ -436,6 +428,7 @@ struct D2_MIS_RandomPriority
         else
           Kokkos::parallel_for(range_pol(0, rowWorkLen), decideSet);
       }
+      round++;
       //Compact row worklist
       Kokkos::parallel_scan(range_pol(0, rowWorkLen), CompactWorklistFunctor(rowWorklist, thirdWorklist, rowStatus), rowWorkLen);
       if(rowWorkLen == 0)
@@ -444,8 +437,9 @@ struct D2_MIS_RandomPriority
       //Compact col worklist
       Kokkos::parallel_scan(range_pol(0, colWorkLen), CompactWorklistFunctor(colWorklist, thirdWorklist, colStatus), colWorkLen);
       std::swap(colWorklist, thirdWorklist);
-      round++;
     }
+    if(numRounds)
+      *numRounds = round;
     //now that every vertex has been decided IN_SET/OUT_SET,
     //build a compact list of the vertices which are IN_SET.
     lno_t numInSet = 0;
@@ -798,7 +792,7 @@ struct D2_MIS_FixedPriority
     lno_view_t setList;
   };
 
-  lno_view_t compute()
+  lno_view_t compute(int* numRounds)
   {
     //Initialize first worklist to 0...numVerts
     Kokkos::parallel_for(range_pol(0, numVerts), InitWorklistFunctor(worklist1));
@@ -825,6 +819,8 @@ struct D2_MIS_FixedPriority
       workRemain = newWorkRemain;
       numIter++;
     }
+    if(numRounds)
+      *numRounds = numIter;
     //now that every vertex has been decided IN_SET/OUT_SET,
     //build a compact list of the vertices which are IN_SET.
     lno_t numInSet = 0;
@@ -904,15 +900,6 @@ struct D2_MIS_Coarsening
     labels_t labels;
   };
 
-  KOKKOS_INLINE_FUNCTION static uint32_t xorshiftHash(uint32_t in)
-  {
-    uint32_t x = in;
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    return x;
-  }
-
   //Phase 2 (over 0...numVerts) joins unlabeled vertices to the smallest adjacent cluster
   struct Phase2Functor
   {
@@ -937,7 +924,7 @@ struct D2_MIS_Coarsening
         if(neiCluster != -1 && neiCluster != cluster)
         {
           //check if this cluster is smaller
-          uint32_t score = xorshiftHash(i + xorshiftHash(neiCluster));
+          uint32_t score = KokkosKernels::Impl::xorshiftHash(i + KokkosKernels::Impl::xorshiftHash(neiCluster));
           if(score < minScore)
           {
             cluster = neiCluster;
@@ -968,6 +955,437 @@ struct D2_MIS_Coarsening
   labels_t mis2;
   lno_t numVerts;
   labels_t labels;
+};
+
+template<typename device_t, typename rowmap_t, typename entries_t, typename labels_t>
+struct D2_MIS_Bell
+{
+  using exec_space = typename device_t::execution_space;
+  using mem_space = typename device_t::memory_space;
+  using bitset_t = Kokkos::Bitset<device_t>;
+  using const_bitset_t = Kokkos::ConstBitset<device_t>;
+  using size_type = typename rowmap_t::non_const_value_type;
+  using lno_t = typename entries_t::non_const_value_type;
+  //The type of status/priority values.
+  using status_t = typename std::make_unsigned<lno_t>::type;
+  using status_view_t = Kokkos::View<status_t*, mem_space>;
+  using range_pol = Kokkos::RangePolicy<exec_space>;
+  using pool_t = Kokkos::Random_XorShift64_Pool<exec_space>;
+  using gen_t = typename pool_t::generator_type;
+
+  using lno_view_t = Kokkos::View<lno_t*, mem_space>;
+  using char_view = Kokkos::View<char*, mem_space>;
+  using unsigned_view = Kokkos::View<uint32_t*, mem_space>;
+
+  labels_t compute(const rowmap_t& rowmap, const entries_t& entries, int* numRounds)
+  {
+    lno_t numVerts = rowmap.extent(0) - 1;
+    char_view state("is membership", numVerts);
+    lno_t unassigned_total = numVerts;
+    unsigned_view randoms(Kokkos::ViewAllocateWithoutInitializing("randomized"), numVerts);
+    pool_t rand_pool(std::time(nullptr));
+    Kokkos::parallel_for("create random entries", range_pol(0, numVerts),
+    KOKKOS_LAMBDA(lno_t i)
+    {
+      gen_t generator = rand_pool.get_state();
+      randoms(i) = generator.urand();
+      rand_pool.free_state(generator);
+    });
+    char_view tuple_state(Kokkos::ViewAllocateWithoutInitializing("tuple state"), numVerts);
+    unsigned_view tuple_rand(Kokkos::ViewAllocateWithoutInitializing("tuple rand"), numVerts);
+    char_view tuple_state_update(Kokkos::ViewAllocateWithoutInitializing("tuple state"), numVerts);
+    unsigned_view tuple_rand_update(Kokkos::ViewAllocateWithoutInitializing("tuple rand"), numVerts);
+    lno_view_t tuple_idx(Kokkos::ViewAllocateWithoutInitializing("tuple index"), numVerts);
+    lno_view_t tuple_idx_update(Kokkos::ViewAllocateWithoutInitializing("tuple index"), numVerts);
+    int iter = 0;
+    while (unassigned_total > 0)
+    {
+      Kokkos::parallel_for(range_pol(0, numVerts),
+      KOKKOS_LAMBDA(lno_t i)
+      {
+        tuple_state(i) = state(i);
+        tuple_rand(i) = randoms(i);
+        tuple_idx(i) = i;
+      });
+      for (int k = 0; k < 2; k++) {
+        Kokkos::parallel_for(range_pol(0, numVerts),
+        KOKKOS_LAMBDA(lno_t i)
+        {
+          int max_state = tuple_state(i);
+          uint32_t max_rand = tuple_rand(i);
+          lno_t max_idx = tuple_idx(i);
+          for (size_type j = rowmap(i); j < rowmap(i + 1); j++) {
+              lno_t v = entries(j);
+              bool is_max = false;
+              if (tuple_state(v) > max_state) {
+                  is_max = true;
+              }
+              else if (tuple_state(v) == max_state) {
+                if (tuple_rand(v) > max_rand) {
+                  is_max = true;
+                }
+                else if (tuple_rand(v) == max_rand) {
+                  if (tuple_idx(v) > max_idx) {
+                      is_max = true;
+                  }
+                }
+              }
+              if (is_max) {
+                max_state = tuple_state(v);
+                max_rand = tuple_rand(v);
+                max_idx = tuple_idx(v);
+              }
+          }
+          tuple_state_update(i) = max_state;
+          tuple_rand_update(i) = max_rand;
+          tuple_idx_update(i) = max_idx;
+        });
+      Kokkos::parallel_for(range_pol(0, numVerts),
+      KOKKOS_LAMBDA(const lno_t i){
+        tuple_state(i) = tuple_state_update(i);
+        tuple_rand(i) = tuple_rand_update(i);
+        tuple_idx(i) = tuple_idx_update(i);
+      });
+    }
+      Kokkos::parallel_reduce(range_pol(0, numVerts),
+      KOKKOS_LAMBDA(const lno_t i, lno_t& thread_sum){
+        if (state(i) == 0) {
+          if (tuple_state(i) == state(i) && tuple_rand(i) == randoms(i) && tuple_idx(i) == i) {
+            //vertex i has max status in neighborhood so is in set
+            state(i) = 1;
+          }
+          else if(tuple_state(i) == 1) {
+            //vertex i is out of set (within neighborhood of another)
+            state(i) = -1;
+          }
+        }
+        if (state(i) == 0) {
+          //Vertex i is still undecided
+          thread_sum++;
+        }
+      }, unassigned_total);
+      iter++;
+    }
+    if(numRounds)
+      *numRounds = iter;
+    lno_t numInSet = 0;
+    Kokkos::parallel_reduce(range_pol(0, numVerts),
+    KOKKOS_LAMBDA(lno_t i, lno_t& lcount)
+    {
+      if(state(i) == 1)
+        lcount++;
+    }, numInSet);
+    labels_t setList(Kokkos::ViewAllocateWithoutInitializing("D2MIS"), numInSet);
+    Kokkos::parallel_scan(range_pol(0, numVerts),
+    KOKKOS_LAMBDA(lno_t i, lno_t& lcount, bool finalPass)
+    {
+      if(state(i) == 1)
+      {
+        if(finalPass)
+          setList(lcount) = i;
+        lcount++;
+      }
+    });
+    return setList;
+  }
+};
+
+template<typename device_t, typename rowmap_t, typename entries_t, typename labels_t>
+struct D2_MIS_Randomized
+{
+  using exec_space = typename device_t::execution_space;
+  using mem_space = typename device_t::memory_space;
+  using bitset_t = Kokkos::Bitset<device_t>;
+  using const_bitset_t = Kokkos::ConstBitset<device_t>;
+  using size_type = typename rowmap_t::non_const_value_type;
+  using lno_t = typename entries_t::non_const_value_type;
+  //The type of status/priority values.
+  using status_t = typename std::make_unsigned<lno_t>::type;
+  using status_view_t = Kokkos::View<status_t*, mem_space>;
+  using range_pol = Kokkos::RangePolicy<exec_space>;
+
+  using hash_t = typename std::make_unsigned<lno_t>::type;
+  using hash_view_t = Kokkos::View<hash_t*, mem_space>;
+  using lno_view_t = Kokkos::View<lno_t*, mem_space>;
+  using char_view = Kokkos::View<char*, mem_space>;
+
+  labels_t compute(const rowmap_t& rowmap, const entries_t& entries, int* numRounds)
+  {
+    lno_t numVerts = rowmap.extent(0) - 1;
+    char_view state("is membership", numVerts);
+    lno_t unassigned_total = numVerts;
+    char_view tuple_state(Kokkos::ViewAllocateWithoutInitializing("tuple state"), numVerts);
+    hash_view_t tuple_rand(Kokkos::ViewAllocateWithoutInitializing("tuple rand"), numVerts);
+    char_view tuple_state_update(Kokkos::ViewAllocateWithoutInitializing("tuple state"), numVerts);
+    hash_view_t tuple_rand_update(Kokkos::ViewAllocateWithoutInitializing("tuple rand"), numVerts);
+    lno_view_t tuple_idx(Kokkos::ViewAllocateWithoutInitializing("tuple index"), numVerts);
+    lno_view_t tuple_idx_update(Kokkos::ViewAllocateWithoutInitializing("tuple index"), numVerts);
+    hash_t round = 0;
+    while (unassigned_total > 0)
+    {
+      hash_t hashedRound = KokkosKernels::Impl::xorshiftHash(round);
+      Kokkos::parallel_for(range_pol(0, numVerts),
+      KOKKOS_LAMBDA(lno_t i)
+      {
+        tuple_state(i) = state(i);
+        tuple_rand(i) = KokkosKernels::Impl::xorshiftHash((hash_t) i + hashedRound);
+        tuple_idx(i) = i;
+      });
+      for (int k = 0; k < 2; k++) {
+        Kokkos::parallel_for(range_pol(0, numVerts),
+        KOKKOS_LAMBDA(lno_t i)
+        {
+          int max_state = tuple_state(i);
+          uint32_t max_rand = tuple_rand(i);
+          lno_t max_idx = tuple_idx(i);
+          for (size_type j = rowmap(i); j < rowmap(i + 1); j++) {
+              lno_t v = entries(j);
+              bool is_max = false;
+              if (tuple_state(v) > max_state) {
+                  is_max = true;
+              }
+              else if (tuple_state(v) == max_state) {
+                if (tuple_rand(v) > max_rand) {
+                  is_max = true;
+                }
+                else if (tuple_rand(v) == max_rand) {
+                  if (tuple_idx(v) > max_idx) {
+                      is_max = true;
+                  }
+                }
+              }
+              if (is_max) {
+                max_state = tuple_state(v);
+                max_rand = tuple_rand(v);
+                max_idx = tuple_idx(v);
+              }
+          }
+          tuple_state_update(i) = max_state;
+          tuple_rand_update(i) = max_rand;
+          tuple_idx_update(i) = max_idx;
+        });
+      Kokkos::parallel_for(range_pol(0, numVerts),
+      KOKKOS_LAMBDA(const lno_t i){
+        tuple_state(i) = tuple_state_update(i);
+        tuple_rand(i) = tuple_rand_update(i);
+        tuple_idx(i) = tuple_idx_update(i);
+      });
+    }
+      Kokkos::parallel_reduce(range_pol(0, numVerts),
+      KOKKOS_LAMBDA(const lno_t i, lno_t& thread_sum){
+        if (state(i) == 0) {
+          if (tuple_state(i) == state(i) && tuple_rand(i) == KokkosKernels::Impl::xorshiftHash((hash_t) i + hashedRound) && tuple_idx(i) == i) {
+            //vertex i has max status in neighborhood so is in set
+            state(i) = 1;
+          }
+          else if(tuple_state(i) == 1) {
+            //vertex i is out of set (within neighborhood of another)
+            state(i) = -1;
+          }
+        }
+        if (state(i) == 0) {
+          //Vertex i is still undecided
+          thread_sum++;
+        }
+      }, unassigned_total);
+      round++;
+    }
+    if(numRounds)
+      *numRounds = round;
+    lno_t numInSet = 0;
+    Kokkos::parallel_reduce(range_pol(0, numVerts),
+    KOKKOS_LAMBDA(lno_t i, lno_t& lcount)
+    {
+      if(state(i) == 1)
+        lcount++;
+    }, numInSet);
+    labels_t setList(Kokkos::ViewAllocateWithoutInitializing("D2MIS"), numInSet);
+    Kokkos::parallel_scan(range_pol(0, numVerts),
+    KOKKOS_LAMBDA(lno_t i, lno_t& lcount, bool finalPass)
+    {
+      if(state(i) == 1)
+      {
+        if(finalPass)
+          setList(lcount) = i;
+        lcount++;
+      }
+    });
+    return setList;
+  }
+};
+
+template<typename device_t, typename rowmap_t, typename entries_t, typename labels_t>
+struct D2_MIS_Worklist
+{
+  using exec_space = typename device_t::execution_space;
+  using mem_space = typename device_t::memory_space;
+  using bitset_t = Kokkos::Bitset<device_t>;
+  using const_bitset_t = Kokkos::ConstBitset<device_t>;
+  using size_type = typename rowmap_t::non_const_value_type;
+  using lno_t = typename entries_t::non_const_value_type;
+  //The type of status/priority values.
+  using status_t = typename std::make_unsigned<lno_t>::type;
+  using status_view_t = Kokkos::View<status_t*, mem_space>;
+  using range_pol = Kokkos::RangePolicy<exec_space>;
+
+  using hash_t = typename std::make_unsigned<lno_t>::type;
+  using hash_view_t = Kokkos::View<hash_t*, mem_space>;
+  using lno_view_t = Kokkos::View<lno_t*, mem_space>;
+  using char_view = Kokkos::View<char*, mem_space>;
+  using all_worklists_t = Kokkos::View<lno_t**, Kokkos::LayoutLeft, mem_space>;
+
+  labels_t compute(const rowmap_t& rowmap, const entries_t& entries, int* numRounds)
+  {
+    lno_t numVerts = rowmap.extent(0) - 1;
+    char_view rowStatus("is membership", numVerts);
+    char_view colStatus(Kokkos::ViewAllocateWithoutInitializing("tuple state"), numVerts);
+    hash_view_t colHash(Kokkos::ViewAllocateWithoutInitializing("tuple rand"), numVerts);
+    lno_view_t colIdx(Kokkos::ViewAllocateWithoutInitializing("tuple index"), numVerts);
+    char_view tempStatus(Kokkos::ViewAllocateWithoutInitializing("tuple state"), numVerts);
+    hash_view_t tempHash(Kokkos::ViewAllocateWithoutInitializing("tuple rand"), numVerts);
+    lno_view_t tempIdx(Kokkos::ViewAllocateWithoutInitializing("tuple index"), numVerts);
+    all_worklists_t allWorklists(Kokkos::ViewAllocateWithoutInitializing("All worklists"), numVerts, 3);
+    lno_view_t rowWorklist = Kokkos::subview(allWorklists, Kokkos::ALL(), 0);
+    lno_view_t colWorklist = Kokkos::subview(allWorklists, Kokkos::ALL(), 1);
+    lno_view_t tempWorklist = Kokkos::subview(allWorklists, Kokkos::ALL(), 2);
+    KokkosKernels::Impl::sequential_fill(rowWorklist);
+    KokkosKernels::Impl::sequential_fill(colWorklist);
+    lno_t rowWorkLen = numVerts;
+    lno_t colWorkLen = numVerts;
+    hash_t round = 0;
+    while (rowWorkLen)
+    {
+      hash_t hashedRound = KokkosKernels::Impl::xorshiftHash(round);
+      //Step 1: gather max priority to each column
+      Kokkos::parallel_for(range_pol(0, colWorkLen),
+      KOKKOS_LAMBDA(lno_t w)
+      {
+        lno_t i = colWorklist(w);
+        int max_state = rowStatus(i);
+        uint32_t max_rand = KokkosKernels::Impl::xorshiftHash((hash_t) i + hashedRound);
+        lno_t max_idx = i;
+        for (size_type j = rowmap(i); j < rowmap(i + 1); j++) {
+            lno_t v = entries(j);
+            hash_t vhash = KokkosKernels::Impl::xorshiftHash((hash_t) v + hashedRound);
+            bool is_max = false;
+            if (rowStatus(v) > max_state) {
+                is_max = true;
+            }
+            else if (rowStatus(v) == max_state) {
+              if (vhash > max_rand) {
+                is_max = true;
+              }
+              else if (vhash == max_rand) {
+                if (v > max_idx) {
+                    is_max = true;
+                }
+              }
+            }
+            if (is_max) {
+              max_state = rowStatus(v);
+              max_rand = vhash;
+              max_idx = v;
+            }
+        }
+        colStatus(i) = max_state;
+        colHash(i) = max_rand;
+        colIdx(i) = max_idx;
+      });
+      //now tuple_*_update has the column max (distance-1 neighborhoods)
+      Kokkos::parallel_for(range_pol(0, rowWorkLen),
+      KOKKOS_LAMBDA(lno_t w)
+      {
+        lno_t i = rowWorklist(w);
+        int max_state = colStatus(i);
+        uint32_t max_rand = colHash(i);
+        lno_t max_idx = colIdx(i);
+        for (size_type j = rowmap(i); j < rowmap(i + 1); j++) {
+            lno_t v = entries(j);
+            bool is_max = false;
+            if (colStatus(v) > max_state) {
+                is_max = true;
+            }
+            else if (colStatus(v) == max_state) {
+              if (colHash(v) > max_rand) {
+                is_max = true;
+              }
+              else if (colHash(v) == max_rand) {
+                if (colIdx(v) > max_idx) {
+                    is_max = true;
+                }
+              }
+            }
+            if (is_max) {
+              max_state = colStatus(v);
+              max_rand = colHash(v);
+              max_idx = colIdx(v);
+            }
+        }
+        tempStatus(i) = max_state;
+        tempHash(i) = max_rand;
+        tempIdx(i) = max_idx;
+      });
+      //Select vertices which have the max status in their neighborhood, by comparing their current status views with temp*
+      Kokkos::parallel_for(range_pol(0, rowWorkLen),
+      KOKKOS_LAMBDA(const lno_t w) {
+        lno_t i = rowWorklist(w);
+        hash_t hash = KokkosKernels::Impl::xorshiftHash((hash_t) i + hashedRound);
+        if (tempStatus(i) == rowStatus(i) && tempHash(i) == hash && tempIdx(i) == i) {
+          //vertex i has max status in neighborhood so is in set
+          rowStatus(i) = 1;
+        }
+        else if(tempStatus(i) == 1) {
+          //vertex i is out of set (within neighborhood of another that was selected to be in set)
+          rowStatus(i) = -1;
+        }
+      });
+      //now that row statuses have been updated, compact both worklists (tuple_state_update has the col statuses, and rowStatus has the rows)
+      Kokkos::parallel_scan(range_pol(0, rowWorkLen),
+      KOKKOS_LAMBDA(const lno_t w, lno_t& lindex, bool finalPass) {
+        lno_t i = rowWorklist(w);
+        if(rowStatus(i) == 0)
+        {
+          if(finalPass)
+            tempWorklist(lindex) = i;
+          lindex++;
+        }
+      }, rowWorkLen);
+      std::swap(rowWorklist, tempWorklist);
+      Kokkos::parallel_scan(range_pol(0, colWorkLen),
+      KOKKOS_LAMBDA(const lno_t w, lno_t& lindex, bool finalPass) {
+        lno_t i = colWorklist(w);
+        if(colStatus(i) == 0)
+        {
+          if(finalPass)
+            tempWorklist(lindex) = i;
+          lindex++;
+        }
+      }, colWorkLen);
+      std::swap(colWorklist, tempWorklist);
+      round++;
+    }
+    if(numRounds)
+      *numRounds = round;
+    lno_t numInSet = 0;
+    Kokkos::parallel_reduce(range_pol(0, numVerts),
+    KOKKOS_LAMBDA(lno_t i, lno_t& lcount)
+    {
+      if(rowStatus(i) == 1)
+        lcount++;
+    }, numInSet);
+    labels_t setList(Kokkos::ViewAllocateWithoutInitializing("D2MIS"), numInSet);
+    Kokkos::parallel_scan(range_pol(0, numVerts),
+    KOKKOS_LAMBDA(lno_t i, lno_t& lcount, bool finalPass)
+    {
+      if(rowStatus(i) == 1)
+      {
+        if(finalPass)
+          setList(lcount) = i;
+        lcount++;
+      }
+    });
+    return setList;
+  }
 };
 
 }}}
