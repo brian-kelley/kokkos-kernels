@@ -356,20 +356,21 @@ KOKKOS_FORCEINLINE_FUNCTION Value xorshiftHash(Value v)
 {
   using PlainUnsignedValue = typename std::make_unsigned<typename std::remove_cv<Value>::type>::type;
   static_assert(std::is_same<PlainUnsignedValue, uint32_t>::value || std::is_same<PlainUnsignedValue, uint64_t>::value,
-      "KokkosKernels::Impl::xorshiftHash(): value type must be a 32- or 64-bit integer.");
+      "KokkosKernels::Impl::xorshiftHash(): value type must be a 32- or 64-bit unsigned integer.");
   if(std::is_same<Value, uint32_t>::value)
   {
-    v ^= v << 13;
-    v ^= v >> 17;
-    v ^= v << 5;
-    return static_cast<Value>(v); //ignore possible change in sign
+    uint64_t x = v;
+    x ^= x >> 12;
+    x ^= x << 25;
+    x ^= x >> 27;
+    return static_cast<Value>((x * 2685821657736338717ULL - 1) >> 16);
   }
   else if(std::is_same<Value, uint64_t>::value)
   {
-    v ^= v << 13;
-    v ^= v >> 7;
-    v ^= v << 17;
-    return static_cast<Value>(v); //ignore possible change in sign
+    v ^= v >> 12;
+    v ^= v << 25;
+    v ^= v >> 27;
+    return static_cast<Value>(v * 2685821657736338717ULL - 1);
   }
   //cannot get here without triggering static_assert
   return Value();
