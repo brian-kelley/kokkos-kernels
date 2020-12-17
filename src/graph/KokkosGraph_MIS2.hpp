@@ -107,8 +107,6 @@ graph_d2_mis(const rowmap_t& rowmap, const colinds_t& colinds, MIS2_Algorithm al
       Impl::D2_MIS_RandomPriority<device_t, rowmap_t, colinds_t, lno_view_t, false> mis(rowmap, colinds);
       return mis.compute(numRounds);
     }
-    default:
-      throw std::runtime_error("MIS2 alg not imlemented yet");
   }
   throw std::invalid_argument("graph_d2_mis: invalid algorithm");
 }
