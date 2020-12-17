@@ -270,7 +270,7 @@ namespace KokkosBatched {
         // regieter blocking (not about team parallelism).
         // this mb should vary according to
         // - team policy (smaller) or range policy (bigger)
-        // - space (cuda vs host)
+        // - space (gpu vs host)
         // - blocksize input (blk <= 4 mb = 2, otherwise mb = 4), etc.
 #if defined(KOKKOS_ENABLE_CUDA)
         template<typename ActiveMemorySpaceType> KOKKOS_INLINE_FUNCTION static constexpr
@@ -305,7 +305,7 @@ namespace KokkosBatched {
     using Gemm = Level3;
     using Trsm = Level3;
     using Trmm = Level3;
-    using Trtri = Level3; // TODO: Need new level for Trtri?
+    using Trtri = Level3;
     using LU   = Level3;
     using InverseLU = Level3;
     using SolveLU   = Level3;

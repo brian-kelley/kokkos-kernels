@@ -107,6 +107,26 @@ graph_d2_mis(const rowmap_t& rowmap, const colinds_t& colinds, MIS2_Algorithm al
       Impl::D2_MIS_RandomPriority<device_t, rowmap_t, colinds_t, lno_view_t, false> mis(rowmap, colinds);
       return mis.compute(numRounds);
     }
+    case MIS2_BELL:
+    {
+      Impl::D2_MIS_Bell<device_t, rowmap_t, colinds_t, lno_view_t> mis;
+      return mis.compute(rowmap, colinds, numRounds);
+    }
+    case MIS2_RANDOMIZED:
+    {
+      Impl::D2_MIS_Randomized<device_t, rowmap_t, colinds_t, lno_view_t> mis;
+      return mis.compute(rowmap, colinds, numRounds);
+    }
+    case MIS2_WORKLIST:
+    {
+      Impl::D2_MIS_Worklist<device_t, rowmap_t, colinds_t, lno_view_t> mis;
+      return mis.compute(rowmap, colinds, numRounds);
+    }
+    case MIS2_PACKEDSTATUS:
+    {
+      Impl::D2_MIS_RandomPriority<device_t, rowmap_t, colinds_t, lno_view_t, false> mis(rowmap, colinds);
+      return mis.compute(numRounds);
+    }
     default:
       throw std::runtime_error("MIS2 alg not imlemented yet");
   }

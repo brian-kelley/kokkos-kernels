@@ -25,7 +25,7 @@ IF(NOT KOKKOSKERNELS_HAS_TRILINOS)
   ENDIF()
   SET(KokkosKernels_VERSION_MAJOR 3)
   SET(KokkosKernels_VERSION_MINOR 2)
-  SET(KokkosKernels_VERSION_PATCH 0)
+  SET(KokkosKernels_VERSION_PATCH 1)
 ENDIF()
 
 IF(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.12.0")
@@ -169,7 +169,6 @@ ELSE()
   # Enable Layout Types for ETI
   # ==================================================================
   INCLUDE(cmake/kokkoskernels_eti_layouts.cmake)
-
   # ==================================================================
   # Enable Third Party Libraries
   # ==================================================================
