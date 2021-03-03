@@ -123,7 +123,7 @@ struct MaximalMatching
     matches = lno_view_t(Kokkos::ViewAllocateWithoutInitializing("Matches"), numVerts);
   }
 
-  static KOKKOS_FORCEINLINE_FUNCTION status_t computeEdgeStatus(status_t v1, status_t v2, status_t hashedRound, status_t hashMask_, status_t numVerts_)
+  static KOKKOS_FORCEINLINE_FUNCTION status_t computeEdgeStatus(status_t v1, status_t v2, status_t hashedRound, status_t hashMask_, status_t numVerts_, status_t seed_)
   {
     if(v1 > v2)
     {
@@ -135,13 +135,13 @@ struct MaximalMatching
     //  -Most significant bits should be pseudorandom
     //  -No collisions should be possible between any two edges.
     //  -So, the least significant bits will hold v1 * numVerts + v2 + 1.
-    return (xorshift64(v1 ^ xorshift64(v2 ^ hashedRound)) & hashMask_) | (v1 * numVerts_ + v2 + 1);
+    return (xorshift64(v1 ^ xorshift64(v2 ^ hashedRound ^ xorshift64(seed_))) & hashMask_) | (v1 * numVerts_ + v2 + 1);
   }
 
   struct RefreshVertexStatus
   {
-    RefreshVertexStatus(const status_view_t& vertStatus_, const worklist_t& worklist_, const rowmap_t& rowmap_, const entries_t& entries_, lno_t nv_, status_t hashedRound_, status_t hashMask_, bool firstRound_, const bool_view_t& isMatched_, lno_t workLen_)
-      : vertStatus(vertStatus_), worklist(worklist_), rowmap(rowmap_), entries(entries_), nv(nv_), hashedRound(hashedRound_), hashMask(hashMask_), firstRound(firstRound_), isMatched(isMatched_), workLen(workLen_)
+    RefreshVertexStatus(const status_view_t& vertStatus_, const worklist_t& worklist_, const rowmap_t& rowmap_, const entries_t& entries_, lno_t nv_, status_t hashedRound_, status_t hashMask_, bool firstRound_, const bool_view_t& isMatched_, lno_t workLen_, status_t seed_)
+      : vertStatus(vertStatus_), worklist(worklist_), rowmap(rowmap_), entries(entries_), nv(nv_), hashedRound(hashedRound_), hashMask(hashMask_), firstRound(firstRound_), isMatched(isMatched_), workLen(workLen_), seed(seed_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(lno_t w) const
@@ -159,7 +159,7 @@ struct MaximalMatching
         //The result is to not change the minimum for i.
         if(!isMatched(nei))
         {
-          status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv);
+          status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv, seed);
           if(edgeStatus < minStat)
             minStat = edgeStatus;
         }
@@ -189,7 +189,7 @@ struct MaximalMatching
         //The result is to not change the minimum for i.
         if(!isMatched(nei))
         {
-          status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv);
+          status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv, seed);
           if(edgeStatus < ls)
             ls = edgeStatus;
         }
@@ -211,12 +211,13 @@ struct MaximalMatching
     bool firstRound;
     bool_view_t isMatched;
     lno_t workLen;
+    status_t seed;
   };
 
   struct DecideMatchesFunctor
   {
-    DecideMatchesFunctor(const status_view_t& vertStatus_, const rowmap_t& rowmap_, const entries_t& entries_, lno_t nv_, const worklist_t& worklist_, const lno_view_t& matches_, status_t hashedRound_, status_t hashMask_, const bool_view_t& isMatched_, lno_t workLen_)
-      : vertStatus(vertStatus_), rowmap(rowmap_), entries(entries_), nv(nv_), worklist(worklist_), matches(matches_), hashedRound(hashedRound_), hashMask(hashMask_), isMatched(isMatched_), workLen(workLen_)
+    DecideMatchesFunctor(const status_view_t& vertStatus_, const rowmap_t& rowmap_, const entries_t& entries_, lno_t nv_, const worklist_t& worklist_, const lno_view_t& matches_, status_t hashedRound_, status_t hashMask_, const bool_view_t& isMatched_, lno_t workLen_, status_t seed_)
+      : vertStatus(vertStatus_), rowmap(rowmap_), entries(entries_), nv(nv_), worklist(worklist_), matches(matches_), hashedRound(hashedRound_), hashMask(hashMask_), isMatched(isMatched_), workLen(workLen_), seed(seed_)
     {}
 
     KOKKOS_INLINE_FUNCTION void operator()(lno_t w) const
@@ -244,7 +245,7 @@ struct MaximalMatching
         if(nei <= i || nei >= nv)
           continue;
         status_t neiStat = vertStatus(nei);
-        status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv);
+        status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv, seed);
         if(edgeStatus == iStat && edgeStatus == neiStat)
         {
           mergeNei = nei;
@@ -294,7 +295,7 @@ struct MaximalMatching
         if(nei <= i || nei >= nv)
           return;
         status_t neiStat = vertStatus(nei);
-        status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv);
+        status_t edgeStatus = computeEdgeStatus(i, nei, hashedRound, hashMask, nv, seed);
         //this is a min-reduction and a valid match for i is unique
         if(edgeStatus == iStat && edgeStatus == neiStat)
           lmatch = nei;
@@ -322,6 +323,7 @@ struct MaximalMatching
     status_t hashMask;
     bool_view_t isMatched;
     lno_t workLen;
+    status_t seed;
   };
 
   struct CompactWorklistFunctor
@@ -355,7 +357,7 @@ struct MaximalMatching
     status_view_t vertStatus;
   };
 
-  lno_view_t compute()
+  void compute()
   {
     auto execSpaceEnum = KokkosKernels::Impl::kk_get_exec_space_type<exec_space>();
     bool useTeams = (execSpaceEnum == KokkosKernels::Impl::Exec_CUDA) && (entries.extent(0) / numVerts >= 16);
@@ -370,11 +372,11 @@ struct MaximalMatching
       team_pol dummyPolicy(1, 1, vectorLength);
       //Compute the recommended team size for RefreshColStatus and DecideSetFunctor (will be constant)
       {
-        RefreshVertexStatus refreshVert(vertStatus, vertWorklist, rowmap, entries, numVerts, 0, hashMask, false, isMatched, 0);
+        RefreshVertexStatus refreshVert(vertStatus, vertWorklist, rowmap, entries, numVerts, 0, hashMask, false, isMatched, 0, seed);
         refreshTeamSize = dummyPolicy.team_size_max(refreshVert, Kokkos::ParallelForTag());
       }
       {
-        DecideMatchesFunctor decideMatches(vertStatus, rowmap, entries, numVerts, vertWorklist, matches, 0, hashMask, isMatched, 0);
+        DecideMatchesFunctor decideMatches(vertStatus, rowmap, entries, numVerts, vertWorklist, matches, 0, hashMask, isMatched, 0, seed);
         decideTeamSize = dummyPolicy.team_size_max(decideMatches, Kokkos::ParallelForTag());
       }
     }
@@ -384,12 +386,12 @@ struct MaximalMatching
     KokkosKernels::Impl::sequential_fill(matches);
     status_t round = 0;
     lno_t workLen = numVerts;
-    while(true)
+    //while(true)
     {
       //Compute new vertex statuses
       status_t hashedRound = xorshift64(round);
       {
-        RefreshVertexStatus refreshVert(vertStatus, vertWorklist, rowmap, entries, numVerts, hashedRound, hashMask, round == 0, isMatched, workLen);
+        RefreshVertexStatus refreshVert(vertStatus, vertWorklist, rowmap, entries, numVerts, hashedRound, hashMask, round == 0, isMatched, workLen, seed);
         if(useTeams)
           Kokkos::parallel_for(team_pol((workLen + refreshTeamSize - 1) / refreshTeamSize, refreshTeamSize, vectorLength), refreshVert);
         else
@@ -397,20 +399,19 @@ struct MaximalMatching
       }
       //Then find matches
       {
-        DecideMatchesFunctor decideMatches(vertStatus, rowmap, entries, numVerts, vertWorklist, matches, hashedRound, hashMask, isMatched, workLen);
+        DecideMatchesFunctor decideMatches(vertStatus, rowmap, entries, numVerts, vertWorklist, matches, hashedRound, hashMask, isMatched, workLen, seed);
         if(useTeams)
           Kokkos::parallel_for(team_pol((workLen + decideTeamSize - 1) / decideTeamSize, decideTeamSize, vectorLength), decideMatches);
         else
           Kokkos::parallel_for(range_pol(0, workLen), decideMatches);
       }
       //Compact worklist (keep vertices which are not OUT_SET)
-      Kokkos::parallel_scan(range_pol(0, workLen), CompactWorklistFunctor(vertWorklist, tempWorklist, isMatched, vertStatus), workLen);
-      if(workLen == 0)
-        break;
-      std::swap(vertWorklist, tempWorklist);
-      round++;
+      //Kokkos::parallel_scan(range_pol(0, workLen), CompactWorklistFunctor(vertWorklist, tempWorklist, isMatched, vertStatus), workLen);
+      //if(workLen == 0)
+      //  break;
+      //std::swap(vertWorklist, tempWorklist);
+      //round++;
     }
-    return matches;
   }
 
   rowmap_t rowmap;
@@ -420,6 +421,7 @@ struct MaximalMatching
   all_worklists_t allWorklists;
   lno_view_t matches;
   status_t hashMask;
+  status_t seed;
 };
 
 template<typename device_t, typename rowmap_t, typename entries_t, typename lno_view_t>

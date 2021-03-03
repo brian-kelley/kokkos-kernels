@@ -65,9 +65,11 @@ graph_match(const rowmap_t& rowmap, const colinds_t& colinds)
     return labels_t();
   }
   Impl::MaximalMatching<device_t, rowmap_t, colinds_t, labels_t> matching(rowmap, colinds);
-  return matching.compute();
+  matching.compute();
+  return matching.matches;
 }
 
+/*
 //Run matching-based coarsening for numSteps iterations, producing coarsening labels with clusters of max size 2^numSteps.
 template <typename device_t, typename rowmap_t, typename colinds_t, typename labels_t = typename colinds_t::non_const_type>
 labels_t
@@ -97,6 +99,7 @@ graph_match_coarsen(const rowmap_t& rowmap, const colinds_t& colinds, int numSte
   MMC mc(rowmap, colinds);
   return mc.compute(numSteps, numClusters);
 }
+*/
 
 }  // end namespace Experimental
 }  // end namespace KokkosGraph
