@@ -75,33 +75,33 @@ namespace KokkosSparse {
 }
 
 
-#define KOKKOSSPARSE_GAUSS_SEIDEL_SYMBOLIC_ETI_SPEC_AVAIL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE ) \
+#define KOKKOSSPARSE_GAUSS_SEIDEL_SYMBOLIC_ETI_SPEC_AVAIL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE ) \
   template<>                                                            \
   struct gauss_seidel_symbolic_eti_spec_avail<                          \
                                                KokkosKernels::Experimental::KokkosKernelsHandle< \
                                                                                                 const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE, \
                                                                                                 EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE> , \
-                                               Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE, \
+                                               Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
                                                             Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                                             Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-                                               Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE, \
+                                               Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                                             Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                                             Kokkos::MemoryTraits<Kokkos::Unmanaged> > > \
   { enum : bool { value = true }; };
 
-#define KOKKOSSPARSE_GAUSS_SEIDEL_NUMERIC_ETI_SPEC_AVAIL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE ) \
+#define KOKKOSSPARSE_GAUSS_SEIDEL_NUMERIC_ETI_SPEC_AVAIL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE ) \
   template<>                                                            \
   struct gauss_seidel_numeric_eti_spec_avail<                           \
                                               KokkosKernels::Experimental::KokkosKernelsHandle< \
                                                                                                const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE, \
                                                                                                EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE> , \
-                                              Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE, \
+                                              Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
                                                            Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                                            Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-                                              Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE, \
+                                              Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                                            Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                                            Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-                                              Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE, \
+                                              Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft, \
                                                            Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                                            Kokkos::MemoryTraits<Kokkos::Unmanaged> > > \
   { enum : bool { value = true }; };
@@ -413,66 +413,66 @@ namespace KokkosSparse {
   }
 }
 
-#define KOKKOSSPARSE_GAUSS_SEIDEL_SYMBOLIC_ETI_SPEC_DECL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE ) \
+#define KOKKOSSPARSE_GAUSS_SEIDEL_SYMBOLIC_ETI_SPEC_DECL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE ) \
   extern template struct                                                \
   GAUSS_SEIDEL_SYMBOLIC<                                                \
                          KokkosKernels::Experimental::KokkosKernelsHandle< \
                                                                           const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE, \
                                                                           EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE> , \
-                         Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE, \
+                         Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
                                       Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-                         Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE, \
+                         Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                       Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                       Kokkos::MemoryTraits<Kokkos::Unmanaged> > , \
                          false, true >;
 
 
-#define KOKKOSSPARSE_GAUSS_SEIDEL_SYMBOLIC_ETI_SPEC_INST( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE) \
+#define KOKKOSSPARSE_GAUSS_SEIDEL_SYMBOLIC_ETI_SPEC_INST( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE) \
   template struct                                                       \
   GAUSS_SEIDEL_SYMBOLIC<                                                \
                          KokkosKernels::Experimental::KokkosKernelsHandle< \
                                                                           const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE, \
                                                                           EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE> , \
-                         Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE, \
+                         Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
                                       Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-                         Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE, \
+                         Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                       Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                       Kokkos::MemoryTraits<Kokkos::Unmanaged> > , \
                          false, true > ;
 
-#define KOKKOSSPARSE_GAUSS_SEIDEL_NUMERIC_ETI_SPEC_DECL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE,SLOW_MEM_SPACE ) \
+#define KOKKOSSPARSE_GAUSS_SEIDEL_NUMERIC_ETI_SPEC_DECL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE,SLOW_MEM_SPACE ) \
   extern template struct                                                \
   GAUSS_SEIDEL_NUMERIC<                                                 \
                         KokkosKernels::Experimental::KokkosKernelsHandle< \
                                                                          const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE, \
                                                                          EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE> , \
-                        Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                        Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft,  \
                                      Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-                        Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE, \
+                        Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                      Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-                        Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,  \
+                        Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft, \
                                      Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                      Kokkos::MemoryTraits<Kokkos::Unmanaged> > , \
                         false, true >;
 
 
-#define KOKKOSSPARSE_GAUSS_SEIDEL_NUMERIC_ETI_SPEC_INST( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE) \
+#define KOKKOSSPARSE_GAUSS_SEIDEL_NUMERIC_ETI_SPEC_INST( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE) \
   template struct                                                       \
   GAUSS_SEIDEL_NUMERIC<                                                 \
                         KokkosKernels::Experimental::KokkosKernelsHandle< \
                                                                          const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE, \
                                                                          EXEC_SPACE_TYPE, MEM_SPACE_TYPE, SLOW_MEM_SPACE> , \
-                        Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                        Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft,  \
                                      Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-                        Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE, \
+                        Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                      Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-                        Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,  \
+                        Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft, \
                                      Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                      Kokkos::MemoryTraits<Kokkos::Unmanaged> > , \
                         false, true > ;
@@ -531,4 +531,4 @@ namespace KokkosSparse {
 
 
 
-#endif // KOKKOS_BLAS1_MV_IMPL_DOT_HPP_
+#endif // KOKKOSSPARSE_IMPL_GAUSS_SEIDEL_SPEC_HPP_

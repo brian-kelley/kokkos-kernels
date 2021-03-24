@@ -77,7 +77,7 @@ struct spmv_mv_eti_spec_avail {
 }
 
 
-#define KOKKOSSPARSE_SPMV_ETI_SPEC_AVAIL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
+#define KOKKOSSPARSE_SPMV_ETI_SPEC_AVAIL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
     template<> \
     struct spmv_eti_spec_avail<const SCALAR_TYPE, \
                   const ORDINAL_TYPE, \
@@ -85,11 +85,11 @@ struct spmv_mv_eti_spec_avail {
                   Kokkos::MemoryTraits<Kokkos::Unmanaged>, \
                   const OFFSET_TYPE, \
                   SCALAR_TYPE const*, \
-                  LAYOUT_TYPE, \
+                  Kokkos::LayoutLeft, \
                   Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                   Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess>, \
                   SCALAR_TYPE*, \
-                  LAYOUT_TYPE, \
+                  Kokkos::LayoutLeft, \
                   Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                   Kokkos::MemoryTraits<Kokkos::Unmanaged> > \
     { enum : bool { value = true }; };
@@ -367,7 +367,7 @@ struct SPMV_MV<AT, AO, AD, AM, AS,
 // We may spread out definitions (see _DEF macro below) across one or
 // more .cpp files.
 //
-#define KOKKOSSPARSE_SPMV_ETI_SPEC_DECL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE ) \
+#define KOKKOSSPARSE_SPMV_ETI_SPEC_DECL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE ) \
     extern template struct  \
     SPMV<const SCALAR_TYPE, \
          const ORDINAL_TYPE, \
@@ -375,16 +375,16 @@ struct SPMV_MV<AT, AO, AD, AM, AS,
          Kokkos::MemoryTraits<Kokkos::Unmanaged>, \
          const OFFSET_TYPE, \
          SCALAR_TYPE const*, \
-         LAYOUT_TYPE, \
+         Kokkos::LayoutLeft, \
          Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
          Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess>, \
          SCALAR_TYPE*, \
-         LAYOUT_TYPE, \
+         Kokkos::LayoutLeft, \
          Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
          Kokkos::MemoryTraits<Kokkos::Unmanaged>, false, true >;
 
 
-#define KOKKOSSPARSE_SPMV_ETI_SPEC_INST( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
+#define KOKKOSSPARSE_SPMV_ETI_SPEC_INST( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
     template struct  \
     SPMV<const SCALAR_TYPE, \
          const ORDINAL_TYPE, \
@@ -392,11 +392,11 @@ struct SPMV_MV<AT, AO, AD, AM, AS,
          Kokkos::MemoryTraits<Kokkos::Unmanaged>, \
          const OFFSET_TYPE, \
          SCALAR_TYPE const*, \
-         LAYOUT_TYPE, \
+         Kokkos::LayoutLeft, \
          Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
          Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess>, \
          SCALAR_TYPE*, \
-         LAYOUT_TYPE, \
+         Kokkos::LayoutLeft, \
          Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
          Kokkos::MemoryTraits<Kokkos::Unmanaged>, false, true >;
 

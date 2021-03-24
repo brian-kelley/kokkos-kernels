@@ -77,37 +77,37 @@ struct spiluk_numeric_eti_spec_avail {
 }
 
 
-#define KOKKOSSPARSE_SPILUK_NUMERIC_ETI_SPEC_AVAIL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
+#define KOKKOSSPARSE_SPILUK_NUMERIC_ETI_SPEC_AVAIL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
     template<> \
     struct spiluk_numeric_eti_spec_avail< \
                   KokkosKernels::Experimental::KokkosKernelsHandle<\
                                const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE,  \
                                EXEC_SPACE_TYPE, MEM_SPACE_TYPE, MEM_SPACE_TYPE> , \
-                  Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft,  \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft,  \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft,  \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft,  \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<ORDINAL_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<SCALAR_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<SCALAR_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<ORDINAL_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<SCALAR_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<SCALAR_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> > > \
     { enum : bool { value = true }; };
@@ -219,71 +219,71 @@ struct SPILUK_NUMERIC<KernelHandle, ARowMapType, AEntriesType, AValuesType, LRow
 // We may spread out definitions (see _DEF macro below) across one or
 // more .cpp files.
 //
-#define KOKKOSSPARSE_SPILUK_NUMERIC_ETI_SPEC_DECL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE ) \
+#define KOKKOSSPARSE_SPILUK_NUMERIC_ETI_SPEC_DECL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE ) \
     extern template struct  \
     SPILUK_NUMERIC<\
                   KokkosKernels::Experimental::KokkosKernelsHandle<\
                                const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE,  \
                                EXEC_SPACE_TYPE, MEM_SPACE_TYPE, MEM_SPACE_TYPE> , \
-                  Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft,  \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft,  \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft,  \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<ORDINAL_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<SCALAR_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<SCALAR_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<ORDINAL_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<SCALAR_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<SCALAR_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, false, true >;
 
-#define KOKKOSSPARSE_SPILUK_NUMERIC_ETI_SPEC_INST( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
+#define KOKKOSSPARSE_SPILUK_NUMERIC_ETI_SPEC_INST( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
     template struct  \
     SPILUK_NUMERIC<\
                   KokkosKernels::Experimental::KokkosKernelsHandle<\
                                const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE,  \
                                EXEC_SPACE_TYPE, MEM_SPACE_TYPE, MEM_SPACE_TYPE> , \
-                  Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<ORDINAL_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<SCALAR_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<SCALAR_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<ORDINAL_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<ORDINAL_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, \
-                  Kokkos::View<SCALAR_TYPE *, LAYOUT_TYPE,  \
+                  Kokkos::View<SCALAR_TYPE *, Kokkos::LayoutLeft, \
                                Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess> >, false, true >;
 

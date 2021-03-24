@@ -100,6 +100,8 @@ scal (const RMV& R, const AV& a, const XMV& X)
     typename XMV::device_type,
     Kokkos::MemoryTraits<Kokkos::Unmanaged> > XMV_Internal;
 
+  static_assert(!std::is_same<typename XMV_Internal::array_layout, Kokkos::LayoutStride>::value, "scal got layoutstride");
+
   RMV_Internal R_internal = R;
   AV_Internal  a_internal = a;
   XMV_Internal X_internal = X;

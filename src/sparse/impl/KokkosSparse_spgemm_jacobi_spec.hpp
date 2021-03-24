@@ -80,31 +80,31 @@ namespace KokkosSparse {
         KokkosKernels::Experimental::KokkosKernelsHandle<\
         const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE,  \
           EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE, SLOW_MEM_SPACE_TYPE> , \
-        Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+        Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft,  \
           Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
           Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-        Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE,  \
+        Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
           Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
           Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-        Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,  \
+        Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft, \
           Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
           Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-        Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,  \
+        Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
           Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
           Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-        Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE,  \
+        Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
           Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
           Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-        Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,  \
+        Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft, \
           Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
           Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-        Kokkos::View<OFFSET_TYPE *, LAYOUT_TYPE,  \
+        Kokkos::View<OFFSET_TYPE *, Kokkos::LayoutLeft, \
           Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
           Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-        Kokkos::View<ORDINAL_TYPE *, LAYOUT_TYPE,  \
+        Kokkos::View<ORDINAL_TYPE *, Kokkos::LayoutLeft, \
           Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
           Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-        Kokkos::View<SCALAR_TYPE *, LAYOUT_TYPE,  \
+        Kokkos::View<SCALAR_TYPE *, Kokkos::LayoutLeft, \
           Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 	  Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
         Kokkos::View<const SCALAR_TYPE **, LAYOUT_TYPE,  \
@@ -252,31 +252,31 @@ namespace KokkosSparse {
 		 typename KokkosKernels::Experimental::KokkosKernelsHandle< \
 									   const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE, \
 									   EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE, SLOW_MEM_SPACE_TYPE> , \
-		 Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE,	\
+		 Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE,	\
+		 Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<OFFSET_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<OFFSET_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<ORDINAL_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<ORDINAL_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<SCALAR_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<SCALAR_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
 		 Kokkos::View<const SCALAR_TYPE **, LAYOUT_TYPE,	\
@@ -290,31 +290,31 @@ namespace KokkosSparse {
 		 KokkosKernels::Experimental::KokkosKernelsHandle<	\
 								  const OFFSET_TYPE, const ORDINAL_TYPE, const SCALAR_TYPE, \
 								  EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE, SLOW_MEM_SPACE_TYPE> , \
-		 Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE,	\
+		 Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<const OFFSET_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<const OFFSET_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<const ORDINAL_TYPE *, LAYOUT_TYPE,	\
+		 Kokkos::View<const ORDINAL_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<const SCALAR_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<const SCALAR_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<OFFSET_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<OFFSET_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<ORDINAL_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<ORDINAL_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
-		 Kokkos::View<SCALAR_TYPE *, LAYOUT_TYPE,		\
+		 Kokkos::View<SCALAR_TYPE *, Kokkos::LayoutLeft, \
 			      Kokkos::Device<EXEC_SPACE_TYPE, FAST_MEM_SPACE_TYPE>, \
 			      Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
 		 Kokkos::View<const SCALAR_TYPE **, LAYOUT_TYPE,	\

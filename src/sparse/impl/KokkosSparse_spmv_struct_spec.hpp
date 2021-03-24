@@ -77,7 +77,7 @@ namespace KokkosSparse {
 } // namespace KokkosSparse
 
 
-#define KOKKOSSPARSE_SPMV_STRUCT_ETI_SPEC_AVAIL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
+#define KOKKOSSPARSE_SPMV_STRUCT_ETI_SPEC_AVAIL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
   template<>                                                            \
   struct spmv_struct_eti_spec_avail<const SCALAR_TYPE,                  \
                                     const ORDINAL_TYPE,                 \
@@ -85,11 +85,11 @@ namespace KokkosSparse {
                                     Kokkos::MemoryTraits<Kokkos::Unmanaged>, \
                                     const OFFSET_TYPE,                  \
                                     SCALAR_TYPE const*,                 \
-                                    LAYOUT_TYPE,                        \
+                                    Kokkos::LayoutLeft,                 \
                                     Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                     Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess>, \
                                     SCALAR_TYPE*,                       \
-                                    LAYOUT_TYPE,                        \
+                                    Kokkos::LayoutLeft,                 \
                                     Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>, \
                                     Kokkos::MemoryTraits<Kokkos::Unmanaged> > \
   { enum : bool { value = true }; };
@@ -374,7 +374,7 @@ namespace KokkosSparse {
 // We may spread out definitions (see _DEF macro below) across one or
 // more .cpp files.
 //
-#define KOKKOSSPARSE_SPMV_STRUCT_ETI_SPEC_DECL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE ) \
+#define KOKKOSSPARSE_SPMV_STRUCT_ETI_SPEC_DECL( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE ) \
   extern template struct                                                \
   SPMV_STRUCT<const SCALAR_TYPE,                                        \
               const ORDINAL_TYPE,                                       \
@@ -382,16 +382,16 @@ namespace KokkosSparse {
               Kokkos::MemoryTraits<Kokkos::Unmanaged>,                  \
               const OFFSET_TYPE,                                        \
               SCALAR_TYPE const*,                                       \
-              LAYOUT_TYPE,                                              \
+              Kokkos::LayoutLeft,                                       \
               Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>,          \
               Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess>, \
               SCALAR_TYPE*,                                             \
-              LAYOUT_TYPE,                                              \
+              Kokkos::LayoutLeft,                                       \
               Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>,          \
               Kokkos::MemoryTraits<Kokkos::Unmanaged>, false, true >;
 
 
-#define KOKKOSSPARSE_SPMV_STRUCT_ETI_SPEC_INST( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
+#define KOKKOSSPARSE_SPMV_STRUCT_ETI_SPEC_INST( SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE) \
   template struct                                                       \
   SPMV_STRUCT<const SCALAR_TYPE,                                        \
               const ORDINAL_TYPE,                                       \
@@ -399,11 +399,11 @@ namespace KokkosSparse {
               Kokkos::MemoryTraits<Kokkos::Unmanaged>,                  \
               const OFFSET_TYPE,                                        \
               SCALAR_TYPE const*,                                       \
-              LAYOUT_TYPE,                                              \
+              Kokkos::LayoutLeft,                                       \
               Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>,          \
               Kokkos::MemoryTraits<Kokkos::Unmanaged|Kokkos::RandomAccess>, \
               SCALAR_TYPE*,                                             \
-              LAYOUT_TYPE,                                              \
+              Kokkos::LayoutLeft,                                       \
               Kokkos::Device<EXEC_SPACE_TYPE, MEM_SPACE_TYPE>,          \
               Kokkos::MemoryTraits<Kokkos::Unmanaged>, false, true >;
 

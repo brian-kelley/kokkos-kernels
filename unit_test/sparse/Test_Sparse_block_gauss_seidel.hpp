@@ -57,6 +57,7 @@
 #include <iostream>
 #include <complex>
 #include "KokkosSparse_gauss_seidel.hpp"
+#include "KokkosKernels_default_types.hpp"
 
 #ifndef kokkos_complex_double
 #define kokkos_complex_double Kokkos::complex<double>
@@ -134,7 +135,6 @@ int run_block_gauss_seidel_1(
     break;
   }
 
-
   kh.destroy_gs_handle();
   return 0;
 }
@@ -181,7 +181,7 @@ void test_block_gauss_seidel_rank1(lno_t numRows, size_type nnz, lno_t bandwidth
 
   typedef typename device::execution_space exec_space;
   typedef typename crsMat_t::StaticCrsGraphType graph_t;
-  typedef typename crsMat_t::values_type::non_const_type scalar_view_t;
+  typedef Kokkos::View<scalar_t*, default_layout, device> scalar_view_t;
   typedef typename crsMat_t::StaticCrsGraphType::row_map_type::non_const_type lno_view_t;
   typedef typename crsMat_t::StaticCrsGraphType::entries_type::non_const_type lno_nnz_view_t;
   typedef typename Kokkos::Details::ArithTraits<scalar_t>::mag_type mag_t;
@@ -289,7 +289,7 @@ void test_block_gauss_seidel_rank2(lno_t numRows, size_type nnz, lno_t bandwidth
   typedef typename crsMat_t::values_type::non_const_type scalar_view_t;
   typedef typename crsMat_t::StaticCrsGraphType::row_map_type::non_const_type lno_view_t;
   typedef typename crsMat_t::StaticCrsGraphType::entries_type::non_const_type lno_nnz_view_t;
-  typedef Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device> scalar_view2d_t;
+  typedef Kokkos::View<scalar_t**, default_layout, device> scalar_view2d_t;
   typedef typename Kokkos::Details::ArithTraits<scalar_t>::mag_type mag_t;
 
   lno_t numCols = numRows;

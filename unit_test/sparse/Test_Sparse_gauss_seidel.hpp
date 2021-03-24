@@ -60,6 +60,7 @@
 #include "KokkosSparse_gauss_seidel.hpp"
 #include "KokkosSparse_partitioning_impl.hpp"
 #include "KokkosSparse_sor_sequential_impl.hpp"
+#include "KokkosKernels_default_types.hpp"
 
 #ifndef kokkos_complex_double
 #define kokkos_complex_double Kokkos::complex<double>
@@ -84,14 +85,14 @@ int run_gauss_seidel(
     bool classic = false, // only with two-stage, true for sptrsv instead of richardson
     ClusteringAlgorithm clusterAlgo = CLUSTER_DEFAULT) 
 {
+  typedef typename crsMat_t::value_type scalar_t;
   typedef typename crsMat_t::StaticCrsGraphType graph_t;
   typedef typename graph_t::row_map_type lno_view_t;
   typedef typename graph_t::entries_type lno_nnz_view_t;
-  typedef typename crsMat_t::values_type::non_const_type scalar_view_t;
+  typedef Kokkos::View<scalar_t*, default_layout, device> scalar_view_t;
 
   typedef typename lno_view_t::value_type size_type;
   typedef typename lno_nnz_view_t::value_type lno_t;
-  typedef typename scalar_view_t::value_type scalar_t;
 
   typedef KokkosKernelsHandle
       <size_type,lno_t, scalar_t,
@@ -328,8 +329,8 @@ void test_gauss_seidel_rank2(lno_t numRows, size_type nnz, lno_t bandwidth, lno_
   using namespace Test;
   srand(245);
   typedef typename KokkosSparse::CrsMatrix<scalar_t, lno_t, device, void, size_type> crsMat_t;
-  typedef Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device> scalar_view2d_t;
-  typedef Kokkos::View<scalar_t**, Kokkos::LayoutLeft, Kokkos::HostSpace> host_scalar_view2d_t;
+  typedef Kokkos::View<scalar_t**, default_layout, device> scalar_view2d_t;
+  typedef Kokkos::View<scalar_t**, default_layout, Kokkos::HostSpace> host_scalar_view2d_t;
   typedef typename Kokkos::Details::ArithTraits<scalar_t>::mag_type mag_t;
 
   lno_t numCols = numRows;

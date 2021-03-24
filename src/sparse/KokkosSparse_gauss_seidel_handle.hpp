@@ -562,7 +562,11 @@ namespace KokkosSparse{
     using const_ordinal_t = typename const_entries_view_t::value_type;
     using const_scalar_t  = typename const_values_view_t::value_type;
 
+#ifdef KOKKOSKERNELS_INST_LAYOUTLEFT
     using vector_view_t = Kokkos::View<scalar_t**, Kokkos::LayoutLeft, device_t>;
+#else
+    using vector_view_t = Kokkos::View<scalar_t**, Kokkos::LayoutRight, device_t>;
+#endif
 
     using GSHandle = GaussSeidelHandle<input_size_t, input_ordinal_t, input_scalar_t,
                                        ExecutionSpace, TemporaryMemorySpace, PersistentMemorySpace>;

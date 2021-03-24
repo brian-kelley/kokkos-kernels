@@ -59,6 +59,7 @@
 
 
 #include<KokkosKernels_IOUtils.hpp>
+#include<KokkosKernels_default_types.hpp>
 
 
 using namespace KokkosSparse;
@@ -277,7 +278,7 @@ void test_spgemm_jacobi(lno_t numRows, size_type nnz, lno_t bandwidth, lno_t row
   typedef typename device::memory_space c_temp_t;
   typedef typename Kokkos::Device<c_exec_t, c_temp_t> UniformDevice_t;
   typedef typename Kokkos::View<scalar_t **,
-  			typename KokkosKernels::Impl::GetUnifiedLayout<scalar_view_t>::array_layout,
+  			default_layout,
   			UniformDevice_t > view_t;
 
 

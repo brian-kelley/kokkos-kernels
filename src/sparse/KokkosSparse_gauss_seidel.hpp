@@ -314,7 +314,6 @@ namespace KokkosSparse{
                                       bool update_y_vector,
                                       typename KernelHandle::nnz_scalar_t omega,
                                       int numIter){
-
       static_assert (std::is_same<typename KernelHandle::const_size_type,
                      typename lno_row_view_t_::const_value_type>::value,
                      "KokkosSparse::symmetric_gauss_seidel_apply: Size type of the matrix should be same as kernelHandle sizetype.");
@@ -380,15 +379,25 @@ namespace KokkosSparse{
         typename scalar_nnz_view_t_::device_type,
         Kokkos::MemoryTraits<Kokkos::Unmanaged> > Internal_ascalar_nnz_view_t_;
 
+      constexpr bool useDefaultLayout = y_scalar_view_t::rank == 1
+        && !std::is_same<typename x_scalar_view_t::array_layout, Kokkos::LayoutStride>::value
+        && !std::is_same<typename y_scalar_view_t::array_layout, Kokkos::LayoutStride>::value;
+
+#if defined(KOKKOSKERNELS_INST_LAYOUTLEFT)
+      typedef Kokkos::LayoutLeft gs_default_layout;
+#else
+      typedef Kokkos::LayoutRight gs_default_layout;
+#endif
+
       typedef Kokkos::View<
         typename y_scalar_view_t::const_value_type**,
-        typename KokkosKernels::Impl::GetUnifiedLayout<y_scalar_view_t>::array_layout,
+        typename std::conditional<useDefaultLayout, gs_default_layout, typename KokkosKernels::Impl::GetUnifiedLayout<y_scalar_view_t>::array_layout>::type,
         typename y_scalar_view_t::device_type,
         Kokkos::MemoryTraits<Kokkos::Unmanaged> > Internal_yscalar_nnz_view_t_;
 
       typedef Kokkos::View<
         typename x_scalar_view_t::non_const_value_type**,
-        typename KokkosKernels::Impl::GetUnifiedLayout<x_scalar_view_t>::array_layout,
+        typename std::conditional<useDefaultLayout, gs_default_layout, typename KokkosKernels::Impl::GetUnifiedLayout<x_scalar_view_t>::array_layout>::type,
         typename x_scalar_view_t::device_type,
         Kokkos::MemoryTraits<Kokkos::Unmanaged> > Internal_xscalar_nnz_view_t_;
 
@@ -411,8 +420,6 @@ namespace KokkosSparse{
                              update_y_vector,
                              omega,
                              numIter, true, true);
-
-
     }
 
     template <typename KernelHandle,
@@ -436,6 +443,8 @@ namespace KokkosSparse{
                                             typename KernelHandle::nnz_scalar_t omega,
                                             int numIter)
     {
+      static_assert(std::is_same<typename x_scalar_view_t::array_layout, Kokkos::LayoutRight>::value, "APPLY BAD");
+      static_assert(std::is_same<typename y_scalar_view_t::array_layout, Kokkos::LayoutRight>::value, "APPLY BAD");
       // Check compatibility of dimensions at run time.
       if(x_lhs_output_vec.extent(1) != y_rhs_input_vec.extent(1))
       {
@@ -481,6 +490,7 @@ namespace KokkosSparse{
                                           typename KernelHandle::nnz_scalar_t omega,
                                           int numIter)
     {
+      static_assert(std::is_same<typename x_scalar_view_t::array_layout, Kokkos::LayoutRight>::value, "APPLY BAD");
       static_assert (std::is_same<typename KernelHandle::const_size_type,
                      typename lno_row_view_t_::const_value_type>::value,
                      "KokkosSparse::forward_sweep_gauss_seidel_apply: Size type of the matrix should be same as kernelHandle sizetype.");
@@ -547,15 +557,25 @@ namespace KokkosSparse{
         typename scalar_nnz_view_t_::device_type,
         Kokkos::MemoryTraits<Kokkos::Unmanaged> > Internal_ascalar_nnz_view_t_;
 
+      constexpr bool useDefaultLayout = y_scalar_view_t::rank == 1
+        && !std::is_same<typename x_scalar_view_t::array_layout, Kokkos::LayoutStride>::value
+        && !std::is_same<typename y_scalar_view_t::array_layout, Kokkos::LayoutStride>::value;
+
+#if defined(KOKKOSKERNELS_INST_LAYOUTLEFT)
+      typedef Kokkos::LayoutLeft gs_default_layout;
+#else
+      typedef Kokkos::LayoutRight gs_default_layout;
+#endif
+
       typedef Kokkos::View<
         typename y_scalar_view_t::const_value_type**,
-        typename KokkosKernels::Impl::GetUnifiedLayout<y_scalar_view_t>::array_layout,
+        typename std::conditional<useDefaultLayout, gs_default_layout, typename KokkosKernels::Impl::GetUnifiedLayout<y_scalar_view_t>::array_layout>::type,
         typename y_scalar_view_t::device_type,
         Kokkos::MemoryTraits<Kokkos::Unmanaged> > Internal_yscalar_nnz_view_t_;
 
       typedef Kokkos::View<
         typename x_scalar_view_t::non_const_value_type**,
-        typename KokkosKernels::Impl::GetUnifiedLayout<x_scalar_view_t>::array_layout,
+        typename std::conditional<useDefaultLayout, gs_default_layout, typename KokkosKernels::Impl::GetUnifiedLayout<y_scalar_view_t>::array_layout>::type,
         typename x_scalar_view_t::device_type,
         Kokkos::MemoryTraits<Kokkos::Unmanaged> > Internal_xscalar_nnz_view_t_;
 
@@ -580,7 +600,6 @@ namespace KokkosSparse{
                              numIter, true, false);
     }
 
-
     template <typename KernelHandle,
               typename lno_row_view_t_,
               typename lno_nnz_view_t_,
@@ -602,6 +621,7 @@ namespace KokkosSparse{
                                                 typename KernelHandle::nnz_scalar_t omega,
                                                 int numIter)
     {
+      static_assert(std::is_same<typename x_scalar_view_t::array_layout, Kokkos::LayoutRight>::value, "APPLY BAD");
       // Check compatibility of dimensions at run time.
       if(x_lhs_output_vec.extent(1) != y_rhs_input_vec.extent(1))
       {
@@ -646,6 +666,7 @@ namespace KokkosSparse{
                                            bool update_y_vector,
                                            typename KernelHandle::nnz_scalar_t omega,
                                            int numIter){
+      static_assert(std::is_same<typename x_scalar_view_t::array_layout, Kokkos::LayoutRight>::value, "APPLY BAD");
 
       static_assert (std::is_same<typename KernelHandle::const_size_type,
                      typename lno_row_view_t_::const_value_type>::value,
@@ -713,15 +734,25 @@ namespace KokkosSparse{
         typename scalar_nnz_view_t_::device_type,
         Kokkos::MemoryTraits<Kokkos::Unmanaged> > Internal_ascalar_nnz_view_t_;
 
+      constexpr bool useDefaultLayout = y_scalar_view_t::rank == 1
+        && !std::is_same<typename x_scalar_view_t::array_layout, Kokkos::LayoutStride>::value
+        && !std::is_same<typename y_scalar_view_t::array_layout, Kokkos::LayoutStride>::value;
+
+#if defined(KOKKOSKERNELS_INST_LAYOUTLEFT)
+      typedef Kokkos::LayoutLeft gs_default_layout;
+#else
+      typedef Kokkos::LayoutRight gs_default_layout;
+#endif
+
       typedef Kokkos::View<
         typename y_scalar_view_t::const_value_type**,
-        typename KokkosKernels::Impl::GetUnifiedLayout<y_scalar_view_t>::array_layout,
+        typename std::conditional<useDefaultLayout, gs_default_layout, typename KokkosKernels::Impl::GetUnifiedLayout<y_scalar_view_t>::array_layout>::type,
         typename y_scalar_view_t::device_type,
         Kokkos::MemoryTraits<Kokkos::Unmanaged> > Internal_yscalar_nnz_view_t_;
 
       typedef Kokkos::View<
         typename x_scalar_view_t::non_const_value_type**,
-        typename KokkosKernels::Impl::GetUnifiedLayout<x_scalar_view_t>::array_layout,
+        typename std::conditional<useDefaultLayout, gs_default_layout, typename KokkosKernels::Impl::GetUnifiedLayout<y_scalar_view_t>::array_layout>::type,
         typename x_scalar_view_t::device_type,
         Kokkos::MemoryTraits<Kokkos::Unmanaged> > Internal_xscalar_nnz_view_t_;
 
@@ -744,8 +775,6 @@ namespace KokkosSparse{
                              update_y_vector,
                              omega,
                              numIter, false, true);
-
-
     }
 
     template <typename KernelHandle,
@@ -769,6 +798,7 @@ namespace KokkosSparse{
                                                  typename KernelHandle::nnz_scalar_t omega,
                                                  int numIter)
     {
+      static_assert(std::is_same<typename x_scalar_view_t::array_layout, Kokkos::LayoutRight>::value, "APPLY BAD");
       // Check compatibility of dimensions at run time.
       if(x_lhs_output_vec.extent(1) != y_rhs_input_vec.extent(1))
       {
