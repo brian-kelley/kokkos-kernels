@@ -84,3 +84,8 @@ KOKKOSKERNELS_ADD_EXECUTABLE(
   sparse_spiluk
   SOURCES KokkosSparse_spiluk.cpp 
   )
+
+KOKKOSKERNELS_ADD_EXECUTABLE(
+  prototype
+  SOURCES prototype.cpp 
+  )
