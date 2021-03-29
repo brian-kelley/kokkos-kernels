@@ -9,7 +9,7 @@ using Kokkos::subview;
 using Matrix = Kokkos::View<double**, Kokkos::HostSpace>;
 using Vector = Kokkos::View<double*, Kokkos::HostSpace>;
 using ConstVector = Kokkos::View<const double*, Kokkos::HostSpace>;
-constexpr int n = 64;
+constexpr int n = 4;
 
 template<typename M, typename CV, typename V>
 void check(const M& A, const CV& b, const V& x)
@@ -24,6 +24,7 @@ void check(const M& A, const CV& b, const V& x)
     {
       resid -= A(i, j) * x(j);
     }
+    //std::cout << "    Row " << i << " resid: " << fabs(resid) << '\n';
     err += resid * resid;
   }
   std::cout << "Error: " << err << '\n';
@@ -44,45 +45,67 @@ void runSerial(const Matrix& A, const ConstVector& b)
   check(A, b, x);
 }
 
-void runHierarchical(const Matrix& A, const ConstVector& b)
+void runScan(const Matrix& A, const ConstVector& b)
 {
-  Vector x("x", n);
+  Vector x("y", n);
+  Vector change("change", n);
+  Matrix B("B", n, n);
   for(int i = 0; i < n; i++)
   {
-    x(i) = b(i) / A(i, i);
+    double dinv = 1.0 / A(i, i);
+    for(int j = 0; j <= i; j++)
+    {
+      B(i, j) = A(i, j) * dinv;
+    }
+    x(i) = b(i) * dinv;
   }
+  //Up-sweeps
   for(int bs = 1; bs < n; bs *= 2)
   {
-    //cout << "Starting blocksize = " << bs << '\n';
-    for(int begin = 0; begin < n; begin += 2 * bs)
+    std::cout << "Starting step " << 1 + log2(bs) << " of up-sweep\n";
+    int bs2 = 2 * bs;
+    //for each block...
+    for(int begin = 0; begin < n; begin += bs2)
     {
       int mid = begin + bs;
       int end = mid + bs;
-      /*
-      cout << "Updating with block: A(" << mid << ":" << end << ", " << begin << ":" << mid << ")\n";
-      cout << "  Checking that incoming x(begin:mid) solves system...\n";
-      cout << "  ";
-      check(
-          subview(A, Kokkos::make_pair(begin, mid), Kokkos::make_pair(begin, mid)),
-          subview(b, Kokkos::make_pair(begin, mid)),
-          subview(x, Kokkos::make_pair(begin, mid)));
-      */
-      //update: x(mid..end) -= D^-1(mid:end) * A(mid:end, begin:mid) * x(begin:mid)
-      Vector xUpdate("update", bs);
+      //update x(mid:end) using -B * x(begin:mid)
       for(int i = mid; i < end; i++)
       {
         double sum = 0;
         for(int j = begin; j < mid; j++)
         {
-          sum += A(i, j) * x(j);
+          sum += B(i, j) * x(j);
         }
-        for(int j = mid; j < i; j++)
+        std::cout << "  Updated x(" << i << ")\n";
+        x(i) -= sum;
+        change(i) = -sum;
+      }
+    }
+  }
+  //Save current values before down-sweeps begin
+  //Down-sweeps
+  for(int bs = n / 4; bs; bs /= 2)
+  {
+    std::cout << "Starting step " << -1 + log2(n / bs) << " of down-sweep\n";
+    int bs2 = 2 * bs;
+    //for each block...
+    for(int begin = 0; begin < n; begin += bs2)
+    {
+      int mid = begin + bs;
+      int end = mid + bs;
+      //update x(mid:end) using -B * (x-update)(begin:mid)
+      for(int i = mid; i < end; i++)
+      {
+        double sum = 0;
+        for(int j = begin; j < mid; j++)
         {
-          sum += A(i, j) * xUpdate(j - mid);
+          double chg = change(j);
+          //std::cout << "x(" << j << ") has changed by " << change << '\n';
+          sum += B(i, j) * chg;
         }
-        //std::cout << "  Updating x(" << i << ")\n";
-        xUpdate(i - mid) = -sum / A(i, i);
-        x(i) -= sum / A(i, i);
+        std::cout << "    Updating x(" << i << ")\n";
+        x(i) -= sum;
       }
     }
   }
@@ -111,7 +134,7 @@ int main()
     runSerial(A, b);
     std::cout << '\n';
     std::cout << "Running hierarchical solve:\n";
-    runHierarchical(A, b);
+    runScan(A, b);
     std::cout << '\n';
   }
   Kokkos::finalize();
