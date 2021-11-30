@@ -243,7 +243,9 @@ struct SortedCountEntriesTeam {
         },
         risingEdges);
     Kokkos::single(Kokkos::PerThread(t),
-                   [&]() { Crowcounts(i) = risingEdges + 1; });
+       [&]() {
+         Crowcounts(i) = risingEdges + 1;
+       });
   }
 
   size_t team_shmem_size(int teamSize) const {
@@ -463,6 +465,11 @@ void runSortedCountEntries(
     // Estimate max number of uncompressed entries in each row of C
     int vector_length     = 1;
     int vector_length_max = TeamPol::vector_length_max();
+    //FIXME SYCL: workaround for Kokkos#4573
+#ifdef KOKKOS_ENABLE_SYCL
+    if(std::is_same<execution_space, Kokkos::Experimental::SYCL>::value)
+      vector_length_max = 8;
+#endif
     while (vector_length * 2 <= vector_length_max &&
            (size_type)vector_length * 2 <= pot_est_nnz) {
       vector_length *= 2;

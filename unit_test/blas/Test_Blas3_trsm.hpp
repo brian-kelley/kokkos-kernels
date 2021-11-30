@@ -170,7 +170,7 @@ void impl_test_trsm(const char* side, const char* uplo, const char* trans,
   vgemm.alpha = alpha_trmm;
   vgemm.beta  = beta;
   Kokkos::parallel_for("KokkosBlas::Test::trsm_VanillaGEMM",
-                       Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO, 16),
+                       Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO),
                        vgemm);
   Kokkos::fence();
 

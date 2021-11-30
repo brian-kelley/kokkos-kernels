@@ -2295,10 +2295,50 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
 
     size_type numEdges = 0;
     nnz_lno_persistent_work_view_t _kok_src, _kok_dst;
+    /*
+    {
+      auto rowmapHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->xadj);
+      auto entriesHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), this->adj);
+      numEdges = 0;
+      for(int i = 0; i < this->nv; i++)
+      {
+        auto b = rowmapHost(i);
+        auto e = rowmapHost(i + 1);
+        for(size_t j = b; j < e; j++)
+        {
+          if(i > entriesHost(j))
+            numEdges++;
+        }
+      }
+      Kokkos::View<nnz_lno_t*, Kokkos::HostSpace> srcHost("asdf", numEdges);
+      Kokkos::View<nnz_lno_t*, Kokkos::HostSpace> dstHost("asdf", numEdges);
+      _kok_src = nnz_lno_persistent_work_view_t("asdf", numEdges);
+      _kok_dst = nnz_lno_persistent_work_view_t("asdf", numEdges);
+      int ecount = 0;
+      for(int i = 0; i < this->nv; i++)
+      {
+        auto b = rowmapHost(i);
+        auto e = rowmapHost(i + 1);
+        for(size_t j = b; j < e; j++)
+        {
+          if(i > entriesHost(j))
+          {
+            srcHost(ecount) = i;
+            dstHost(ecount) = entriesHost(j);
+            ecount++;
+          }
+        }
+      }
+      Kokkos::deep_copy(_kok_src, srcHost);
+      Kokkos::deep_copy(_kok_dst, dstHost);
+    }
+    */
 
     this->cp->get_lower_diagonal_edge_list(this->nv, this->ne, this->xadj,
                                            this->adj, numEdges, _kok_src,
                                            _kok_dst);
+    std::cout << "Input graph V/E: " << this->nv << "/" << this->ne << '\n';
+    std::cout << "Lower edge list lengths: " << _kok_src.extent(0) << ", " << _kok_dst.extent(0) << '\n';
     size_type num_work_edges = numEdges;
 
     // allocate memory for vertex ban colors, and tentative bans
@@ -2394,6 +2434,8 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
                                     edge_conflict_marker),
             num_conflict_reduction);
 
+
+      std::cout << "Iter " << i << ": reduced conflicting edges by " << num_conflict_reduction << '\n';
       MyExecSpace().fence();
 
       /*
@@ -2418,12 +2460,13 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
       // num_work_edges - num_conflict_reduction << std::endl;
 
       // if (num_work_edges <= num_conflict_reduction) break;
+      std::cout << "  " << num_work_edges - num_conflict_reduction << " edges remain.\n";
       if (num_work_edges - num_conflict_reduction == 0) break;
 
       // if the reduction is good enough w.r.t. parameters, create new worklist.
       if (num_work_edges > ps_min &&
           num_conflict_reduction / double(num_work_edges) > pps_cutoff) {
-        // use_pps = false;
+        use_pps = false;
         if (use_pps) {
           Kokkos::parallel_scan("KokkosGraph::GraphColoring::CalcEdgePositions",
                                 my_exec_space(0, num_work_edges),
@@ -2459,7 +2502,7 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
 
       // create ban colors using the colored neighbors
       Kokkos::parallel_for(
-          "KokkosGraph::GraphColoring::HalfEdgeBancColors",
+          "KokkosGraph::GraphColoring::HalfEdgeBanColors",
           my_exec_space(0, num_work_edges),
           halfedge_ban_colors(_kok_src, _kok_dst, kok_colors, color_set,
                               color_ban, edge_conflict_indices,
@@ -2517,6 +2560,8 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
       delete timer;
     }
   }  // color_graph (end)
+
+#define HOSTVIEW(x) Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), x);
 
   /*! \brief Functor to initialize the colors of the vertices randomly,
    *  with the hope that it will reduce the conflict in parallel execution.
@@ -2633,12 +2678,12 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
       nnz_lno_t src_id = srcs(work_index);
       nnz_lno_t dst_id = dsts(work_index);
 
-      color_t source_color = kokcolors(src_id);
-      color_t dst_color    = kokcolors(dst_id);
+      color_t source_color = Kokkos::atomic_load(&kokcolors(src_id));
+      color_t dst_color    = Kokkos::atomic_load(&kokcolors(dst_id));
 
-      // if the source and destionation have the same color, e.g. same color and
+      // if the source and destination have the same color, e.g. same color and
       // same color_set. then we have a conflict.
-      char is_conflicted = (source_color != 0 && (source_color == dst_color) &&
+      bool is_conflicted = (source_color != 0 && (source_color == dst_color) &&
                             (color_set(src_id) == color_set(dst_id)));
       if (is_conflicted) {
         // this functor works both sides, although there is a reverse edge that
@@ -2649,7 +2694,7 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
         //
         // TODO: dst_id seems to reduce the num colors, without increaisng
         // runtime
-        kokcolors(dst_id)           = 0;
+        Kokkos::atomic_store(&kokcolors(dst_id), 0);
         tentative_color_ban(dst_id) = 0;
       }
     }
@@ -2700,7 +2745,7 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
                     _color_set(s))) ||  // if source is colored, and destination
                                         // color set is larger than source
             (dc && (_color_set(s) >
-                    _color_set(d)))  // or if destionation is colored, and the
+                    _color_set(d)))  // or if destination is colored, and the
                                      // source color set is larger
         ) {
           // then no need to look at this edge anymore.
@@ -2818,7 +2863,7 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
       nnz_lno_t src_id     = srcs(work_index);
       color_t src_col      = kokcolors(src_id);
 
-      // check destionation color.
+      // check destination color.
       // continue only if it is not colored
       if ((!dst_col && src_col) || (!src_col && dst_col)) {
         // check src color, send its color to ban colors only if it is colored.
@@ -2830,7 +2875,7 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
         if (src_col_set == dest_col_set) {
           // atomic or, as no threads owns 'dst' (neither src)
           nnz_lno_t uncolored_vertex = dst_col ? src_id : dst_id;
-          Kokkos::atomic_fetch_or<color_t>(&(color_ban(uncolored_vertex)),
+          Kokkos::atomic_or<color_t>(&(color_ban(uncolored_vertex)),
                                            src_col | dst_col);
           edge_conflict_marker(work_index) = 0;
         }
@@ -2890,14 +2935,14 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
     void operator()(const size_type &ii) const {
       size_type work_index = conflict_indices(ii);
       nnz_lno_t dst_id     = dsts(work_index);
-      color_t dst_col      = kokcolors(dst_id);
+      color_t dst_col      = Kokkos::atomic_load(&kokcolors(dst_id));
 
-      // if the destionation is colored already, we have nothing to do.
-      // otherwise, if destionation is uncolored, or if its color < 0 (it has
+      // if the destination is colored already, we have nothing to do.
+      // otherwise, if destination is uncolored, or if its color < 0 (it has
       // been tentatively colored) then we need to check the source.
       if (dst_col == 0 || (dst_col & first_digit)) {
         nnz_lno_t src_id = srcs(work_index);
-        color_t src_col  = kokcolors(src_id);
+        color_t src_col  = Kokkos::atomic_load(&kokcolors(src_id));
         // if source is colored, again we have nothing to do.
         // if it is tentatively colored or uncolored, then we have work to do.
         if (src_col == 0 || (src_col & first_digit)) {
@@ -2919,30 +2964,30 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
                     dst_id;  // TODO which one is better? this seems to be not
                              // much changing
                 // idx smaller_index = src_id;
-                // then both have been colored tentavitely. propoagate the color
+                // then both have been colored tentatively. propagate the color
                 // of src to dst.
-                Kokkos::atomic_fetch_or<color_t>(
+                Kokkos::atomic_or<color_t>(
                     &(tentative_color_ban(smaller_index)), -src_col);
                 nnz_lno_t banned_colors  = ~(color_ban(smaller_index) |
                                             tentative_color_ban(smaller_index));
                 nnz_lno_t larger_col     = banned_colors & (-banned_colors);
-                kokcolors(smaller_index) = -(larger_col);
+                Kokkos::atomic_store(&kokcolors(smaller_index), -(larger_col));
               }
             } else if (src_col != 0) {
-              // if src is tentavily colored, and dst is not colored,
+              // if src is tentatively colored, and dst is not colored,
               // then we send the color information to dst's tentative_ban.
 
-              // Kokkos::atomic_fetch_or<color_type>(&(color_ban(dst_id)),
+              // Kokkos::atomic_or<color_type>(&(color_ban(dst_id)),
               // -src_col);
-              Kokkos::atomic_fetch_or<color_t>(&(tentative_color_ban(dst_id)),
+              Kokkos::atomic_or<color_t>(&(tentative_color_ban(dst_id)),
                                                -src_col);
             } else if (dst_col != 0) {
-              // if it is dst tentatively colors, but src is not colored,
+              // if dst is tentatively colored, but src is not colored,
               // then we send the dst color info to src's tentative_ban
 
-              // Kokkos::atomic_fetch_or<color_type>(&(color_ban(src_id)),
+              // Kokkos::atomic_or<color_type>(&(color_ban(src_id)),
               // -dst_col);
-              Kokkos::atomic_fetch_or<color_t>(&(tentative_color_ban(src_id)),
+              Kokkos::atomic_or<color_t>(&(tentative_color_ban(src_id)),
                                                -dst_col);
             } else {
               // idx smaller_index = src_id < dst_id > 0 ? src_id: dst_id;
@@ -2968,9 +3013,9 @@ class GraphColor_EB : public GraphColor<HandleType, in_row_index_view_type_,
               // in only the rightmost 1 to be set, which is our color.
               src_col = banned_colors & (-banned_colors);
               // set it to minus of the color, as it is tentative coloring.
-              kokcolors(smaller_index) = -(src_col);
+              Kokkos::atomic_store(&kokcolors(smaller_index), -(src_col));
               // send the color information to dst's tentative color ban.
-              Kokkos::atomic_fetch_or<color_t>(
+              Kokkos::atomic_or<color_t>(
                   &(tentative_color_ban(larger_index)), src_col);
               // Kokkos::atomic_fetch_or<color_type>(&(color_ban(dst_id)),
               // src_col);

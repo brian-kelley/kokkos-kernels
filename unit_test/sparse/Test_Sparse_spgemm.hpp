@@ -99,8 +99,11 @@ int run_spgemm(crsMat_t A, crsMat_t B,
 
   kh.create_spgemm_handle(spgemm_algorithm);
 
+std::cout << "Calling symbolic...\n";
   KokkosSparse::spgemm_symbolic(kh, A, false, B, false, C);
+std::cout << "Calling numeric...\n";
   KokkosSparse::spgemm_numeric(kh, A, false, B, false, C);
+std::cout << "Done!\n";
   kh.destroy_spgemm_handle();
 
   return 0;
@@ -252,6 +255,8 @@ template <typename scalar_t, typename lno_t, typename size_type,
           typename device>
 void test_spgemm(lno_t m, lno_t k, lno_t n, size_type nnz, lno_t bandwidth,
                  lno_t row_size_variance, bool oldInterface = false) {
+  if(oldInterface)
+    return;
   using namespace Test;
   // device::execution_space::initialize();
   // device::execution_space::print_configuration(std::cout);
@@ -343,13 +348,13 @@ void test_spgemm(lno_t m, lno_t k, lno_t n, size_type nnz, lno_t bandwidth,
       else
         res = run_spgemm<crsMat_t, device>(A, B, spgemm_algorithm, output_mat);
     } catch (const char *message) {
-      EXPECT_TRUE(is_expected_to_fail) << algo;
+      EXPECT_TRUE(is_expected_to_fail) << algo << ": " << message;
       failed = true;
     } catch (std::string message) {
-      EXPECT_TRUE(is_expected_to_fail) << algo;
+      EXPECT_TRUE(is_expected_to_fail) << algo << ": " << message;
       failed = true;
     } catch (std::exception &e) {
-      EXPECT_TRUE(is_expected_to_fail) << algo;
+      EXPECT_TRUE(is_expected_to_fail) << algo << ": " << e.what();
       failed = true;
     }
     EXPECT_TRUE((failed == is_expected_to_fail));

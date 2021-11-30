@@ -260,6 +260,13 @@ class GraphColoringHandle {
       std::cout
           << "Serial Execution Space, Default Algorithm: COLORING_SERIAL\n";
 #endif
+    else if (exec == KokkosKernels::Impl::Exec_SYCL) {
+      //FIXME SYCL: Do not use EB
+      this->coloring_algorithm_type = COLORING_VBBIT;
+#ifdef VERBOSE
+      std::cout << ExecutionSpace::name()
+                << " Execution Space, Default Algorithm: COLORING_VBBIT\n";
+#endif
     } else if (KokkosKernels::Impl::kk_is_gpu_exec_space<ExecutionSpace>()) {
       this->coloring_algorithm_type = COLORING_EB;
 #ifdef VERBOSE
@@ -267,10 +274,10 @@ class GraphColoringHandle {
                 << " Execution Space, Default Algorithm: COLORING_EB\n";
 #endif
     } else {
-      this->coloring_algorithm_type = COLORING_VB;
+      this->coloring_algorithm_type = COLORING_VBBIT;
 #ifdef VERBOSE
       std::cout << ExecutionSpace::name()
-                << " Execution Space, Default Algorithm: COLORING_VB\n";
+                << " Execution Space, Default Algorithm: COLORING_VBBIT\n";
 #endif
     }
   }
@@ -459,7 +466,8 @@ class GraphColoringHandle {
       size_type_temp_work_view_t lower_count("LowerXADJ", nv + 1);
       size_type new_num_edge = 0;
       typedef Kokkos::RangePolicy<ExecutionSpace> my_exec_space;
-      if (KokkosKernels::Impl::kk_is_gpu_exec_space<ExecutionSpace>()) {
+      //if (KokkosKernels::Impl::kk_is_gpu_exec_space<ExecutionSpace>()) {
+      if (false) {
         int teamSizeMax = 0;
         int vector_size = 0;
 
@@ -474,6 +482,9 @@ class GraphColoringHandle {
         teamSizeMax =
             KokkosKernels::Impl::get_suggested_team_size<team_policy_t>(
                 clt, vector_size);
+
+        teamSizeMax = 1;
+        vector_size = 1;
 
         Kokkos::parallel_for("KokkosGraph::CountLowerTriangleTeam",
                              team_policy_t((nv + teamSizeMax - 1) / teamSizeMax,
@@ -499,7 +510,7 @@ class GraphColoringHandle {
             new_num_edge);
         Kokkos::parallel_for(
             "KokkosGraph::FillLowerTriangleTeam",
-            team_policy_t(nv / teamSizeMax + 1, teamSizeMax, vector_size),
+            team_policy_t((nv + teamSizeMax - 1) / teamSizeMax, teamSizeMax, vector_size),
             FillLowerTriangleTeam<row_index_view_type, nonzero_view_type,
                                   size_type_temp_work_view_t,
                                   nnz_lno_persistent_work_view_t>(

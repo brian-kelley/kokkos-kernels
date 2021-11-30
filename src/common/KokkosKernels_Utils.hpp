@@ -53,6 +53,9 @@
 #include "KokkosKernels_ExecSpaceUtils.hpp"
 #include "KokkosKernels_SimpleUtils.hpp"
 #include "KokkosKernels_SparseUtils.hpp"
+// For sort_and_merge_graph, used in SYCL version of symmetrize_graph_symbolic_hashmap.
+// NOTE: once the FIXME_SYCL below for Kokkos #4567 is resolved, can remove this.
+#include "KokkosKernels_Sorting.hpp"
 #include "KokkosKernels_PrintUtils.hpp"
 #include "KokkosKernels_VectorUtils.hpp"
 
@@ -117,65 +120,16 @@ int get_suggested_team_size(Functor &f, int vector_size, size_t sharedPerTeam,
     return 1;
 }
 
-template <typename idx_array_type, typename idx_edge_array_type,
-          typename idx_out_edge_array_type, typename team_member>
-struct FillSymmetricEdges {
-  typedef typename idx_array_type::value_type idx;
-  idx num_rows;
-  idx nnz;
-  idx_array_type xadj;
-  idx_edge_array_type adj;
-
-  idx_out_edge_array_type srcs;
-  idx_out_edge_array_type dsts;
-
-  FillSymmetricEdges(typename idx_array_type::value_type num_rows_,
-                     idx_array_type xadj_, idx_edge_array_type adj_,
-
-                     idx_out_edge_array_type srcs_,
-                     idx_out_edge_array_type dsts_)
-      : num_rows(num_rows_),
-        nnz(adj_.extent(0)),
-        xadj(xadj_),
-        adj(adj_),
-        srcs(srcs_),
-        dsts(dsts_) {}
-
-  KOKKOS_INLINE_FUNCTION
-  void operator()(const team_member &teamMember) const {
-    idx ii = teamMember.league_rank() * teamMember.team_size() +
-             teamMember.team_rank();
-    if (ii >= num_rows) return;
-    idx row_begin = xadj[ii];
-    idx row_end   = xadj[ii + 1];
-
-    Kokkos::parallel_for(
-        Kokkos::ThreadVectorRange(teamMember, row_end - row_begin), [&](idx i) {
-          idx adjind   = i + row_begin;
-          idx colIndex = adj[adjind];
-          if (colIndex < num_rows) {
-            srcs[adjind] = ii + 1;
-            dsts[adjind] = colIndex + 1;
-            if (colIndex != ii) {
-              srcs[adjind + nnz] = colIndex + 1;
-              dsts[adjind + nnz] = ii + 1;
-            }
-          }
-        });
-  }
-};
-
 template <typename in_lno_row_view_t, typename in_lno_nnz_view_t,
           typename hashmap_t, typename out_lno_row_view_t, typename team_member>
 struct FillSymmetricEdgesHashMap {
-  typedef typename in_lno_row_view_t::value_type idx;
+  typedef typename in_lno_row_view_t::non_const_value_type idx;
   idx num_rows;
   idx nnz;
   in_lno_row_view_t xadj;
   in_lno_nnz_view_t adj;
   hashmap_t umap;
   out_lno_row_view_t pre_pps;
-  bool lower_only;
 
   FillSymmetricEdgesHashMap(idx num_rows_, in_lno_row_view_t xadj_,
                             in_lno_nnz_view_t adj_, hashmap_t hashmap_,
@@ -188,44 +142,67 @@ struct FillSymmetricEdgesHashMap {
         pre_pps(pre_pps_) {}
 
   KOKKOS_INLINE_FUNCTION
-  void operator()(const team_member &teamMember /*, idx &nnz*/) const {
+  void operator()(const team_member &teamMember, idx &lfail) const {
     typedef typename std::remove_reference<decltype(pre_pps(0))>::type
         atomic_incr_type;
-    idx ii = teamMember.league_rank() * teamMember.team_size() +
-             teamMember.team_rank();
-    if (ii >= num_rows) {
-      return;
-    }
-    idx row_begin = xadj[ii];
-    idx row_end   = xadj[ii + 1];
-    Kokkos::parallel_for(
-        Kokkos::ThreadVectorRange(teamMember, row_end - row_begin), [&](idx i) {
-          idx adjind   = i + row_begin;
-          idx colIndex = adj[adjind];
-          if (colIndex < num_rows) {
-            if (colIndex < ii) {
-              Kokkos::UnorderedMapInsertResult r =
-                  umap.insert(Kokkos::pair<idx, idx>(colIndex, ii));
-              if (r.success()) {
-                Kokkos::atomic_fetch_add(&(pre_pps(ii)), atomic_incr_type(1));
+    idx teamFail;
+    Kokkos::parallel_reduce(Kokkos::TeamThreadRange(teamMember, teamMember.team_size()),
+    [&](idx tid, idx& lteamFail)
+    {
+      idx ii = teamMember.league_rank() * teamMember.team_size() + tid;
+      if (ii >= num_rows) {
+        return;
+      }
+      idx row_begin = xadj[ii];
+      idx row_end   = xadj[ii + 1];
+      idx threadFail;
+      Kokkos::parallel_reduce(
+          Kokkos::ThreadVectorRange(teamMember, row_end - row_begin), [&](idx i, idx& lthreadFail) {
+            idx adjind   = i + row_begin;
+            idx colIndex = adj[adjind];
+            if (colIndex < num_rows) {
+              if (colIndex < ii) {
+                uint64_t edgeID = (uint64_t) colIndex * num_rows + ii;
+                Kokkos::UnorderedMapInsertResult r = umap.insert(edgeID);
+                if (r.success()) {
+                  Kokkos::atomic_fetch_add(&(pre_pps(ii)), atomic_incr_type(1));
 
-                Kokkos::atomic_fetch_add(&(pre_pps(colIndex)),
-                                         atomic_incr_type(1));
-              }
-            } else if (colIndex > ii) {
-              Kokkos::UnorderedMapInsertResult r =
-                  umap.insert(Kokkos::pair<idx, idx>(ii, colIndex));
-              if (r.success()) {
-                Kokkos::atomic_fetch_add(&(pre_pps(colIndex)),
-                                         atomic_incr_type(1));
+                  Kokkos::atomic_fetch_add(&(pre_pps(colIndex)),
+                                           atomic_incr_type(1));
+                }
+                else if(r.failed())
+                {
+                  lthreadFail++;
+                }
+              } else if (colIndex > ii) {
+                uint64_t edgeID = (uint64_t) ii * num_rows + colIndex;
+                Kokkos::UnorderedMapInsertResult r = umap.insert(edgeID);
+                if (r.success()) {
+                  Kokkos::atomic_fetch_add(&(pre_pps(colIndex)),
+                                           atomic_incr_type(1));
 
+                  Kokkos::atomic_fetch_add(&(pre_pps(ii)), atomic_incr_type(1));
+                }
+                else if(r.failed())
+                {
+                  lthreadFail++;
+                }
+              } else {
                 Kokkos::atomic_fetch_add(&(pre_pps(ii)), atomic_incr_type(1));
               }
-            } else {
-              Kokkos::atomic_fetch_add(&(pre_pps(ii)), atomic_incr_type(1));
             }
-          }
-        });
+          }, threadFail);
+      Kokkos::single(Kokkos::PerThread(teamMember),
+      [&]()
+      {
+        lteamFail += threadFail;
+      });
+    }, teamFail);
+    Kokkos::single(Kokkos::PerTeam(teamMember),
+    [&]()
+    {
+      lfail += teamFail;
+    });
   }
 };
 
@@ -242,8 +219,7 @@ struct FillSymmetricLowerEdgesHashMap {
 
   FillSymmetricLowerEdgesHashMap(idx num_rows_, in_lno_row_view_t xadj_,
                                  in_lno_nnz_view_t adj_, hashmap_t hashmap_,
-                                 out_lno_row_view_t pre_pps_,
-                                 bool /* lower_only_ */ = false)
+                                 out_lno_row_view_t pre_pps_)
       : num_rows(num_rows_),
         nnz(adj_.extent(0)),
         xadj(xadj_),
@@ -330,7 +306,8 @@ struct FillSymmetricCRS_HashMap {
           idx colIndex = adj[adjind];
           if (colIndex < num_rows) {
             if (colIndex < ii) {
-              if (umap.insert(Kokkos::pair<idx, idx>(colIndex, ii)).success()) {
+              uint64_t edgeID = (uint64_t) colIndex * num_rows + ii;
+              if (umap.insert(edgeID).success()) {
                 idx cAdjInd = Kokkos::atomic_fetch_add(&(pre_pps(colIndex)),
                                                        atomic_incr_type(1));
                 idx iAdjInd = Kokkos::atomic_fetch_add(&(pre_pps(ii)),
@@ -339,7 +316,8 @@ struct FillSymmetricCRS_HashMap {
                 sym_adj[iAdjInd] = colIndex;
               }
             } else if (colIndex > ii) {
-              if (umap.insert(Kokkos::pair<idx, idx>(ii, colIndex)).success()) {
+              uint64_t edgeID = (uint64_t) ii * num_rows + colIndex;
+              if (umap.insert(edgeID).success()) {
                 idx cAdjInd = Kokkos::atomic_fetch_add(&(pre_pps(colIndex)),
                                                        atomic_incr_type(1));
                 idx iAdjInd = Kokkos::atomic_fetch_add(&(pre_pps(ii)),
@@ -1041,6 +1019,224 @@ void symmetrize_and_get_lower_diagonal_edge_list(
   }
 }
 
+// FIXME SYCL: Temporary workaround for Kokkos #4567 (UnorderedMap not de-duplicating keys)
+#ifdef KOKKOS_ENABLE_SYCL
+//Note: this is basically the same as TransposeMatrix, except it also keeps the non-transpose entries.
+template <typename in_row_view_t, typename in_nnz_view_t,
+          typename out_row_view_t, typename out_nnz_view_t,
+          typename tempwork_row_view_t, typename MyExecSpace>
+struct GraphSymmetrizationFunctor {
+  struct CountTag {};
+  struct CountTransposeTag {};
+  struct FillTag {};
+  struct FillTransposeTag {};
+
+  typedef Kokkos::RangePolicy<CountTag, MyExecSpace> range_count_policy_t;
+  typedef Kokkos::TeamPolicy<CountTransposeTag, MyExecSpace> team_count_transpose_policy_t;
+  typedef Kokkos::RangePolicy<FillTag, MyExecSpace> range_fill_policy_t;
+  typedef Kokkos::TeamPolicy<FillTransposeTag, MyExecSpace> team_fill_transpose_policy_t;
+
+  typedef typename team_count_transpose_policy_t::member_type team_count_transpose_member_t;
+  typedef typename team_fill_transpose_policy_t::member_type team_fill_transpose_member_t;
+
+  typedef typename in_nnz_view_t::non_const_value_type nnz_lno_t;
+  typedef typename in_row_view_t::non_const_value_type size_type;
+
+  typename in_nnz_view_t::non_const_value_type num_rows;
+  in_row_view_t xadj;
+  in_nnz_view_t adj;
+  out_row_view_t sym_xadj;     // allocated
+  out_nnz_view_t sym_adj;      // allocated
+  tempwork_row_view_t tmp_sym_xadj;
+  nnz_lno_t team_work_size;
+
+  GraphSymmetrizationFunctor(nnz_lno_t num_rows_, in_row_view_t xadj_,
+                  in_nnz_view_t adj_, out_row_view_t sym_xadj_,
+                  out_nnz_view_t sym_adj_, tempwork_row_view_t tmp_sym_xadj_,
+                  nnz_lno_t team_row_work_size_)
+      : num_rows(num_rows_),
+        xadj(xadj_),
+        adj(adj_),
+        sym_xadj(sym_xadj_),
+        sym_adj(sym_adj_),
+        tmp_sym_xadj(tmp_sym_xadj_),
+        team_work_size(team_row_work_size_) {}
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const CountTag&, nnz_lno_t i) const {
+    //Count symmetrizable entries (in [numRows x numRows] submatrix)
+    nnz_lno_t entriesInRow = 0;
+    for(size_type j = xadj(i); j < xadj(i + 1); j++)
+    {
+      if(adj(j) < num_rows)
+        entriesInRow++;
+    }
+    sym_xadj(i) = entriesInRow;
+    if(i == num_rows - 1)
+      sym_xadj(num_rows) = 0;
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const CountTransposeTag &,
+                  const team_count_transpose_member_t &teamMember) const {
+    const nnz_lno_t team_row_begin = teamMember.league_rank() * team_work_size;
+    const nnz_lno_t team_row_end =
+        KOKKOSKERNELS_MACRO_MIN(team_row_begin + team_work_size, num_rows);
+    // TODO we dont need to go over rows
+    // just go over nonzeroes.
+    Kokkos::parallel_for(
+        Kokkos::TeamThreadRange(teamMember, team_row_begin, team_row_end),
+        [&](const nnz_lno_t &row_index) {
+          const size_type col_begin = xadj[row_index];
+          const size_type col_end   = xadj[row_index + 1];
+          const nnz_lno_t num_entries = col_end - col_begin;
+          Kokkos::parallel_for(
+              Kokkos::ThreadVectorRange(teamMember, num_entries),
+              [&](nnz_lno_t i) {
+                const size_type adjind   = i + col_begin;
+                const nnz_lno_t colIndex = adj[adjind];
+                //Do not include diagonal entries here - they were already counted from the non-transpose
+                if(colIndex != row_index && colIndex < num_rows)
+                {
+                  Kokkos::atomic_fetch_add(&sym_xadj(colIndex), size_type(1));
+                }
+              });
+        });
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const FillTag&, nnz_lno_t i) const {
+    size_type origBegin = xadj(i);
+    size_type symBegin = tmp_sym_xadj(i);
+    size_type numEntries = xadj(i + 1) - origBegin;
+    tmp_sym_xadj(i) += numEntries;
+    size_type offset = 0;
+    for(size_type j = 0; j < numEntries; j++)
+    {
+      nnz_lno_t col = adj(origBegin + j);
+      if(col < num_rows)
+      {
+        sym_adj(symBegin + offset) = col;
+        offset++;
+      }
+    }
+  }
+
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const FillTransposeTag &, const team_fill_transpose_member_t &teamMember) const {
+    const nnz_lno_t team_row_begin = teamMember.league_rank() * team_work_size;
+    const nnz_lno_t team_row_end =
+        KOKKOSKERNELS_MACRO_MIN(team_row_begin + team_work_size, num_rows);
+
+    Kokkos::parallel_for(
+        Kokkos::TeamThreadRange(teamMember, team_row_begin, team_row_end),
+        [&](const nnz_lno_t &row_index) {
+          // const nnz_lno_t teamsize = teamMember.team_size();
+          // for (nnz_lno_t row_index = team_row_begin + teamMember.team_rank();
+          // row_index < team_row_end; row_index += teamsize){
+          const size_type col_begin = xadj[row_index];
+          const size_type col_end   = xadj[row_index + 1];
+          const nnz_lno_t num_entries = col_end - col_begin;
+          Kokkos::parallel_for(
+              Kokkos::ThreadVectorRange(teamMember, num_entries),
+              [&](nnz_lno_t i) {
+                const size_type adjind   = i + col_begin;
+                const nnz_lno_t colIndex = adj[adjind];
+                //Again, do not include diagonal entries. They were copied from non-transpose.
+                if(colIndex != row_index && colIndex < num_rows)
+                {
+                  const size_type pos = Kokkos::atomic_fetch_add(&tmp_sym_xadj(colIndex), size_type(1));
+                  sym_adj(pos) = row_index;
+                }
+              });
+        });
+  }
+};
+
+template <typename in_lno_row_view_t, typename in_lno_nnz_view_t,
+          typename out_lno_row_view_t, typename out_lno_nnz_view_t,
+          typename MyExecSpace>
+void symmetrize_graph_symbolic_hashmap(
+    typename in_lno_row_view_t::value_type num_rows_to_symmetrize,
+    in_lno_row_view_t xadj, in_lno_nnz_view_t adj, out_lno_row_view_t &sym_xadj,
+    out_lno_nnz_view_t &sym_adj) {
+  using size_type = typename in_lno_row_view_t::non_const_value_type;
+  using nnz_lno_t = typename in_lno_nnz_view_t::non_const_value_type;
+  using tempwork_row_view_t = Kokkos::View<size_type*, typename MyExecSpace::memory_space>;
+
+  if(xadj.extent(0) <= 1)
+  {
+    //Input graph has zero vertices
+    sym_xadj = out_lno_row_view_t();
+    sym_adj = out_lno_nnz_view_t();
+    return;
+  }
+  else if(adj.extent(0) == 0)
+  {
+    //Input graph has zero entries
+    sym_xadj = out_lno_row_view_t("sym_xadj", xadj.extent(0));
+    sym_adj = out_lno_nnz_view_t();
+    return;
+  }
+
+  using Functor_t = GraphSymmetrizationFunctor <in_lno_row_view_t, in_lno_nnz_view_t,
+                          out_lno_row_view_t, out_lno_nnz_view_t,
+                          tempwork_row_view_t, MyExecSpace>;
+
+  using range_count_policy_t = typename Functor_t::range_count_policy_t;
+  using team_count_transpose_policy_t = typename Functor_t::team_count_transpose_policy_t;
+  using range_fill_policy_t = typename Functor_t::range_fill_policy_t;
+  using team_fill_transpose_policy_t = typename Functor_t::team_fill_transpose_policy_t;
+
+  size_type nnz = adj.extent(0);
+  nnz_lno_t num_rows = xadj.extent(0) - 1;
+
+  // determine vector lanes per thread
+  int thread_size = kk_get_suggested_vector_size(
+      num_rows, nnz, kk_get_exec_space_type<MyExecSpace>());
+
+  // determine threads per team
+  int team_size = kk_get_suggested_team_size(
+      thread_size, kk_get_exec_space_type<MyExecSpace>());
+
+  //Extra copy of rowmap to be used as atomic counters for inserting transposed entries.
+  tempwork_row_view_t tmp_row_view(
+      Kokkos::view_alloc(Kokkos::WithoutInitializing, "tmp_row_view"),
+      num_rows + 1);
+
+  out_lno_row_view_t sym_xadj_unmerged(Kokkos::view_alloc(Kokkos::WithoutInitializing, "sym_xadj"), xadj.extent(0));
+  out_lno_nnz_view_t sym_adj_unmerged;
+  //don't know how big to allocate sym_adj, yet. Just construct functor with it unallocated for now.
+  Functor_t functor(num_rows, xadj, adj, sym_xadj_unmerged, sym_adj_unmerged, tmp_row_view, team_size);
+  //Copy over entry counts from non-transposed graph
+  Kokkos::parallel_for(range_count_policy_t(0, num_rows), functor);
+  //Then count transposed entries (excluding diagonals) to those counts
+  Kokkos::parallel_for(team_count_transpose_policy_t((num_rows + team_size - 1) / team_size, team_size, thread_size), functor);
+
+  kk_exclusive_parallel_prefix_sum<out_lno_row_view_t, MyExecSpace>(num_rows + 1, sym_xadj_unmerged);
+  size_type sym_nnz;
+  Kokkos::deep_copy(sym_nnz, Kokkos::subview(sym_xadj_unmerged, num_rows));
+  //Now allocate sym entries, and provide it to functor
+  sym_adj_unmerged = out_lno_nnz_view_t(Kokkos::view_alloc(Kokkos::WithoutInitializing, "sym_adj"), sym_nnz);
+  functor.sym_adj = sym_adj_unmerged;
+
+  Kokkos::deep_copy(tmp_row_view, sym_xadj_unmerged);
+
+  //Fill in non-transposed entries
+  Kokkos::parallel_for(range_fill_policy_t(0, num_rows), functor);
+  //and then transposed entries (excluding diagonals)
+  Kokkos::parallel_for(team_fill_transpose_policy_t((num_rows + team_size - 1) / team_size, team_size, thread_size), functor);
+
+  // We now have the correct symmetrized graph, but with unmerged and unsorted entries.
+  // Sort and merge as a post processing step.
+  KokkosKernels::sort_and_merge_graph<MyExecSpace, out_lno_row_view_t, out_lno_nnz_view_t>(sym_xadj_unmerged, sym_adj_unmerged, sym_xadj, sym_adj);
+}
+
+#else
+
+// Default symmetrization; use UnorderedMap to
+// ensure (i,j) and (j,i) are each inserted just once
+
 template <typename in_lno_row_view_t, typename in_lno_nnz_view_t,
           typename out_lno_row_view_t, typename out_lno_nnz_view_t,
           typename MyExecSpace>
@@ -1050,7 +1246,7 @@ void symmetrize_graph_symbolic_hashmap(
     out_lno_nnz_view_t &sym_adj) {
   typedef typename in_lno_row_view_t::non_const_value_type idx;
 
-  idx nnz = adj.extent(0);
+  size_t nnz = adj.extent(0);
 
   // idx_out_edge_array_type tmp_srcs("tmpsrc", nnz * 2);
   // idx_out_edge_array_type tmp_dsts("tmpdst",nnz * 2);
@@ -1061,16 +1257,20 @@ void symmetrize_graph_symbolic_hashmap(
   // typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
 
   // TODO: Should change this to temporary memory space?
-  typedef Kokkos::UnorderedMap<Kokkos::pair<idx, idx>, void, MyExecSpace>
+  typedef Kokkos::UnorderedMap<uint64_t, void, MyExecSpace>
       hashmap_t;
 
-  out_lno_row_view_t pre_pps_("pre_pps", num_rows_to_symmetrize + 1);
+  out_lno_row_view_t pre_pps_(Kokkos::view_alloc(Kokkos::WithoutInitializing, "pre_pps"), num_rows_to_symmetrize + 1);
 
   idx num_symmetric_edges = 0;
+
+  size_t hashmapToAllocate = nnz * 1.2;
+  while(true)
   {
-    hashmap_t umap(nnz);
+    hashmap_t umap(hashmapToAllocate);
     umap.clear();
     umap.end_erase();
+    Kokkos::deep_copy(MyExecSpace(), pre_pps_, idx(0));
     FillSymmetricEdgesHashMap<in_lno_row_view_t, in_lno_nnz_view_t, hashmap_t,
                               out_lno_row_view_t, team_member_t>
         fse(num_rows_to_symmetrize, xadj, adj, umap, pre_pps_);
@@ -1080,21 +1280,26 @@ void symmetrize_graph_symbolic_hashmap(
 
     get_suggested_vector_size<idx, MyExecSpace>(vector_size, xadj.extent(0) - 1,
                                                 nnz);
+    std::cout << "Running hashmap symmetrize with vector length " << vector_size << '\n';
 
-    teamSizeMax = get_suggested_team_size<team_policy>(fse, vector_size);
+    teamSizeMax = get_suggested_team_size<team_policy, decltype(fse), Kokkos::ParallelReduceTag>(fse, vector_size);
 
     team_policy pol((num_rows_to_symmetrize + teamSizeMax - 1) / teamSizeMax,
                     teamSizeMax, vector_size);
-    Kokkos::parallel_for(
+    idx numFail;
+    Kokkos::parallel_reduce(
         "KokkosKernels::Common::SymmetrizeGraphSymbolicHashMap::S0", pol,
-        fse /*, num_symmetric_edges*/);
-    MyExecSpace().fence();
+        fse, numFail);
+    if(numFail == idx(0))
+      break;
+    //Retry with larger hashmap allocation
+    hashmapToAllocate *= 1.5;
+    std::cout << "Symmetrize: edge counting failed to insert " << numFail << " edges, so retrying with bigger allocation.\n";
   }
 
   if (num_rows_to_symmetrize > 0)
     exclusive_parallel_prefix_sum<out_lno_row_view_t, MyExecSpace>(
         num_rows_to_symmetrize + 1, pre_pps_);
-  MyExecSpace().fence();
 
   // out_lno_row_view_t d_sym_edge_size = Kokkos::subview(pre_pps_,
   // num_rows_to_symmetrize, num_rows_to_symmetrize );
@@ -1107,13 +1312,12 @@ void symmetrize_graph_symbolic_hashmap(
   sym_adj = out_lno_nnz_view_t(
       Kokkos::view_alloc(Kokkos::WithoutInitializing, "sym_adj"),
       num_symmetric_edges);
-  MyExecSpace().fence();
   sym_xadj = out_lno_row_view_t(
       Kokkos::view_alloc(Kokkos::WithoutInitializing, "sym_xadj"),
       num_rows_to_symmetrize + 1);
   Kokkos::deep_copy(sym_xadj, pre_pps_);
   {
-    hashmap_t umap(nnz);
+    hashmap_t umap(hashmapToAllocate);
     FillSymmetricCRS_HashMap<in_lno_row_view_t, in_lno_nnz_view_t, hashmap_t,
                              out_lno_row_view_t, out_lno_nnz_view_t,
                              team_member_t>
@@ -1131,11 +1335,11 @@ void symmetrize_graph_symbolic_hashmap(
                     teamSizeMax, vector_size);
     Kokkos::parallel_for(
         "KokkosKernels::Common::SymmetrizeGraphSymbolicHashMap::S1", pol, FSCH);
-    MyExecSpace().fence();
   }
 
   MyExecSpace().fence();
 }
+#endif
 
 template <typename from_vector, typename to_vector, typename MyExecSpace>
 void copy_vector(size_t num_elements, from_vector from, to_vector to) {

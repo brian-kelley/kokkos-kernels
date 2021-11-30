@@ -110,7 +110,7 @@ void build_matrices(const int M, const int N, const int K,
   vgemm.beta  = beta;
 
   Kokkos::parallel_for("KokkosBlas::Test::gemm_VanillaGEMM",
-                       Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO, 16),
+                       Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO),
                        vgemm);
   Kokkos::fence();
 }
@@ -202,7 +202,7 @@ void impl_test_gemm(const char* TA, const char* TB, int M, int N, int K,
   vgemm.beta  = beta;
 
   Kokkos::parallel_for("KokkosBlas::Test::gemm_VanillaGEMM",
-                       Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO, 16),
+                       Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO),
                        vgemm);
 
   KokkosBlas::gemm(TA, TB, alpha, A, B, beta, C);
@@ -215,7 +215,7 @@ void impl_test_gemm(const char* TA, const char* TB, int M, int N, int K,
 
   Kokkos::parallel_reduce(
       "KokkosBlas::Test::DiffGEMM",
-      Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO, 16), diffgemm,
+      Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO), diffgemm,
       diff_C);
 
   if (N != 0 && M != 0) {
@@ -269,7 +269,7 @@ void impl_test_stream_gemm(const int M, const int N, const int K,
 
   Kokkos::parallel_reduce(
       "KokkosBlas::Test::DiffGEMM1",
-      Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO, 16), diffgemm1,
+      Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO), diffgemm1,
       diff_C1);
 
   mag_type diff_C2 = 0;
@@ -280,7 +280,7 @@ void impl_test_stream_gemm(const int M, const int N, const int K,
 
   Kokkos::parallel_reduce(
       "KokkosBlas::Test::DiffGEMM2",
-      Kokkos::TeamPolicy<execution_space>(N, Kokkos::AUTO, 16), diffgemm2,
+      Kokkos::TeamPolicy<execution_space>(N, Kokkos::AUTO), diffgemm2,
       diff_C2);
   Kokkos::fence();
 
@@ -376,8 +376,6 @@ TEST_F(TestCategory, gemm_float) {
 }
 #endif
 
-// FIXME_SYCL CUDA_ERROR_INVALID_ADDRESS_SPACE
-#ifndef KOKKOS_ENABLE_SYCL
 #if defined(KOKKOSKERNELS_INST_DOUBLE) || \
     (!defined(KOKKOSKERNELS_ETI_ONLY) &&  \
      !defined(KOKKOSKERNELS_IMPL_CHECK_ETI_CALLS))
@@ -386,7 +384,6 @@ TEST_F(TestCategory, gemm_double) {
   test_gemm_enabled_layouts<double>();
   Kokkos::Profiling::popRegion();
 }
-#endif
 #endif
 
 #if defined(KOKKOSKERNELS_INST_COMPLEX_DOUBLE) || \

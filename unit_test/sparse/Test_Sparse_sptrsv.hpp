@@ -1083,6 +1083,11 @@ void run_test_sptrsv() {
 template <typename scalar_t, typename lno_t, typename size_type,
           typename device>
 void test_sptrsv() {
+#if defined(KOKKOSKERNELS_ENABLE_SUPERNODAL_SPTRSV)
+std::cout << "Hello from test: supernodal is enabled.\n";
+#else
+std::cout << "Supernodal is not enabled.\n";
+#endif
   Test::run_test_sptrsv<scalar_t, lno_t, size_type, device>();
   //  Test::run_test_sptrsv_mtx<scalar_t, lno_t, size_type, device>();
 }

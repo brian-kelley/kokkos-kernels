@@ -536,9 +536,10 @@ struct TwoLevelGEMV {
         // A access is coalesced, x access is a broadcast
         localSum += AccumScalar(A_(row, col)) * AccumScalar(x_(col));
       }
+      // atomically combine local result into shared
+      //printf("Hello, contributing %f to local result index %d.\n", localSum, (int) (team.team_rank() % 32));
+      Kokkos::atomic_add(&blockResult[team.team_rank() % 32], localSum);
     }
-    // atomically combine local result into shared
-    Kokkos::atomic_add(&blockResult[team.team_rank() % 32], localSum);
     team.team_barrier();
     Kokkos::parallel_for(Kokkos::TeamThreadRange(team, 32), [&](int i) {
       IndexType yrow = team.league_rank() * 32 + i;
@@ -727,26 +728,40 @@ void twoLevelGemv(const typename AViewType::execution_space& space,
   if (tr == 'N') {
     constexpr bool isLayoutLeft = std::is_same<typename AViewType::array_layout,
                                                Kokkos::LayoutLeft>::value;
+//FIXME SYCL: LayoutLeft kernel uses shared mem atomics, so don't use on SYCL for now.
+// (see Kokkos#4582)
+// Both kernels work for both layouts - the only difference is access pattern.
+    constexpr bool useLayoutLeftKernel = isLayoutLeft;
     using layout_tag =
-        typename std::conditional<isLayoutLeft, TwoLevelGEMV_LayoutLeftTag,
+        typename std::conditional<useLayoutLeftKernel, TwoLevelGEMV_LayoutLeftTag,
                                   TwoLevelGEMV_LayoutRightTag>::type;
     using tagged_policy = Kokkos::TeamPolicy<execution_space, layout_tag>;
     using functor_type =
         TwoLevelGEMV<AViewType, XViewType, YViewType, IndexType>;
     functor_type functor(alpha, A, x, beta, y);
     tagged_policy team;
-    if (isLayoutLeft) {
+    if (useLayoutLeftKernel) {
       using AccumScalar = typename std::conditional<
           std::is_same<y_value_type, Kokkos::Experimental::half_t>::value,
           float, y_value_type>::type;
       size_t sharedPerTeam = 32 * sizeof(AccumScalar);
       IndexType numTeams   = (A.extent(0) + 31) / 32;
       tagged_policy temp(1, 1);
-      int teamSize = temp.team_size_max(functor, Kokkos::ParallelForTag());
+      temp.set_scratch_size(0, Kokkos::PerTeam(sharedPerTeam));
+      int teamSize = temp.team_size_recommended(functor, Kokkos::ParallelForTag());
       // make sure teamSize is a multiple of 32
       teamSize -= teamSize % 32;
       // don't make teamSize larger than what's useful
       if ((size_t)teamSize > 32 * A.extent(1)) teamSize = 32 * A.extent(1);
+      //FIXME SYCL: team_size_recommended() returns too big of a team size.
+      //Kernel hangs with 1024 threads on XEHP.
+#ifdef KOKKOS_ENABLE_SYCL
+      if(std::is_same<execution_space, Kokkos::Experimental::SYCL>::value)
+      {
+        if(teamSize > 256)
+          teamSize = 256;
+      }
+#endif
       int numBlocks            = teamSize / 32;
       functor.columnsPerThread = (A.extent(1) + numBlocks - 1) / numBlocks;
       team                     = tagged_policy(space, numTeams, teamSize)
@@ -756,6 +771,7 @@ void twoLevelGemv(const typename AViewType::execution_space& space,
       team = tagged_policy(space, A.extent(0), Kokkos::AUTO);
     }
     Kokkos::parallel_for("KokkosBlas::gemv[twoLevel]", team, functor);
+    execution_space().fence();
   } else {
     if (alpha == KAT::zero() && beta == KAT::zero()) {
       // Fill y with zeros

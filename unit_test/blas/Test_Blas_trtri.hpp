@@ -211,7 +211,7 @@ int impl_test_trtri(int bad_diag_idx, const char* uplo, const char* diag,
   vgemm.alpha = ScalarA(1);
   vgemm.beta  = beta;
   Kokkos::parallel_for("KokkosBlas::Test::VanillaGEMM",
-                       Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO, 16),
+                       Kokkos::TeamPolicy<execution_space>(M, Kokkos::AUTO),
                        vgemm);
   Kokkos::fence();
   Kokkos::deep_copy(host_I, A_I);
