@@ -3069,11 +3069,6 @@ void lower_tri_solve(TriSolveHandle &thandle, const RowMapType row_map,
                  thandle.get_algorithm() == SPTRSVAlgorithm::SUPERNODAL_ETREE ||
                  thandle.get_algorithm() == SPTRSVAlgorithm::SUPERNODAL_DAG) {
 
-          std::cout << "!!! Hello from supernodal lower solve\n";
-          std::cout << "LHS (x) before: ";
-          KokkosKernels::Impl::print_1Dview(lhs);
-          std::cout << '\n';
-
 #ifdef profile_supernodal_etree
           size_t flops = 0;
           Kokkos::Timer timer;
@@ -3188,10 +3183,6 @@ void lower_tri_solve(TriSolveHandle &thandle, const RowMapType row_map,
             }
           }
 
-          std::cout << "LHS (x) after just the diagonal block part: ";
-          KokkosKernels::Impl::print_1Dview(lhs);
-          std::cout << '\n';
-
           // launching sparse-triangular solve functor
           LowerTriSupernodalFunctor<TriSolveHandle, RowMapType, EntriesType,
                                     ValuesType, LHSType, NGBLType>
@@ -3202,10 +3193,6 @@ void lower_tri_solve(TriSolveHandle &thandle, const RowMapType row_map,
           Kokkos::parallel_for("parfor_lsolve_supernode",
                                team_policy_type(lvl_nodes, Kokkos::AUTO),
                                sptrsv_functor);
-          std::cout << "LHS (x) after: ";
-          KokkosKernels::Impl::print_1Dview(lhs);
-          std::cout << '\n';
-
 #ifdef profile_supernodal_etree
           Kokkos::fence();
           double time_seconds = timer.seconds();

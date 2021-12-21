@@ -537,7 +537,6 @@ struct TwoLevelGEMV {
         localSum += AccumScalar(A_(row, col)) * AccumScalar(x_(col));
       }
       // atomically combine local result into shared
-      //printf("Hello, contributing %f to local result index %d.\n", localSum, (int) (team.team_rank() % 32));
       Kokkos::atomic_add(&blockResult[team.team_rank() % 32], localSum);
     }
     team.team_barrier();

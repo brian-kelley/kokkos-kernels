@@ -99,11 +99,8 @@ int run_spgemm(crsMat_t A, crsMat_t B,
 
   kh.create_spgemm_handle(spgemm_algorithm);
 
-std::cout << "Calling symbolic...\n";
   KokkosSparse::spgemm_symbolic(kh, A, false, B, false, C);
-std::cout << "Calling numeric...\n";
   KokkosSparse::spgemm_numeric(kh, A, false, B, false, C);
-std::cout << "Done!\n";
   kh.destroy_spgemm_handle();
 
   return 0;

@@ -260,6 +260,7 @@ class GraphColoringHandle {
       std::cout
           << "Serial Execution Space, Default Algorithm: COLORING_SERIAL\n";
 #endif
+    }
     else if (exec == KokkosKernels::Impl::Exec_SYCL) {
       //FIXME SYCL: Do not use EB
       this->coloring_algorithm_type = COLORING_VBBIT;

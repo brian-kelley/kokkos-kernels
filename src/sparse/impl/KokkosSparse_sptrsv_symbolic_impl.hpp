@@ -183,10 +183,6 @@ void lower_tri_symbolic(TriSolveHandle& thandle, const RowMapType drow_map,
   Kokkos::Timer timer;
 #endif
 
-  std::cout << "Hello from lower_tri_symbolic, with exec " << TriSolveHandle::execution_space::name() << ", and algo : ";
-  thandle.print_algorithm();
-  std::cout << '\n';
-
   using namespace KokkosSparse::Experimental;
   if (thandle.get_algorithm() == SPTRSVAlgorithm::SEQLVLSCHD_RP ||
       thandle.get_algorithm() == SPTRSVAlgorithm::SEQLVLSCHD_TP1 ||
@@ -363,8 +359,6 @@ void lower_tri_symbolic(TriSolveHandle& thandle, const RowMapType drow_map,
            thandle.get_algorithm() == SPTRSVAlgorithm::SUPERNODAL_DAG ||
            thandle.get_algorithm() == SPTRSVAlgorithm::SUPERNODAL_SPMV ||
            thandle.get_algorithm() == SPTRSVAlgorithm::SUPERNODAL_SPMV_DAG) {
-
-    std::cout << "Hello from SUPERNODAL symbolic (lower).\n";
 
     using size_type           = typename TriSolveHandle::size_type;
     using signed_integral_t   = typename TriSolveHandle::signed_integral_t;
@@ -843,8 +837,6 @@ void upper_tri_symbolic(TriSolveHandle& thandle, const RowMapType drow_map,
            thandle.get_algorithm() == SPTRSVAlgorithm::SUPERNODAL_DAG ||
            thandle.get_algorithm() == SPTRSVAlgorithm::SUPERNODAL_SPMV ||
            thandle.get_algorithm() == SPTRSVAlgorithm::SUPERNODAL_SPMV_DAG) {
-
-    std::cout << "Hello from SUPERNODAL symbolic (upper).\n";
 
     using size_type = typename TriSolveHandle::size_type;
 
