@@ -111,11 +111,27 @@ struct InclusiveParallelPrefixSum {
  */
 template <typename view_t, typename MyExecSpace>
 inline void kk_exclusive_parallel_prefix_sum(
-    typename view_t::value_type num_elements, view_t arr) {
+    typename view_t::size_type num_elements, view_t arr) {
   typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
   Kokkos::parallel_scan("KokkosKernels::Common::PrefixSum",
                         my_exec_space(0, num_elements),
                         ExclusiveParallelPrefixSum<view_t>(arr));
+}
+
+/***
+ * \brief Function performs the exclusive parallel prefix sum. That is each
+ * entry holds the sum until itself. This version also returns the final sum
+ * equivalent to the sum-reduction of arr before doing the scan.
+ * \param num_elements: size of the array
+ * \param arr: the array for which the prefix sum will be performed.
+ */
+template <typename view_t, typename MyExecSpace>
+inline void kk_exclusive_parallel_prefix_sum(
+    typename view_t::size_type num_elements, view_t arr, typename view_t::non_const_value_type& finalSum) {
+  typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
+  Kokkos::parallel_scan("KokkosKernels::Common::PrefixSum",
+                        my_exec_space(0, num_elements),
+                        ExclusiveParallelPrefixSum<view_t>(arr), finalSum);
 }
 
 /***

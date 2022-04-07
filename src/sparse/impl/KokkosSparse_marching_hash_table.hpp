@@ -47,6 +47,7 @@
 
 #include "Kokkos_Core.hpp"
 #include "Kokkos_ArithTraits.hpp"
+#include <numeric>
 
 namespace KokkosSparse {
 namespace Impl {
@@ -57,6 +58,11 @@ namespace Impl {
   struct MarchingHashTable
   {
     using KAT = Kokkos::ArithTraits<Key>;
+    using VAT = Kokkos::ArithTraits<Value>;
+
+    MarchingHashTable(Key* k, Value* v, int n_, int nprobe_)
+      : keys(k), values(v), n(n_), nprobe(nprobe_)
+    {}
 
     //32-bit xorshift hash function
     template<typename T>
@@ -70,61 +76,116 @@ namespace Impl {
     }
 
     //General insert function.
-    //If insertion into empty cell succeeds, returns Key::max.
-    //If there are no empty cells, but insertion via eviction succeeds, returns the evicted key.
-    //If all cells already have lesser keys, does not insert and returns k.
-    template<typename OpTag>
-    KOKKOS_INLINE_FUNCTION Key insert(Key k, Value v) {}
-
-    //Specialization that joins value using bitwise-OR.
-    template<>
-    KOKKOS_INLINE_FUNCTION Key insert<InsertOrTag>(Key k, Value v)
+    //It just attempts to insert key k. Keys may be evicted at any time so this function
+    //can't determine whether the key will stick. In the value update functions, the keys
+    //are all held constant so they check instead.
+    KOKKOS_INLINE_FUNCTION void insert(Key k)
     {
-      const Key PENDING = KAT::max() - 1;
       const Key EMPTY = KAT::max();
-      int h = hash(k);
-      Key maxKey = KAT::zero();
-      int maxCell = 0;
       //Need to have a retry mechanism - if multiple threads attempt to evict the same
-      //key, only one of them can succeed and it effectively locks that cell while overwriting the value.
+      //key, only one of them can succeed.
       while(true)
       {
+        int h = hash(k);
+        Key maxKey = KAT::zero();
+        int maxCell = 0;
         for(int attempt = 0; attempt < nprobe; attempt++)
         {
           int cell = h & (n - 1);
-          Key current = keys[cell];
-          if(current == EMPTY)
+          //Another retry loop - needed if keys[cell] changes after reading it
+          while(true)
           {
-            if(Kokkos::atomic_compare_exchange_strong(&keys[cell], EMPTY, k))
+            Key current = Kokkos::atomic_read(&keys[cell]);
+            if(current == k)
             {
-              //Insertion succeeded - update value and done
-              Kokkos::atomic_or(&values[cell], v);
-              return EMPTY;
+              //Key already present.
+              //Note that it may still be evicted at any time, but that is OK
+              return;
             }
-            //Otherwise, another thread already grabbed this cell.
-            //This is OK - just keep trying other cells.
-          }
-          else if(current > maxKey)
-          {
-            maxKey = current;
-            maxCell = cell;
+            else if(current == EMPTY)
+            {
+              //This cell is empty, so if k were already present, it would have been seen by now
+              if(Kokkos::atomic_compare_exchange_strong(&keys[cell], EMPTY, k))
+              {
+                //Insertion succeeded - initialize value and done
+                values[cell] = VAT::zero();
+                return;
+              }
+              //If cmp-exch fails, another thread already put a key in this cell.
+              //This is OK - just keep trying until keys[cell] settles
+              //on either k or a different key.
+            }
+            else if(current > maxKey)
+            {
+              //Cell is occupied. Keep track of maximum key over all of k's possible cells.
+              maxKey = current;
+              maxCell = cell;
+              break;
+            }
           }
           h = hash(h);
         }
-        //If here, no empty cells were available. 
+        //If here, no empty cells were available. Try evicting max key, but only if k is an improvement (is less than that max)
+        if(k < maxKey)
+        {
+          //But don't just write k there, only place it there if maxKey has not already been evicted by other thread
+          if(Kokkos::atomic_compare_exchange_strong(&keys[maxCell], maxKey, k))
+          {
+            values[cell] = VAT::zero();
+            return;
+          }
+          //If this cmp-exch fails, have to go through the cells again to recompute maxKey
+        }
+        else
+        {
+          //Max key is greater than k, so give up on inserting k.
+          return;
+        }
       }
     }
 
-    //Specialization that joins value using addition.
-    template<>
-    KOKKOS_INLINE_FUNCTION Key insert<InsertAddTag>(Key k, Value v)
+    //Look for key k, and join v into the corresponding value using bitwise OR.
+    //Note that all keys are now held constant, and only values are changing.
+    //Returns true if key found and value updated, false if key not found.
+    //This is only supported when Value is an integer type.
+    KOKKOS_INLINE_FUNCTION bool updateValueOr(Key k, Value v,
+        typename std::enable_if<std::numeric_limits<Value>::is_integer>::type* = nullptr)
     {
+      int h = hash(k);
+      for(int attempt = 0; attempt < nprobe; attempt++)
+      {
+        int cell = h & (n - 1);
+        if(keys[cell] == k)
+        {
+          Kokkos::atomic_fetch_or(&values[cell], v);
+          return true;
+        }
+        h = hash(h);
+      }
+      return false;
+    }
+
+    //Same as updateValueOr, but instead updates values using addition.
+    KOKKOS_INLINE_FUNCTION bool updateValueAdd(Key k, Value v)
+    {
+      int h = hash(k);
+      for(int attempt = 0; attempt < nprobe; attempt++)
+      {
+        int cell = h & (n - 1);
+        if(keys[cell] == k)
+        {
+          Kokkos::atomic_fetch_add(&values[cell], v);
+          return true;
+        }
+        h = hash(h);
+      }
+      return false;
     }
 
     Key* keys;
     Value* values;
-    int nprobe; //Number of rehashing attempts to use
     int n;      //Length of keys/values (power of 2)
+    int nprobe; //Number of rehashing attempts to use
   };
 }
 }
