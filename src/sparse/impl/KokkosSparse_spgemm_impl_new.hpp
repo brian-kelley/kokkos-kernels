@@ -47,7 +47,7 @@
 
 #include "KokkosKernels_Handle.hpp"
 #include "KokkosKernels_Sorting.hpp"
-#include "Kokkos_ArithTraits.hpp"
+#include "KokkosSparse_marching_hash_table.hpp"
 #include "KokkosKernels_ExecSpaceUtils.hpp"
 
 // SpGEMM marching algorithm (symbolic, numeric1, triangle counting)
@@ -125,21 +125,21 @@
 namespace KokkosSparse {
 namespace Impl {
 
-template<typename Policy, typename Rowmap, typename Entries, typename MarchIterators>
+template<typename Policy, typename RowmapIn, typename RowmapOut, typename Entries, typename MarchIterators>
 struct SpGEMMSymbolicFunctor
 {
   using TeamMem = typename Policy::member_type;
-  using SizeType = typename Rowmap::non_const_value_type;
+  using Offset = typename RowmapOut::non_const_value_type;
   using Ordinal = typename Entries::non_const_value_type;
   using AT = Kokkos::ArithTraits<Ordinal>;
 
-  SpGEMMSymbolicFunctor(const Rowmap& aRowmap_, const Entries& aEntries_, const Rowmap& bRowmap_, const Entries& bEntries_, const Rowmap& cRowmap_, const MarchIterators& marchIterators_, Ordinal bCols_, int hashSize_, int vectorLen_)
+  SpGEMMSymbolicFunctor(const RowmapIn& aRowmap_, const Entries& aEntries_, const RowmapIn& bRowmap_, const Entries& bEntries_, const RowmapOut& cRowmap_, const MarchIterators& marchIterators_, Ordinal bCols_, int hashSize_, int vectorLen_)
     : aRowmap(aRowmap_), aEntries(aEntries_), bRowmap(bRowmap_), bEntries(bEntries_), cRowmap(cRowmap_), marchIterators(marchIterators_), bCols(bCols_), hashSize(hashSize_), vectorLen(vectorLen_)
   {}
 
-  KOKKOS_INLINE_FUNCTION void operator(const TeamMem& t) const
+  KOKKOS_INLINE_FUNCTION void operator()(const TeamMem& t) const
   {
-    SizeType aRowBegin = aRowmap(t.league_rank());
+    Offset aRowBegin = aRowmap(t.league_rank());
     Ordinal aRowLen = aRowmap(t.league_rank() + 1) - aRowBegin;
     //Counting number of entries in C row
     //Only needs to be meaningful inside team-wide single (it's computed via reductions)
@@ -147,21 +147,21 @@ struct SpGEMMSymbolicFunctor
     //Acquire memory for the hash table
     //In symbolic, hashtable keys are columns divided by 32.
     //Values are 32-wide bitsets - 1 represents a present entry, 0 represents no entry.
-    //TODO: autotune nprobe? Should stay compile-time constant?
+    //TODO: autotune nprobe? Runtime or compile-time?
     MarchingHashTable<Ordinal, uint32_t> ht(
         (Ordinal*) t.team_shmem().get_shmem(hashSize * sizeof(Ordinal)),
         (uint32_t*) t.team_shmem().get_shmem(hashSize * sizeof(uint32_t)),
         hashSize, 4);
-    //Mark all hash keys as empty (this constant is just Ordinal's max value)
+    //Mark all hash keys as empty (represented using Ordinal's max value)
     Kokkos::parallel_for(Kokkos::TeamThreadRange(t, hashSize),
       [&](int i)
       {
         ht.keys[i] = AT::max();
       });
     t.team_barrier();
-    int numThreads = t.team_size() / vectorLength;
-    int tid = t.team_rank() / vectorLength;
-    int vid = t.team_rank() % vectorLength;
+    int numThreads = t.team_size() / vectorLen;
+    int tid = t.team_rank() / vectorLen;
+    int vid = t.team_rank() % vectorLen;
     //Column window that is currently being processed.
     //Cols < beginCol have already been inserted in table, counted and then cleared.
     Ordinal beginCol = 0;
@@ -170,19 +170,21 @@ struct SpGEMMSymbolicFunctor
     while(true)
     {
       teamMinFail = AT::max();
+      int threadWorkRemains = 0;
       for(Ordinal aIter = 0; aIter < aRowLen; aIter += numThreads)
       {
         Ordinal bRow, bCol;
-        SizeType bRowBegin;
+        Offset bRowBegin;
         Ordinal bRowLen;
         //This absolute index into A's entries, as well as the marching iterators
         //is used several times.
-        SizeType aEntryIndex = aRowBegin + aIter + tid;
+        Offset aEntryIndex = aRowBegin + aIter + tid;
         Ordinal marchPos;
         bool threadActive = aIter + tid < aRowLen;
         if(threadActive)
         {
           bRow = aEntries(aEntryIndex);
+          std::cout << "  Processing reference to B row " << bRow << " by A row " << t.league_rank() << '\n';
           bRowBegin = bRowmap(bRow);
           bRowLen = bRowmap(bRow + 1) - bRowBegin;
           //marchPos contains pairs, one corresponding to each entry in A (a reference to row of B).
@@ -192,16 +194,19 @@ struct SpGEMMSymbolicFunctor
           // Second: The last column in the current batch. This is updated after reading in all the entries of B.
           //
           // Decide whether marching index can advance.
-          marchPos = marchIterators(aEntryIndex).first;
-          if(marchPos < bRowLen && beginCol > marchIterators(aEntryIndex).second)
+          marchPos = marchIterators(aEntryIndex);
+          Ordinal lastBatchFinalColumn = marchPos + vectorLen < bRowLen ? bEntries(bRowBegin + marchPos + vectorLen - 1) : bEntries(bRowBegin + bRowLen - 1);
+          if(marchPos < bRowLen && lastBatchFinalColumn < beginCol)
           {
             //Can advance the marching position for this entry
-            marchPos += vectorLength;
+            marchPos += vectorLen;
             if(marchPos > bRowLen)
               marchPos = bRowLen;
             if(vid == 0)
-              marchIterators(aEntryIndex).first = marchPos;
+              marchIterators(aEntryIndex) = marchPos;
           }
+          if(marchPos != bRowLen)
+            threadWorkRemains = 1;
           //Now (for this vector lane), check if there is an entry of B to consume
           threadActive = marchPos + vid < bRowLen;
         }
@@ -210,29 +215,26 @@ struct SpGEMMSymbolicFunctor
           //Thread is still active, so it has an entry of B to read and attempt to insert.
           bCol = bEntries(bRowBegin + marchPos + vid);
           threadActive = bCol >= beginCol;
-          //Also update the second marching value (last valid column in batch)
-          Ordinal lastActiveVectorLane = vectorLength - 1;
-          if(marchPos + vectorLength > bRowLen)
-          {
-            lastActiveVectorLane = bRowLen - marchPos;
-          }
-          if(vid == lastActiveVectorLane)
-          {
-            marchIterators(aEntryIndex).second = bCol;
-          }
         }
+        Ordinal eviction = ~Ordinal(0);
         if(threadActive)
-          ht.insert(bCol / 32);
+          eviction = ht.insert(bCol / 32);
         //Team-wide barrier, to allow all insertion attempts to finish
         //(this must involve every single thread, which is why threadActive is necessary)
         t.team_barrier();
         Ordinal failingKey = AT::max();
         if(threadActive)
         {
+          std::cout << "Here, have key " << bCol / 32 << '\n';
           if(!ht.updateValueOr(bCol / 32, 1U << (bCol % 32)))
           {
             //The key did not make it into the table
             failingKey = bCol / 32;
+            std::cout << "Row " << t.league_rank() << ": FAILED to insert key " << bCol / 32 << " for column " << bCol << '\n';
+          }
+          else
+          {
+            std::cout << "Row " << t.league_rank() << ": successfully inserted key " << bCol / 32 << " for column " << bCol << '\n';
           }
         }
         Ordinal batchMinFail;
@@ -240,25 +242,42 @@ struct SpGEMMSymbolicFunctor
         Kokkos::parallel_reduce(Kokkos::TeamThreadRange(t, t.team_size()),
         [&](int, Ordinal& lminFail)
         {
-          If(failingKey < lminFail)
+          if(failingKey < lminFail)
             lminFail = failingKey;
         }, Kokkos::Min<Ordinal>(batchMinFail));
-        //Since batchMinFail is the result of team reduction, it's only
-        //present on thread 0. So is teamMinFail.
-        Kokkos::single(Kokkos::PerTeam(t),
-        [&]()
-        {
-          if(batchMinFail < teamMinFail)
-            teamMinFail = batchMinFail;
-        });
+        if(batchMinFail < teamMinFail)
+          teamMinFail = batchMinFail;
       }
+      //Figure out if the row is done
+      int teamWorkRemains;
+      Kokkos::parallel_reduce(Kokkos::TeamThreadRange(t, t.team_size()),
+        [&](int, int& lteamWorkRemains)
+        {
+          lteamWorkRemains += threadWorkRemains;
+        }, teamWorkRemains);
+      Kokkos::single(Kokkos::PerTeam(t),
+        [&](int& lteamWorkRemains)
+        {
+          lteamWorkRemains = teamWorkRemains;
+        }, teamWorkRemains);
+      if(!teamWorkRemains)
+      {
+        //Processing of all rows of B is done
+        break;
+      }
+      std::cout << "Row " << t.league_rank() << ": minimum failing key after processing all B rows: " << teamMinFail << '\n';
       //Finally, after visiting every referenced row of B, update beginCol for the next march iteration.
       //Must be computed on thread 0, and then broadcast to the rest of the team.
-      Kokkos::single(Kokkos::PerTeam(t),
-        [&](Ordinal& lbeginCol)
-        {
-          lbeginCol = teamMinFail * 32;
-        }, beginCol);
+      if(teamMinFail == AT::max())
+      {
+        //No failures on any thread
+        beginCol = AT::max();
+      }
+      else
+      {
+        beginCol = teamMinFail * 32;
+      }
+      std::cout << "Row " << t.league_rank() << ": next batch will start at " << beginCol << '\n';
       //Traverse hash table and count the entries, up to the beginCol for the next iter
       Ordinal iterNumEntries;
       Kokkos::parallel_reduce(Kokkos::TeamThreadRange(t, hashSize),
@@ -269,7 +288,6 @@ struct SpGEMMSymbolicFunctor
           //In any case, re-initialize the key to empty
           ht.keys[i] = AT::max();
         }, iterNumEntries);
-      //Note: numEntries is still only significant on thread 0
       numEntries += iterNumEntries;
     }
     Kokkos::single(Kokkos::PerTeam(t),
@@ -279,11 +297,11 @@ struct SpGEMMSymbolicFunctor
       });
   }
 
-  Rowmap aRowmap;
+  RowmapIn aRowmap;
   Entries aEntries;
-  Rowmap bRowmap;
+  RowmapIn bRowmap;
   Entries bEntries;
-  Rowmap cRowmap;
+  RowmapOut cRowmap;
   MarchIterators marchIterators;
   Ordinal bCols;
   int hashSize;
@@ -293,13 +311,14 @@ struct SpGEMMSymbolicFunctor
 //A is m x n
 //B is n x k
 //C is m x k
-template<typename KernelHandle, typename Rowmap, typename Entries>
-void bmk_SpGEMM_Symbolic(int m, int n, int k, KernelHandle* handle, const Rowmap& aRowmap, const Entries& aEntries, const Rowmap& bRowmap, const Entries& bEntries, const Rowmap& cRowmap)
+template<typename KernelHandle, typename RowmapIn, typename RowmapOut, typename Entries>
+void bmk_SpGEMM_Symbolic(int m, int n, int k, KernelHandle* handle, const RowmapIn& aRowmap, const Entries& aEntries, const RowmapIn& bRowmap, const Entries& bEntries, const RowmapOut& cRowmap)
 {
   using ExecSpace = typename KernelHandle::HandleExecSpace;
   using Policy = Kokkos::TeamPolicy<ExecSpace>;
-  using MarchIterators = Kokkos::View<Kokkos::pair<Ordinal, Ordinal>*, typename KernelHandle::HandleTempMemorySpace>;
-  using size_type = typename Rowmap::non_const_value_type;
+  using Offset = typename RowmapOut::non_const_value_type;
+  using Ordinal = typename Entries::non_const_value_type;
+  using MarchIterators = Kokkos::View<Ordinal*, typename KernelHandle::HandleTempMemorySpace>;
   //Allocate the marching counters array
   MarchIterators marchIterators("Marching Iterators", aEntries.extent(0));
   //Choose tunable parameters: team size, vector length and hash table size.
@@ -309,16 +328,19 @@ void bmk_SpGEMM_Symbolic(int m, int n, int k, KernelHandle* handle, const Rowmap
   //Vector length should ideally be >= avg B nnz/row.
   //Hash table size is harder to estimate as it depends on term compaction. Too big = low occupancy, too small = slower marching progress.
   //  Also, there is some work done in shared memory that is proportional to total table size, not just number of filled cells.
-  int teamSize = 16;
-  int vectorLength = 16;
+
+  //int teamSize = 16;
+  //int vectorLength = 16;
+  int teamSize = 1;
+  int vectorLength = 1;
   int hashSize = 512;
-  SpGEMMSymbolicFunctor<Policy, Rowmap, Entries, MarchIterators> functor(aRowmap, aEntries, bRowmap, bEntries, cRowmap, marchIterators, k, hashSize, vectorLength);
+  SpGEMMSymbolicFunctor<Policy, RowmapIn, RowmapOut, Entries, MarchIterators> functor(aRowmap, aEntries, bRowmap, bEntries, cRowmap, marchIterators, k, hashSize, vectorLength);
   Policy pol(m, teamSize * vectorLength);
   pol.set_scratch_size(0, Kokkos::PerTeam(hashSize * (sizeof(Ordinal) + sizeof(uint32_t))));
   Kokkos::parallel_for(pol, functor);
   //Then exclusive prefix-sum cRowmap, and give the handle the total number of C entries.
-  size_type c_nnz;
-  KokkosKernels::Impl::kk_exclusive_parallel_prefix_sum<Rowmap, ExecSpace>(m + 1, cRowmap, c_nnz);
+  Offset c_nnz;
+  KokkosKernels::Impl::kk_exclusive_parallel_prefix_sum<RowmapOut, ExecSpace>(m + 1, cRowmap, c_nnz);
   handle->get_spgemm_handle()->set_c_nnz(c_nnz);
 }
 

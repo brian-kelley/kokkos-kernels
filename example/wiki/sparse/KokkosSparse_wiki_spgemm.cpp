@@ -2,6 +2,7 @@
 
 #include "KokkosKernels_default_types.hpp"
 #include "KokkosSparse_spgemm.hpp"
+#include "KokkosSparse_spgemm_impl_new.hpp"
 
 #include "KokkosKernels_Test_Structured_Matrix.hpp"
 
@@ -21,6 +22,7 @@ int main() {
   using matrix_type =
       typename KokkosSparse::CrsMatrix<Scalar, Ordinal, device_type, void,
                                        Offset>;
+  using rowmap_type = typename matrix_type::row_map_type::non_const_type;
 
   int return_value = 0;
 
@@ -51,8 +53,6 @@ int main() {
     using KernelHandle = KokkosKernels::Experimental::KokkosKernelsHandle<
         Offset, Ordinal, Scalar, execution_space, memory_space, memory_space>;
     KernelHandle kh;
-    kh.set_team_work_size(16);
-    kh.set_dynamic_scheduling(true);
 
     // Select an spgemm algorithm, limited by configuration at compile-time and
     // set via the handle Some options: {SPGEMM_KK_MEMORY, SPGEMM_KK_SPEED,
@@ -61,11 +61,15 @@ int main() {
     KokkosSparse::SPGEMMAlgorithm spgemm_algorithm =
         KokkosSparse::StringToSPGEMMAlgorithm(myalg);
     kh.create_spgemm_handle(spgemm_algorithm);
-
-    KokkosSparse::spgemm_symbolic(kh, A, false, B, false, C);
-    KokkosSparse::spgemm_numeric(kh, A, false, B, false, C);
-
-    std::cout << "spgemm was performed correctly!" << std::endl;
+    rowmap_type correctRowmap(Kokkos::ViewAllocateWithoutInitializing("C rowmap (Correct)"), A.numRows() + 1);
+    KokkosSparse::Experimental::spgemm_symbolic(&kh, A.numRows(), A.numCols(), B.numCols(), A.graph.row_map, A.graph.entries, false, B.graph.row_map, B.graph.entries, false, correctRowmap);
+    std::cout << "Correct C rowmap:\n";
+    KokkosKernels::Impl::print_1Dview(std::cout, correctRowmap);
+    //Compute my symbolic
+    rowmap_type bmkRowmap(Kokkos::ViewAllocateWithoutInitializing("My rowmap"), A.numRows() + 1);
+    KokkosSparse::Impl::bmk_SpGEMM_Symbolic(A.numRows(), A.numCols(), B.numCols(), &kh, A.graph.row_map, A.graph.entries, B.graph.row_map, B.graph.entries, bmkRowmap);
+    std::cout << "My C rowmap:\n";
+    KokkosKernels::Impl::print_1Dview(std::cout, bmkRowmap);
   }
 
   Kokkos::finalize();

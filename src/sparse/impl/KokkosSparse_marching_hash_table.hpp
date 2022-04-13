@@ -78,8 +78,10 @@ namespace Impl {
     //General insert function.
     //It just attempts to insert key k. Keys may be evicted at any time so this function
     //can't determine whether the key will stick. In the value update functions, the keys
-    //are all held constant so they check instead.
-    KOKKOS_INLINE_FUNCTION void insert(Key k)
+    //are all held constant so they will check instead.
+    //
+    //If this evicts a key, the evicted key is returned. Otherwise ~0 (-1 for signed key).
+    KOKKOS_INLINE_FUNCTION Key insert(Key k)
     {
       const Key EMPTY = KAT::max();
       //Need to have a retry mechanism - if multiple threads attempt to evict the same
@@ -95,12 +97,12 @@ namespace Impl {
           //Another retry loop - needed if keys[cell] changes after reading it
           while(true)
           {
-            Key current = Kokkos::atomic_read(&keys[cell]);
+            Key current = Kokkos::atomic_load(&keys[cell]);
             if(current == k)
             {
               //Key already present.
               //Note that it may still be evicted at any time, but that is OK
-              return;
+              return ~Key(0);
             }
             else if(current == EMPTY)
             {
@@ -109,7 +111,7 @@ namespace Impl {
               {
                 //Insertion succeeded - initialize value and done
                 values[cell] = VAT::zero();
-                return;
+                return ~Key(0);
               }
               //If cmp-exch fails, another thread already put a key in this cell.
               //This is OK - just keep trying until keys[cell] settles
@@ -131,15 +133,15 @@ namespace Impl {
           //But don't just write k there, only place it there if maxKey has not already been evicted by other thread
           if(Kokkos::atomic_compare_exchange_strong(&keys[maxCell], maxKey, k))
           {
-            values[cell] = VAT::zero();
-            return;
+            values[maxCell] = VAT::zero();
+            return maxKey;
           }
           //If this cmp-exch fails, have to go through the cells again to recompute maxKey
         }
         else
         {
           //Max key is greater than k, so give up on inserting k.
-          return;
+          return ~Key(0);
         }
       }
     }
