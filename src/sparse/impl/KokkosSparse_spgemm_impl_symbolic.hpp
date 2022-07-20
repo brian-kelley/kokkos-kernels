@@ -1437,6 +1437,7 @@ void KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_,
                               b_compressed_row_view_t b_rowmap_end,
                               b_nnz_view_t entriesb_, c_row_view_t rowmapC,
                               nnz_lno_t maxNumRoughNonzeros) {
+      std::cout  << "Running symboilc with no B compression!\n";
   SPGEMMAlgorithm current_spgemm_algorithm = this->spgemm_algorithm;
   constexpr bool exec_gpu =
       KokkosKernels::Impl::kk_is_gpu_exec_space<MyExecSpace>();
@@ -1747,6 +1748,7 @@ void KokkosSPGEMM<
 
                                       c_row_view_t rowmapC,
                                       nnz_lno_t maxNumRoughNonzeros) {
+      std::cout  << "Running symboilc with B compression!\n";
   SPGEMMAlgorithm current_spgemm_algorithm = this->spgemm_algorithm;
   constexpr bool exec_gpu = KokkosKernels::Impl::kk_is_gpu_exec_space<
       typename HandleType::HandleExecSpace>();
@@ -1911,6 +1913,8 @@ void KokkosSPGEMM<
   }
   nnz_lno_t team_row_chunk_size = this->handle->get_team_work_size(
       suggested_team_size, concurrency, a_row_cnt);
+
+  team_row_chunk_size = suggested_team_size;
 
   typedef KokkosKernels::Impl::UniformMemoryPool<MyTempMemorySpace, nnz_lno_t>
       pool_memory_space;

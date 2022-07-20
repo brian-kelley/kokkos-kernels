@@ -516,11 +516,6 @@ void test_replaceSumIntoLonger() {
     test_replaceSumIntoLonger<SCALAR, ORDINAL, OFFSET, DEVICE>();                     \
   }
 
-// FIXME SYCL: test hangs or gives "CL error -46 invalid kernel name"
-#ifndef KOKKOS_ENABLE_SYCL
-
 #include <Test_Common_Test_All_Type_Combos.hpp>
 
 #undef KOKKOSKERNELS_EXECUTE_TEST
-
-#endif  // KOKKOS_ENABLE_SYCL

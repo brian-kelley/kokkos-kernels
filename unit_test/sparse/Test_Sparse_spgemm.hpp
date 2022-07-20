@@ -127,7 +127,7 @@ int run_spgemm_old_interface(crsMat_t input_mat, crsMat_t input_mat2,
   KernelHandle kh;
   kh.set_team_work_size(16);
   kh.set_dynamic_scheduling(true);
-  // kh.set_verbose(true);
+   kh.set_verbose(true);
 
   kh.create_spgemm_handle(spgemm_algorithm);
 
@@ -277,10 +277,14 @@ void test_spgemm(lno_t m, lno_t k, lno_t n, size_type nnz, lno_t bandwidth,
   else
     run_spgemm<crsMat_t, device>(A, B, SPGEMM_DEBUG, output_mat2);
 
+/*
   std::vector<SPGEMMAlgorithm> algorithms = {
-      SPGEMM_KK, SPGEMM_KK_LP, SPGEMM_KK_MEMORY /* alias SPGEMM_KK_MEMSPEED */,
-      SPGEMM_KK_SPEED /* alias SPGEMM_KK_DENSE */
+      SPGEMM_KK, SPGEMM_KK_LP, SPGEMM_KK_MEMORY,
+      SPGEMM_KK_SPEED
   };
+  */
+
+  std::vector<SPGEMMAlgorithm> algorithms = {SPGEMM_KK};
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_MKL
   algorithms.push_back(SPGEMM_MKL);
@@ -438,17 +442,6 @@ void test_issue402() {
          sparse##_##spgemm##_##SCALAR##_##ORDINAL##_##OFFSET##_##DEVICE) {     \
     test_spgemm<SCALAR, ORDINAL, OFFSET, DEVICE>(10000, 10000, 10000,          \
                                                  10000 * 20, 500, 10, false);  \
-    test_spgemm<SCALAR, ORDINAL, OFFSET, DEVICE>(10000, 10000, 10000,          \
-                                                 10000 * 20, 500, 10, true);   \
-    test_spgemm<SCALAR, ORDINAL, OFFSET, DEVICE>(0, 0, 0, 0, 10, 10, false);   \
-    test_spgemm<SCALAR, ORDINAL, OFFSET, DEVICE>(0, 0, 0, 0, 10, 10, true);    \
-    test_spgemm<SCALAR, ORDINAL, OFFSET, DEVICE>(0, 12, 5, 0, 10, 0, false);   \
-    test_spgemm<SCALAR, ORDINAL, OFFSET, DEVICE>(0, 12, 5, 0, 10, 0, true);    \
-    test_spgemm<SCALAR, ORDINAL, OFFSET, DEVICE>(10, 10, 0, 0, 10, 10, false); \
-    test_spgemm<SCALAR, ORDINAL, OFFSET, DEVICE>(10, 10, 0, 0, 10, 10, true);  \
-    test_spgemm<SCALAR, ORDINAL, OFFSET, DEVICE>(10, 10, 10, 0, 0, 0, false);  \
-    test_spgemm<SCALAR, ORDINAL, OFFSET, DEVICE>(10, 10, 10, 0, 0, 0, true);   \
-    test_issue402<SCALAR, ORDINAL, OFFSET, DEVICE>();                          \
   }
 
 // test_spgemm<SCALAR,ORDINAL,OFFSET,DEVICE>(50000, 50000 * 30, 100, 10);

@@ -627,7 +627,7 @@ class KokkosSPGEMM {
         shmem_size(handle_->get_shmem_size()),
         concurrency(MyExecSpace::concurrency()),
         use_dynamic_schedule(handle_->is_dynamic_scheduling()),
-        KOKKOSKERNELS_VERBOSE(handle_->get_verbose()),
+        KOKKOSKERNELS_VERBOSE(true),
         MyEnumExecSpace(this->handle->get_handle_exec_space()),
         spgemm_algorithm(
             this->handle->get_spgemm_handle()->get_algorithm_type()),
