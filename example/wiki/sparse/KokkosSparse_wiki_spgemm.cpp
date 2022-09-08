@@ -3,6 +3,7 @@
 #include "KokkosKernels_default_types.hpp"
 #include "KokkosSparse_spgemm.hpp"
 #include "KokkosSparse_spgemm_impl_new.hpp"
+#include "KokkosSparse_SortCrs.hpp"
 
 #include "KokkosKernels_Test_Structured_Matrix.hpp"
 
@@ -65,8 +66,8 @@ int main() {
     matrix_type B =
         Test::generate_structured_matrix2D<matrix_type>("FE", mat_structure);
     matrix_type C;
-    KokkosKernels::sort_crs_matrix(A);
-    KokkosKernels::sort_crs_matrix(B);
+    KokkosSparse::sort_crs_matrix(A);
+    KokkosSparse::sort_crs_matrix(B);
     // Create KokkosKernelHandle
     using KernelHandle = KokkosKernels::Experimental::KokkosKernelsHandle<
         Offset, Ordinal, Scalar, execution_space, memory_space, memory_space>;
@@ -82,7 +83,7 @@ int main() {
     //KokkosSparse::Experimental::spgemm_symbolic(&kh, A.numRows(), A.numCols(), B.numCols(), A.graph.row_map, A.graph.entries, false, B.graph.row_map, B.graph.entries, false, correctRowmap);
     KokkosSparse::spgemm_symbolic(kh, A, false, B, false, C);
     KokkosSparse::spgemm_numeric(kh, A, false, B, false, C);
-    KokkosKernels::sort_crs_matrix(C);
+    KokkosSparse::sort_crs_matrix(C);
     auto correctRowmap = C.graph.row_map;
     auto correctEntries = C.graph.entries;
     /*

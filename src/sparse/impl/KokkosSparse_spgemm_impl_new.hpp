@@ -376,7 +376,7 @@ struct SpGEMMSymbolicFunctor
             linfo.minEviction = localMinEviction;
         }, teamInfo);
       completedCol = teamInfo.minFail - 1;
-      securedCol = Kokkos::Experimental::min(teamInfo.minEviction - 1, teamInfo.minFail - 1);
+      securedCol = Kokkos::min(teamInfo.minEviction - 1, teamInfo.minFail - 1);
       Kokkos::single(Kokkos::PerTeam(t),
         [=]()
         {
