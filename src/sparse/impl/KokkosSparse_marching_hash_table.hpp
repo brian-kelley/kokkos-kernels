@@ -140,7 +140,7 @@ namespace Impl {
         }
         else
         {
-          //Max key is greater than k, so give up on inserting k.
+          //Max key is less than k, so give up on inserting k.
           return ~Key(0);
         }
       }

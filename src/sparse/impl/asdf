@@ -1,0 +1,11 @@
+For each row of A:
+  While not all entries of A/rows of B have been marched through:
+    Take batches of B entries starting at march position for the A entry
+    Attempt to insert the entries. Keep track of failures (due to the table being full) and evictions
+  For each thread, find the minimum insertion failure (if none, ORDINAL_MAX)
+    Then find the min of this over all threads
+  Find the min failure over all threads, and min evicted key (both are ORDINAL_MAX if none)
+  Go through the table. Copy out keys < min failure to the output, and clear keys >= min eviction (non-secured)
+  Now only partially computed (but secured) keys remain.
+  Advance march positions by the threadsize, wherever the final column in batch is secured.
+

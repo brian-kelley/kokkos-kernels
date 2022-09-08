@@ -97,6 +97,7 @@
 //        - At least, this should be possible without touching global.
 //      - The eviction requires some backtracking within each row (up to the chunk size)
 //
+//  Idea for optimization: many matrices have a high concentration of nonzeros very close to the diagonal.
 //
 //  Use a cycle:
 //    - All threads attempt all insertions (with no evictions of existing keys). Only possible change for each table entry is EMPTY -> FULL.
@@ -112,15 +113,31 @@
 //    - Use ArithTraits::max as the special key representing EMPTY. That way, after sorting those are all at the end.
 //
 //  IMPORTANT FOR PERFORMANCE:
-//    If #threads >= nnz(aRow), then each thread should own a row of B and hold the marching iterator and row begin/end in register.
-//    Otherwise, would be forced to read an extra line from global each step.
+//    If #threads >= nnz(aRow), then each thread should just own a row of B and hold the marching iterator and row begin/end in register.
+//    Otherwise, would be forced to read+write a whole extra cacheline from global each step - marchIterators(aEntry)
 //
-//  Tuning inputs: A avg nz/row, B avg nz/row
-//  Tunable parameters:
+//  Tuning inputs:
+//    - A avg nz/row
+//    - B avg nz/row
+//    - A max nz/row? B max nz/row? Both computable quickly with an extra reduction
+//  Tuning outputs:
 //    - Hash table size (balance capacity and occupancy)
 //    - Linear probing attempts
 //    - Team size (ideally at least A avg nz/row)
 //    - Vector length (should be roughly B nz/row)
+//
+//MARCHING PSEUDOCODE
+//
+//For each row of A:
+//  While not all entries of A/rows of B have been marched through:
+//    Take batches of B entries starting at march position for the A entry
+//    Attempt to insert the entries. Keep track of failures (due to the table being full) and evictions
+//  For each thread, find the minimum insertion failure (if none, ORDINAL_MAX)
+//    Then find the min of this over all threads
+//  Find the min failure over all threads, and min evicted key (both are ORDINAL_MAX if none)
+//  Go through the table. Copy out keys < min failure to the output, and clear keys >= min eviction (non-secured)
+//  Now only partially computed (but secured) keys remain.
+//  Advance march positions by the threadsize, wherever the final column in batch is secured.
 
 namespace KokkosSparse {
 namespace Impl {
@@ -163,8 +180,10 @@ struct SpGEMMSymbolicFunctor
     int tid = t.team_rank() / vectorLen;
     int vid = t.team_rank() % vectorLen;
     //Column window that is currently being processed.
-    //Cols < beginCol have already been inserted in table, counted and then cleared.
-    Ordinal beginCol = 0;
+    //Cols < completedCol have already been inserted in table, counted and then cleared.
+    //Cols between completedCol and securedCol are partially computed in the table (none evicted)
+    Ordinal completedCol = 0;
+    Ordinal securedCol = 0;
     Ordinal teamMinFail;
     //Loop until all entries of each referenced row of B have been consumed
     while(true)
