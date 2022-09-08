@@ -81,7 +81,7 @@ namespace Impl {
     //are all held constant so they will check instead.
     //
     //If this evicts a key, the evicted key is returned. Otherwise ~0 (-1 for signed key).
-    KOKKOS_INLINE_FUNCTION Key insert(Key k)
+    KOKKOS_INLINE_FUNCTION Key insert(Key k, Key minEvictable)
     {
       const Key EMPTY = KAT::max();
       //Need to have a retry mechanism - if multiple threads attempt to evict the same
@@ -102,7 +102,7 @@ namespace Impl {
             {
               //Key already present.
               //Note that it may still be evicted at any time, but that is OK
-              return ~Key(0);
+              return KAT::max();
             }
             else if(current == EMPTY)
             {
@@ -111,7 +111,7 @@ namespace Impl {
               {
                 //Insertion succeeded - initialize value and done
                 values[cell] = VAT::zero();
-                return ~Key(0);
+                return KAT::max();
               }
               //If cmp-exch fails, another thread already put a key in this cell.
               //This is OK - just keep trying until keys[cell] settles
@@ -128,7 +128,7 @@ namespace Impl {
           h = hash(h);
         }
         //If here, no empty cells were available. Try evicting max key, but only if k is an improvement (is less than that max)
-        if(k < maxKey)
+        if(k < maxKey && maxKey >= minEvictable)
         {
           //But don't just write k there, only place it there if maxKey has not already been evicted by other thread
           if(Kokkos::atomic_compare_exchange_strong(&keys[maxCell], maxKey, k))
@@ -140,8 +140,8 @@ namespace Impl {
         }
         else
         {
-          //Max key is less than k, so give up on inserting k.
-          return ~Key(0);
+          //Max key is less than k or we can't evict any resident keys, so give up on inserting k.
+          return KAT::max();
         }
       }
     }
