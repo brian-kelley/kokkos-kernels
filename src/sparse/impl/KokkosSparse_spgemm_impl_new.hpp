@@ -311,7 +311,7 @@ struct SpGEMMSymbolicFunctor
         if(threadActive)
         {
           Ordinal eviction = ht.insert(bCol / 32);
-          if(eviction < localMinEviction)
+          if(eviction != ~Ordinal(0) && eviction < localMinEviction)
             localMinEviction = eviction;
         }
         //Team-wide barrier, to allow all insertion attempts to finish

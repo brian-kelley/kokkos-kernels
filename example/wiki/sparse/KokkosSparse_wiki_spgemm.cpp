@@ -63,13 +63,13 @@ int main() {
     kh.create_spgemm_handle(spgemm_algorithm);
     rowmap_type correctRowmap(Kokkos::ViewAllocateWithoutInitializing("C rowmap (Correct)"), A.numRows() + 1);
     KokkosSparse::Experimental::spgemm_symbolic(&kh, A.numRows(), A.numCols(), B.numCols(), A.graph.row_map, A.graph.entries, false, B.graph.row_map, B.graph.entries, false, correctRowmap);
-    std::cout << "Correct C rowmap:\n";
-    KokkosKernels::Impl::print_1Dview(std::cout, correctRowmap);
     //Compute my symbolic
     rowmap_type bmkRowmap(Kokkos::ViewAllocateWithoutInitializing("My rowmap"), A.numRows() + 1);
     KokkosSparse::Impl::bmk_SpGEMM_Symbolic(A.numRows(), A.numCols(), B.numCols(), &kh, A.graph.row_map, A.graph.entries, B.graph.row_map, B.graph.entries, bmkRowmap);
     std::cout << "My C rowmap:\n";
     KokkosKernels::Impl::print_1Dview(std::cout, bmkRowmap);
+    std::cout << "Correct C rowmap:\n";
+    KokkosKernels::Impl::print_1Dview(std::cout, correctRowmap);
   }
 
   Kokkos::finalize();
