@@ -9,3 +9,8 @@ For each row of A:
   Now only partially computed (but secured) keys remain.
   Advance march positions by the threadsize, wherever the final column in batch is secured.
 
+Update march before or after main loop?
+- Need to know the current securedCol (after _all_ b row batches were processed)
+- Also need the last column in previous batch - this must be loaded from global no matter what
+- Should do it before the loop, when I'm going to load B entries anyway
+
