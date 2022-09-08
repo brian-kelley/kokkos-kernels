@@ -144,12 +144,14 @@ namespace Impl {
   template<typename Ordinal>
   struct SpgemmTeamInfo
   {
+    KOKKOS_INLINE_FUNCTION SpgemmTeamInfo() = default;
+
     KOKKOS_INLINE_FUNCTION SpgemmTeamInfo(Ordinal workRemains_, Ordinal minFail_, Ordinal minEviction_)
       : workRemains(workRemains_), minFail(minFail_), minEviction(minEviction_)
     {}
 
     //use operator+ to simultanesouly sum-reduce workRemains, and min-reduce minFail and minEviction
-    KOKKOS_FORCEINLINE_FUNCTION friend SpgemmTeamInfo<Ordinal> operator+(SpgemmTeamInfo<Ordinal> lhs, const SpgemmTeamInfo<Ordinal>& rhs)
+    KOKKOS_INLINE_FUNCTION friend SpgemmTeamInfo<Ordinal> operator+(SpgemmTeamInfo<Ordinal> lhs, const SpgemmTeamInfo<Ordinal>& rhs)
     {
       lhs.workRemains += rhs.workRemains;
       if(rhs.minFail < lhs.minFail)
@@ -159,13 +161,14 @@ namespace Impl {
       return lhs;
     }
 
-    KOKKOS_FORCEINLINE_FUNCTION SpgemmTeamInfo<Ordinal>& operator+=(const SpgemmTeamInfo<Ordinal>& other)
+    KOKKOS_INLINE_FUNCTION SpgemmTeamInfo<Ordinal>& operator+=(const SpgemmTeamInfo<Ordinal>& other)
     {
       workRemains += other.workRemains;
       if(other.minFail < minFail)
         minFail = other.minFail;
       if(other.minEviction < minEviction)
         minEviction = other.minEviction;
+      return *this;
     }
 
     Ordinal workRemains;
@@ -181,8 +184,9 @@ namespace Kokkos {
     KOKKOS_FORCEINLINE_FUNCTION constexpr static KokkosSparse::Impl::SpgemmTeamInfo<Ordinal> sum()
     {
       Ordinal mx = Kokkos::ArithTraits<Ordinal>::max();
-      return SpgemmTeamInfo<Ordinal>(0, mx, mx);
-    };
+      return KokkosSparse::Impl::SpgemmTeamInfo<Ordinal>(0, mx, mx);
+    }
+  };
 }
 
 namespace KokkosSparse {
@@ -197,7 +201,7 @@ struct SpGEMMSymbolicFunctor
   using AT = Kokkos::ArithTraits<Ordinal>;
 
   SpGEMMSymbolicFunctor(const RowmapIn& aRowmap_, const Entries& aEntries_, const RowmapIn& bRowmap_, const Entries& bEntries_, const RowmapOut& cRowmap_, const OrdinalView& marchIterators_, const OrdinalView& batchEnds_, int hashSize_, int vectorLen_)
-    : aRowmap(aRowmap_), aEntries(aEntries_), bRowmap(bRowmap_), bEntries(bEntries_), cRowmap(cRowmap_), marchIterators(marchIterators_), batchEnds(batchEnds)_, hashSize(hashSize_), vectorLen(vectorLen_)
+    : aRowmap(aRowmap_), aEntries(aEntries_), bRowmap(bRowmap_), bEntries(bEntries_), cRowmap(cRowmap_), marchIterators(marchIterators_), batchEnds(batchEnds_), hashSize(hashSize_), vectorLen(vectorLen_)
   {}
 
   KOKKOS_INLINE_FUNCTION void operator()(const TeamMem& t) const
@@ -339,7 +343,7 @@ struct SpGEMMSymbolicFunctor
         [&](int, SpgemmTeamInfo<Ordinal>& linfo)
         {
           if(threadWorkRemains)
-            linfo.threadWorkRemains = 1;
+            linfo.workRemains = 1;
           if(localMinFail < linfo.minFail)
             linfo.minFail = localMinFail;
           if(localMinEviction < linfo.minEviction)
@@ -350,12 +354,12 @@ struct SpGEMMSymbolicFunctor
         //Processing of all rows of B is done
         break;
       }
-      completedCol = linfo.minFail - 1;
-      securedCol = Kokkos::Experimental::min(linfo.minEviction - 1, linfo.minFail - 1);
+      completedCol = teamInfo.minFail - 1;
+      securedCol = Kokkos::Experimental::min(teamInfo.minEviction - 1, teamInfo.minFail - 1);
       Kokkos::single(Kokkos::PerTeam(t),
         [=]()
         {
-          std::cout << "Row " << t.league_rank() << ": minimum excluded key: " << linfo.minFail << " and min evicted key: " << linfo.minEviction << '\n';
+          std::cout << "Row " << t.league_rank() << ": minimum excluded key: " << teamInfo.minFail << " and min evicted key: " << teamInfo.minEviction << '\n';
         std::cout << "Row " << t.league_rank() << ": next batch will insert keys starting with " << securedCol + 1 << '\n';
         });
       //Traverse hash table and count the entries, up to the beginCol for the next iter
@@ -398,9 +402,10 @@ void bmk_SpGEMM_Symbolic(int m, int n, int k, KernelHandle* handle, const Rowmap
   using Policy = Kokkos::TeamPolicy<ExecSpace>;
   using Offset = typename RowmapOut::non_const_value_type;
   using Ordinal = typename Entries::non_const_value_type;
-  using MarchIterators = Kokkos::View<Ordinal*, typename KernelHandle::HandleTempMemorySpace>;
+  using OrdinalView = Kokkos::View<Ordinal*, typename KernelHandle::HandleTempMemorySpace>;
   //Allocate the marching counters array
-  MarchIterators marchIterators("Marching Iterators", aEntries.extent(0));
+  OrdinalView marchIterators("Marching Iterators", aEntries.extent(0));
+  OrdinalView batchEnds("Batch ends", aEntries.extent(0));
   //Choose tunable parameters: team size, vector length and hash table size.
   //(team size) * (vector length) is constrained by max block size.
   //Hash table size is constrained by shared memory.
@@ -414,7 +419,7 @@ void bmk_SpGEMM_Symbolic(int m, int n, int k, KernelHandle* handle, const Rowmap
   int teamSize = 1;
   int vectorLength = 1;
   int hashSize = 512;
-  SpGEMMSymbolicFunctor<Policy, RowmapIn, RowmapOut, Entries, MarchIterators> functor(aRowmap, aEntries, bRowmap, bEntries, cRowmap, marchIterators, k, hashSize, vectorLength);
+  SpGEMMSymbolicFunctor<Policy, RowmapIn, RowmapOut, Entries, OrdinalView> functor(aRowmap, aEntries, bRowmap, bEntries, cRowmap, marchIterators, batchEnds, hashSize, vectorLength);
   Policy pol(m, teamSize * vectorLength);
   pol.set_scratch_size(0, Kokkos::PerTeam(hashSize * (sizeof(Ordinal) + sizeof(uint32_t))));
   Kokkos::parallel_for(pol, functor);
