@@ -102,6 +102,14 @@ int main() {
     KokkosKernels::Impl::print_1Dview(std::cout, bmkRowmap);
     std::cout << "Correct C rowmap:\n";
     KokkosKernels::Impl::print_1Dview(std::cout, correctRowmap);
+    for(int i = 0; i < A.numRows(); i++)
+    {
+      if(bmkRowmap(i + 1) != correctRowmap(i + 1))
+      {
+        std::cout << "First row to diff in symbolic: " << i << ". Row length is " << bmkRowmap(i + 1) - bmkRowmap(i) << " but should be " << correctRowmap(i + 1) - correctRowmap(i) << '\n';
+        break;
+      }
+    }
   }
 
   Kokkos::finalize();

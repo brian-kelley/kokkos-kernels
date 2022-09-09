@@ -206,7 +206,7 @@ struct SpGEMMSymbolicFunctor
 
   KOKKOS_INLINE_FUNCTION void operator()(const TeamMem& t) const
   {
-    //if(t.league_rank() != 17)
+    //if(t.league_rank() != 29)
     //  return;
     Offset aRowBegin = aRowmap(t.league_rank());
     Ordinal aRowLen = aRowmap(t.league_rank() + 1) - aRowBegin;
@@ -335,7 +335,8 @@ struct SpGEMMSymbolicFunctor
         }
         if(threadActive)
         {
-          Ordinal eviction = ht.insert(bCol / 32, securedCol / 32 + 1);
+          Ordinal minEvictable = securedCol == AT::max() ? AT::max() : securedCol / 32 + 1;
+          Ordinal eviction = ht.insert(bCol / 32, minEvictable);
           if(eviction < localMinEviction)
             localMinEviction = eviction;
         }
@@ -378,30 +379,47 @@ struct SpGEMMSymbolicFunctor
           if(localMinEviction < linfo.minEviction)
             linfo.minEviction = localMinEviction;
         }, teamInfo);
-      completedCol = teamInfo.minFail - 1;
-      securedCol = teamInfo.minEviction - 1;
+      if(teamInfo.minFail == AT::max())
+        completedCol = AT::max();
+      else
+        completedCol = teamInfo.minFail - 1;
+      if(teamInfo.minEviction == AT::max())
+        securedCol = AT::max();
+      else
+        securedCol = teamInfo.minEviction - 1;
       Kokkos::single(Kokkos::PerTeam(t),
         [=]()
         {
           std::cout << "Row " << t.league_rank() << ": minimum excluded key: " << teamInfo.minFail << " and min evicted key: " << teamInfo.minEviction << '\n';
-        std::cout << "Row " << t.league_rank() << ": next batch will insert keys starting with " << securedCol + 1 << '\n';
+          if(securedCol == AT::max())
+          {
+            std::cout << "Row " << t.league_rank() << ": next batch will always advance beecause there were no evictions.\n";
+          }
+          else
+          {
+            std::cout << "Row " << t.league_rank() << ": next batch will insert keys starting with " << securedCol + 1 << '\n';
+          }
         });
       //Traverse hash table and count the entries, up to the beginCol for the next iter
       Ordinal iterNumEntries;
       //What is the maximum key which could contain completed columns?
-      Ordinal maxCompletedKey = completedCol / 32;
-      std::cout << "NOTE: maxCompletedKey = " << maxCompletedKey << ", corresponds to columns " << maxCompletedKey * 32 << "..." << maxCompletedKey*32 + 31 << " inclusive.\n";
+      Ordinal maxCompletedKey = (completedCol == AT::max()) ? AT::max() : completedCol / 32;
+      if(maxCompletedKey == AT::max())
+        std::cout << "NOTE: maxCompletedKey = ordinal max, meaning all keys are complete and will be peeled.\n";
+      else
+        std::cout << "NOTE: maxCompletedKey = " << maxCompletedKey << ", corresponds to columns " << maxCompletedKey * 32 << "..." << maxCompletedKey*32 + 31 << " inclusive.\n";
       Kokkos::parallel_reduce(Kokkos::TeamThreadRange(t, hashSize),
         [&](int i, Ordinal& lcount)
         {
           Ordinal key = ht.keys[i];
-          if(key <= maxCompletedKey)
+          if(key <= maxCompletedKey && key != AT::max())
           {
+          /*
             uint32_t mask;
-            if(key * 32 > maxCompletedKey)
+            if(maxCompletedKey == AT::max() || key * 32 > maxCompletedKey)
               mask = ~uint32_t(0);
             else
-              mask = (uint32_t(1) << (completedCol + 1 - key * 32)) - 1;
+              mask = (uint32_t(1) << (completedCol - maxCompletedKey * 32)) - 1;
             uint32_t bitsToCount;
             if(ht.values[i] & ~mask)
             {
@@ -420,7 +438,27 @@ struct SpGEMMSymbolicFunctor
               if(bitsToCount & (uint32_t(1) << asdf))
                 std::cout << "Peeling off completed column " << key * 32 + asdf << '\n';
             }
-            lcount += KokkosKernels::Impl::pop_count(bitsToCount);
+            */
+            for(int j = 0; j < 32; j++)
+            {
+              uint32_t mask = uint32_t(1) << j;
+              if(ht.values[i] & mask)
+              {
+                Ordinal col = key * 32 + j;
+                if(col <= completedCol)
+                {
+                  std::cout << "Peeling off completed column " << col << '\n';
+                  lcount++;
+                  ht.values[i] &= ~mask;
+                }
+              }
+            }
+            if(!ht.values[i])
+            {
+              // We zeroed all the bits for this key
+              ht.keys[i] = AT::max();
+            }
+            //lcount += KokkosKernels::Impl::pop_count(bitsToCount);
           }
         }, iterNumEntries);
       numEntries += iterNumEntries;
