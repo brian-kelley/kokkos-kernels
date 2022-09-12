@@ -139,15 +139,16 @@
 //  Now only partially computed (but secured) keys remain.
 //  Advance march positions by the threadsize, wherever the final column in batch is secured.
 
+/*
 namespace KokkosSparse {
 namespace Impl {
   template<typename Ordinal>
   struct SpgemmTeamInfo
   {
-    KOKKOS_INLINE_FUNCTION SpgemmTeamInfo() = default;
+    KOKKOS_DEFAULTED_FUNCTION SpgemmTeamInfo() = default;
 
-    KOKKOS_INLINE_FUNCTION SpgemmTeamInfo(Ordinal workRemains_, Ordinal minFail_, Ordinal minEviction_)
-      : workRemains(workRemains_), minFail(minFail_), minEviction(minEviction_)
+    KOKKOS_INLINE_FUNCTION SpgemmTeamInfo(Ordinal workRemains_, Ordinal minFail_)
+      : workRemains(workRemains_), minFail(minFail_)
     {}
 
     //use operator+ to simultanesouly sum-reduce workRemains, and min-reduce minFail and minEviction
@@ -156,8 +157,6 @@ namespace Impl {
       lhs.workRemains += rhs.workRemains;
       if(rhs.minFail < lhs.minFail)
         lhs.minFail = rhs.minFail;
-      if(rhs.minEviction < lhs.minEviction)
-        lhs.minEviction = rhs.minEviction;
       return lhs;
     }
 
@@ -166,14 +165,11 @@ namespace Impl {
       workRemains += other.workRemains;
       if(other.minFail < minFail)
         minFail = other.minFail;
-      if(other.minEviction < minEviction)
-        minEviction = other.minEviction;
       return *this;
     }
 
     Ordinal workRemains;
     Ordinal minFail;
-    Ordinal minEviction;
   };
 }
 }
@@ -183,30 +179,32 @@ namespace Kokkos {
   struct reduction_identity<KokkosSparse::Impl::SpgemmTeamInfo<Ordinal>> {
     KOKKOS_FORCEINLINE_FUNCTION constexpr static KokkosSparse::Impl::SpgemmTeamInfo<Ordinal> sum()
     {
-      Ordinal mx = Kokkos::ArithTraits<Ordinal>::max();
-      return KokkosSparse::Impl::SpgemmTeamInfo<Ordinal>(0, mx, mx);
+      return KokkosSparse::Impl::SpgemmTeamInfo<Ordinal>(0, Kokkos::ArithTraits<Ordinal>::max());
     }
   };
 }
+*/
 
 namespace KokkosSparse {
 namespace Impl {
 
-template<typename Policy, typename RowmapIn, typename RowmapOut, typename Entries, typename OrdinalView>
+template<typename Policy, typename RowmapIn, typename RowmapOut, typename Entries, typename StreamedEntries, typename OrdinalView>
 struct SpGEMMSymbolicFunctor
 {
   using TeamMem = typename Policy::member_type;
   using Offset = typename RowmapOut::non_const_value_type;
   using Ordinal = typename Entries::non_const_value_type;
-  using AT = Kokkos::ArithTraits<Ordinal>;
+  using AT = Kokkos::ArithTraits<Ordinal>; 
+  static_assert(std::is_signed<Ordinal>::value,
+      "SpGEMM requires that Ordinal (lno_t) type is a signed integer.");
 
-  SpGEMMSymbolicFunctor(const RowmapIn& aRowmap_, const Entries& aEntries_, const RowmapIn& bRowmap_, const Entries& bEntries_, const RowmapOut& cRowmap_, const OrdinalView& marchIterators_, const OrdinalView& batchEnds_, int hashSize_, int vectorLen_)
+  SpGEMMSymbolicFunctor(const RowmapIn& aRowmap_, const Entries& aEntries_, const RowmapIn& bRowmap_, const StreamedEntries& bEntries_, const RowmapOut& cRowmap_, const OrdinalView& marchIterators_, const OrdinalView& batchEnds_, int hashSize_, int vectorLen_)
     : aRowmap(aRowmap_), aEntries(aEntries_), bRowmap(bRowmap_), bEntries(bEntries_), cRowmap(cRowmap_), marchIterators(marchIterators_), batchEnds(batchEnds_), hashSize(hashSize_), vectorLen(vectorLen_)
   {}
 
   KOKKOS_INLINE_FUNCTION void operator()(const TeamMem& t) const
   {
-    //if(t.league_rank() != 29)
+    //if(t.league_rank() != 22)
     //  return;
     Offset aRowBegin = aRowmap(t.league_rank());
     Ordinal aRowLen = aRowmap(t.league_rank() + 1) - aRowBegin;
@@ -216,7 +214,7 @@ struct SpGEMMSymbolicFunctor
     //In symbolic, hashtable keys are columns divided by 32.
     //Values are 32-wide bitsets - 1 represents a present entry, 0 represents no entry.
     //TODO: autotune nprobe? Runtime or compile-time?
-    std::cout << "Hash table has " << hashSize << " slots.\n";
+    //std::cout << "Hash table has " << hashSize << " slots.\n";
     MarchingHashTable<Ordinal, uint32_t> ht(
         (Ordinal*) t.team_shmem().get_shmem(hashSize * sizeof(Ordinal)),
         (uint32_t*) t.team_shmem().get_shmem(hashSize * sizeof(uint32_t)),
@@ -234,18 +232,14 @@ struct SpGEMMSymbolicFunctor
     //Team-wide column window that is currently being processed.
     //Cols < completedCol have already been inserted in table, counted and then cleared.
     //Cols between completedCol and securedCol are partially computed in the table (none evicted)
-    Ordinal completedCol = 0;
-    Ordinal securedCol = 0;
-    bool firstRound = true;
+    Ordinal completedCol = -1;
     //Loop until all entries of each referenced row of B have been consumed
     int round = 0;
+    bool firstRound = true;
     while(true)
     {
-      std::cout << "\n\nAt the beginning of round " << round << ", completedCol = " << completedCol << " and securedCol = " << securedCol << '\n';
+      std::cout << "\n\nAt the beginning of round " << round << ", completedCol = " << completedCol << "\n";
       Ordinal localMinFail = AT::max();
-      Ordinal localMinEviction = AT::max();
-      int threadWorkRemains = 0;
-      //In this loop, threadWorkRemains can only be increased to 1, never reset to 0
       for(Ordinal aIter = 0; aIter < aRowLen; aIter += numThreads)
       {
         Ordinal bRow, bCol;
@@ -271,23 +265,26 @@ struct SpGEMMSymbolicFunctor
           else
           {
             //Still (might be) work to do
-            Ordinal batchEnd = batchEnds(aEntryIndex);
-            //If c <= securedCol, then any thread which previously attempted to insert c must have succeeded.
-            if(!firstRound && batchEnd <= securedCol)
+            Ordinal batchEnd = firstRound ? 0 : batchEnds(aEntryIndex);
+            if(firstRound || batchEnd <= completedCol)
             {
               //Go to the next batch, and update both marchIterators and batchEnds
               //(batchEnds must be updated after actually loading the new batch of columns)
-              marchPos += vectorLen;
-              if(marchPos > bRowLen)
-                marchPos = bRowLen;
-              marchIterators(aEntryIndex) = marchPos;
+              if(!firstRound)
+              {
+                auto oldMarch = marchPos;
+                marchPos += vectorLen;
+                if(marchPos > bRowLen)
+                  marchPos = bRowLen;
+                std::cout << ">> Thread " << t.team_rank() << ": advancing march pos from " << oldMarch << " to " << marchPos << ", because previous batch ended at column " << batchEnd << " but columns through " << completedCol << " have been completed.\n";
+                marchIterators(aEntryIndex) = marchPos;
+              }
               threadActive = marchPos + vid < bRowLen;
               if(!threadActive)
                 std::cout << ">> Thread " << t.team_rank() << " inactive because after advacing iter, batch extends past end of B row (march pos = " << marchPos << ", bRowLen = " << bRowLen << ")\n";
               if(threadActive)
               {
                 bCol = bEntries(bRowBegin + marchPos + vid);
-                threadWorkRemains = 1;
               }
               //If I am the last active vector lane now, bCol is the new end of batch
               if((marchPos + vectorLen < bRowLen && vid == vectorLen - 1) ||
@@ -305,11 +302,9 @@ struct SpGEMMSymbolicFunctor
               if(threadActive)
               {
                 bCol = bEntries(bRowBegin + marchPos + vid);
-                threadWorkRemains = 1;
               }
             }
-            //If I am the last active vector lane AND the batch doesn't reach the end of B's row,
-            //make sure localMinFail reflects the fact that no columns beyond this batch can't be complete
+            //If I am the last active vector lane, make sure localMinFail reflects the fact that no columns beyond this batch can't be complete.
             if(vid == vectorLen - 1 && threadActive)
             {
               if(bCol + 1 < localMinFail)
@@ -327,18 +322,35 @@ struct SpGEMMSymbolicFunctor
         }
         if(threadActive)
         {
-          //std::cout << "  ** HELLO: I am thread " << t.team_rank() << " and I am active with bCol = " << bCol << '\n';
+          std::cout << "  ** HELLO: I am thread " << t.team_rank() << " and I am active with bCol = " << bCol << '\n';
         }
         else
         {
           std::cout << "  ** HELLO: I am thread " << t.team_rank() << " and I am inactive.\n";
         }
+        /*
+        Kokkos::single(Kokkos::PerTeam(t),
+          [=]()
+          {
+            printf("Current hash table contents: keys (values): ");
+            for(int i = 0; i < hashSize; i++)
+            {
+              printf("%d (%08x) ", ht.keys[i], ht.values[i]);
+            }
+            printf("\n");
+          });
+        */
         if(threadActive)
         {
-          Ordinal minEvictable = securedCol == AT::max() ? AT::max() : securedCol / 32 + 1;
-          Ordinal eviction = ht.insert(bCol / 32, minEvictable);
-          if(eviction < localMinEviction)
-            localMinEviction = eviction;
+          //If securedCol is AT::max(), there were no failures or evictions in the last round so we can't evict anything.
+          //printf("Trying to insert key %d\n", bCol / 32);
+          Ordinal eviction = ht.insert(bCol / 32);
+          if(eviction != AT::max())
+          {
+            printf("NOTE: evicted key %d!\n", eviction);
+            if(eviction * 32 < localMinFail)
+              localMinFail = eviction * 32;
+          }
         }
         //Team-wide barrier, to allow all insertion attempts to finish
         //(this must involve every single thread, which is why threadActive is necessary)
@@ -351,7 +363,10 @@ struct SpGEMMSymbolicFunctor
           {
             //The key did not make it into the table
             if(bCol < localMinFail)
+            {
+              //printf("NOTE: failed to insert col %d!\n", bCol);
               localMinFail = bCol;
+            }
             std::cout << "  Row " << t.league_rank() << ": FAILED to insert column " << bCol << " (key " << bCol / 32 << ")\n";
           }
           else
@@ -360,33 +375,34 @@ struct SpGEMMSymbolicFunctor
           }
         }
       }
-      std::cout << "March iterators after this round: ";
+      //std::cout << "March iterators after this round: ";
+      /*
       for(Offset asdf = aRowBegin; asdf < aRowBegin + aRowLen; asdf++)
         std::cout << marchIterators(asdf) << ' ';
       std::cout << '\n';
+      */
       //Need to do 3 reductions now:
       //  - Figure out if the row is done (true if threadWorkRemains is 0 on all threads)
       //  - Update completedCol based on localMinFail
       //  - Update securedCol based on localMinEviction
-      SpgemmTeamInfo<Ordinal> teamInfo;
+      Ordinal teamMinFail;
       Kokkos::parallel_reduce(Kokkos::TeamThreadRange(t, t.team_size()),
-        [&](int, SpgemmTeamInfo<Ordinal>& linfo)
+        [&](int, Ordinal& lminFail)
         {
-          if(threadWorkRemains)
-            linfo.workRemains = 1;
-          if(localMinFail < linfo.minFail)
-            linfo.minFail = localMinFail;
-          if(localMinEviction < linfo.minEviction)
-            linfo.minEviction = localMinEviction;
-        }, teamInfo);
-      if(teamInfo.minFail == AT::max())
+          if(localMinFail < lminFail)
+            lminFail = localMinFail;
+        }, Kokkos::Min<Ordinal>(teamMinFail));
+      std::cout << "teamMinFail: " << teamMinFail << '\n';
+      if(teamMinFail == AT::max())
+      {
+        //No failures, so we have completed the row.
         completedCol = AT::max();
+      }
       else
-        completedCol = teamInfo.minFail - 1;
-      if(teamInfo.minEviction == AT::max())
-        securedCol = AT::max();
-      else
-        securedCol = teamInfo.minEviction - 1;
+      {
+        completedCol = teamMinFail - 1;
+      }
+      /*
       Kokkos::single(Kokkos::PerTeam(t),
         [=]()
         {
@@ -400,11 +416,13 @@ struct SpGEMMSymbolicFunctor
             std::cout << "Row " << t.league_rank() << ": next batch will insert keys starting with " << securedCol + 1 << '\n';
           }
         });
+      */
       //Traverse hash table and count the entries, up to the beginCol for the next iter
       Ordinal iterNumEntries;
       //What is the maximum key which could contain completed columns?
-      Ordinal maxCompletedKey = (completedCol == AT::max()) ? AT::max() : completedCol / 32;
-      if(maxCompletedKey == AT::max())
+      Ordinal maxCompletedKey = (completedCol == AT::max()) ? AT::max() - 1 : completedCol / 32;
+      std::cout << "End of round: completedCol is " << completedCol << "\n";
+      if(maxCompletedKey == AT::max() - 1)
         std::cout << "NOTE: maxCompletedKey = ordinal max, meaning all keys are complete and will be peeled.\n";
       else
         std::cout << "NOTE: maxCompletedKey = " << maxCompletedKey << ", corresponds to columns " << maxCompletedKey * 32 << "..." << maxCompletedKey*32 + 31 << " inclusive.\n";
@@ -449,20 +467,14 @@ struct SpGEMMSymbolicFunctor
                 {
                   std::cout << "Peeling off completed column " << col << '\n';
                   lcount++;
-                  ht.values[i] &= ~mask;
                 }
               }
             }
-            if(!ht.values[i])
-            {
-              // We zeroed all the bits for this key
-              ht.keys[i] = AT::max();
-            }
-            //lcount += KokkosKernels::Impl::pop_count(bitsToCount);
           }
+          ht.keys[i] = AT::max();
         }, iterNumEntries);
       numEntries += iterNumEntries;
-      if(!teamInfo.workRemains)
+      if(teamMinFail == AT::max())
       {
         //Processing of all rows of B is done
         break;
@@ -480,7 +492,7 @@ struct SpGEMMSymbolicFunctor
   RowmapIn aRowmap;
   Entries aEntries;
   RowmapIn bRowmap;
-  Entries bEntries;
+  StreamedEntries bEntries;
   RowmapOut cRowmap;
   OrdinalView marchIterators;
   OrdinalView batchEnds;
@@ -509,13 +521,22 @@ void bmk_SpGEMM_Symbolic(int m, int n, int k, KernelHandle* handle, const Rowmap
   //Vector length should ideally be >= avg B nnz/row.
   //Hash table size is harder to estimate as it depends on term compaction. Too big = low occupancy, too small = slower marching progress.
   //  Also, there is some work done in shared memory that is proportional to total table size, not just number of filled cells.
+  using StreamedEntriesView = Kokkos::View<typename Entries::const_value_type*, typename Entries::device_type, Kokkos::MemoryStreamedAccess>;
+  StreamedEntriesView bStreamedEntries(bEntries.data(), bEntries.extent(0));
 
-  //int teamSize = 16;
-  //int vectorLength = 16;
-  int teamSize = 1;
-  int vectorLength = 1;
-  int hashSize = 512;
-  SpGEMMSymbolicFunctor<Policy, RowmapIn, RowmapOut, Entries, OrdinalView> functor(aRowmap, aEntries, bRowmap, bEntries, cRowmap, marchIterators, batchEnds, hashSize, vectorLength);
+  int teamSize, vectorLength;
+  if(KokkosKernels::Impl::kk_is_gpu_exec_space<ExecSpace>())
+  {
+    teamSize = 16;
+    vectorLength = 16;
+  }
+  else
+  {
+    teamSize = 1;
+    vectorLength = 1;
+  }
+  int hashSize = 1;
+  SpGEMMSymbolicFunctor<Policy, RowmapIn, RowmapOut, Entries, StreamedEntriesView, OrdinalView> functor(aRowmap, aEntries, bRowmap, bEntries, cRowmap, marchIterators, batchEnds, hashSize, vectorLength);
   Policy pol(m, teamSize * vectorLength);
   pol.set_scratch_size(0, Kokkos::PerTeam(hashSize * (sizeof(Ordinal) + sizeof(uint32_t))));
   Kokkos::parallel_for(pol, functor);

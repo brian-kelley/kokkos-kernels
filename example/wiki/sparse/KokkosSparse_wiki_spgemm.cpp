@@ -98,21 +98,31 @@ int main() {
     //rowmap_type bmkRowmap(Kokkos::ViewAllocateWithoutInitializing("My rowmap"), A.numRows() + 1);
     rowmap_type bmkRowmap("My rowmap", A.numRows() + 1);
     KokkosSparse::Impl::bmk_SpGEMM_Symbolic(A.numRows(), A.numCols(), B.numCols(), &kh, A.graph.row_map, A.graph.entries, B.graph.row_map, B.graph.entries, bmkRowmap);
+    auto correctRowmapHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), correctRowmap);
+    auto bmkRowmapHost = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), bmkRowmap);
     std::cout << "My C rowmap:\n";
-    KokkosKernels::Impl::print_1Dview(std::cout, bmkRowmap);
+    KokkosKernels::Impl::print_1Dview(std::cout, bmkRowmapHost);
     std::cout << "Correct C rowmap:\n";
-    KokkosKernels::Impl::print_1Dview(std::cout, correctRowmap);
+    KokkosKernels::Impl::print_1Dview(std::cout, correctRowmapHost);
+    bool diffed = false;
     for(int i = 0; i < A.numRows(); i++)
     {
-      if(bmkRowmap(i + 1) != correctRowmap(i + 1))
+      if(bmkRowmapHost(i + 1) != correctRowmapHost(i + 1))
       {
-        std::cout << "First row to diff in symbolic: " << i << ". Row length is " << bmkRowmap(i + 1) - bmkRowmap(i) << " but should be " << correctRowmap(i + 1) - correctRowmap(i) << '\n';
+        diffed = true;
+        std::cout << "First row to diff in symbolic: " << i << ". Row length is " << bmkRowmapHost(i + 1) - bmkRowmapHost(i) << " but should be " << correctRowmapHost(i + 1) - correctRowmapHost(i) << '\n';
         break;
       }
     }
+    if(!diffed)
+    {
+      std::cout << "** CORRECT: rowmap was computed correctly.\n";
+    }
+    return_value = diffed;
   }
 
   Kokkos::finalize();
 
   return return_value;
 }
+

@@ -60,19 +60,19 @@ namespace Impl {
     using KAT = Kokkos::ArithTraits<Key>;
     using VAT = Kokkos::ArithTraits<Value>;
 
-    MarchingHashTable(Key* k, Value* v, int n_, int nprobe_)
+    KOKKOS_INLINE_FUNCTION MarchingHashTable(Key* k, Value* v, int n_, int nprobe_)
       : keys(k), values(v), n(n_), nprobe(nprobe_)
     {}
 
     //32-bit xorshift hash function
     template<typename T>
-    static KOKKOS_INLINE_FUNCTION int hash(T key)
+    static KOKKOS_INLINE_FUNCTION unsigned hash(T key)
     {
-      int k = int(key);
+      unsigned k = key;
       k ^= k << 13;
       k ^= k >> 17;
       k ^= k << 5;
-      return int(k);
+      return k;
     }
 
     //General insert function.
@@ -81,27 +81,38 @@ namespace Impl {
     //are all held constant so they will check instead.
     //
     //If this evicts a key, the evicted key is returned. Otherwise ~0 (-1 for signed key).
-    KOKKOS_INLINE_FUNCTION Key insert(Key k, Key minEvictable)
+    KOKKOS_INLINE_FUNCTION Key insert(Key k)
     {
+      /*
+      std::cout << "Hello from MHT: trying to insert key " << k << '\n';
+      std::cout << "Initially, set of keys present: ";
+      for(int i = 0; i < n; i++)
+      {
+        std::cout << keys[i] << ' ';
+      }
+      std::cout << '\n';
+      */
       const Key EMPTY = KAT::max();
       //Need to have a retry mechanism - if multiple threads attempt to evict the same
       //key, only one of them can succeed.
       while(true)
       {
-        int h = hash(k);
+        unsigned h = hash(k);
         Key maxKey = KAT::zero();
         int maxCell = 0;
         for(int attempt = 0; attempt < nprobe; attempt++)
         {
-          int cell = h & (n - 1);
+          unsigned cell = h & (n - 1);
           //Another retry loop - needed if keys[cell] changes after reading it
           while(true)
           {
             Key current = Kokkos::atomic_load(&keys[cell]);
+            //std::cout << "Probe " << attempt << ": hashed to cell " << cell << ", where current key is " << current << "\n";
             if(current == k)
             {
               //Key already present.
               //Note that it may still be evicted at any time, but that is OK
+              //std::cout << "Probe " << attempt << ": Key already present! Returning.\n";
               return KAT::max();
             }
             else if(current == EMPTY)
@@ -110,6 +121,7 @@ namespace Impl {
               if(Kokkos::atomic_compare_exchange_strong(&keys[cell], EMPTY, k))
               {
                 //Insertion succeeded - initialize value and done
+                //std::cout << "Probe " << attempt << ": Found empty cell and inserted! Returning.\n";
                 values[cell] = VAT::zero();
                 return KAT::max();
               }
@@ -117,22 +129,27 @@ namespace Impl {
               //This is OK - just keep trying until keys[cell] settles
               //on either k or a different key.
             }
-            else if(current > maxKey)
+            else
             {
               //Cell is occupied. Keep track of maximum key over all of k's possible cells.
-              maxKey = current;
-              maxCell = cell;
+              if(current > maxKey)
+              {
+                maxKey = current;
+                maxCell = cell;
+              }
               break;
             }
           }
-          h = hash(h);
+          h++;
         }
         //If here, no empty cells were available. Try evicting max key, but only if k is an improvement (is less than that max)
-        if(k < maxKey && maxKey >= minEvictable)
+        //std::cout << "After probing, failed to insert or find but trying eviction (maxKey = " << maxKey << "). Cannot evict keys < " << minEvictable << '\n';
+        if(k < maxKey)
         {
           //But don't just write k there, only place it there if maxKey has not already been evicted by other thread
           if(Kokkos::atomic_compare_exchange_strong(&keys[maxCell], maxKey, k))
           {
+            //std::cout << "Successfully evicted key " << maxKey << " and replaced with " << k << ". Returning\n";
             values[maxCell] = VAT::zero();
             return maxKey;
           }
@@ -141,6 +158,7 @@ namespace Impl {
         else
         {
           //Max key is less than k or we can't evict any resident keys, so give up on inserting k.
+          //std::cout << "Giving up because we can't evict.\n";
           return KAT::max();
         }
       }
@@ -153,16 +171,16 @@ namespace Impl {
     KOKKOS_INLINE_FUNCTION bool updateValueOr(Key k, Value v,
         typename std::enable_if<std::numeric_limits<Value>::is_integer>::type* = nullptr)
     {
-      int h = hash(k);
+      unsigned h = hash(k);
       for(int attempt = 0; attempt < nprobe; attempt++)
       {
-        int cell = h & (n - 1);
+        unsigned cell = h & (n - 1);
         if(keys[cell] == k)
         {
           Kokkos::atomic_fetch_or(&values[cell], v);
           return true;
         }
-        h = hash(h);
+        h++;
       }
       return false;
     }
@@ -170,16 +188,16 @@ namespace Impl {
     //Same as updateValueOr, but instead updates values using addition.
     KOKKOS_INLINE_FUNCTION bool updateValueAdd(Key k, Value v)
     {
-      int h = hash(k);
+      unsigned h = hash(k);
       for(int attempt = 0; attempt < nprobe; attempt++)
       {
-        int cell = h & (n - 1);
+        unsigned cell = h & (n - 1);
         if(keys[cell] == k)
         {
           Kokkos::atomic_fetch_add(&values[cell], v);
           return true;
         }
-        h = hash(h);
+        h++;
       }
       return false;
     }
