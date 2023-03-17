@@ -20,9 +20,9 @@
 
 #include "KokkosKernels_Test_Structured_Matrix.hpp"
 
-using Scalar  = default_scalar;
-using Ordinal = default_lno_t;
-using Offset  = default_size_type;
+using Scalar  = double;
+using Ordinal = int;
+using Offset  = int;
 using Layout  = default_layout;
 
 int main() {
@@ -34,6 +34,10 @@ int main() {
   using matrix_type =
       typename KokkosSparse::CrsMatrix<Scalar, Ordinal, device_type, void,
                                        Offset>;
+
+  using KKH = KokkosKernels::Experimental::KokkosKernelsHandle<
+      Offset, Ordinal, Scalar, typename device_type::execution_space,
+      typename device_type::memory_space, typename device_type::memory_space>;
 
   int return_value = 0;
 
@@ -59,7 +63,20 @@ int main() {
     matrix_type B =
         Test::generate_structured_matrix2D<matrix_type>("FE", mat_structure);
 
-    matrix_type C = KokkosSparse::spgemm<matrix_type>(A, false, B, false);
+    matrix_type C;
+
+    KKH kh;
+    kh.create_spgemm_handle();
+
+    KokkosSparse::spgemm_symbolic(kh, A, false, B, false, C);
+    // Replace A's entries with a copy
+    decltype(A.graph.entries) AentriesCopy("asdf", A.nnz());
+    Kokkos::deep_copy(AentriesCopy, A.graph.entries);
+    A.graph.entries = AentriesCopy;
+    typename decltype(A.graph.row_map)::non_const_type ArowmapCopy("asdf", A.numRows() + 1);
+    Kokkos::deep_copy(ArowmapCopy, A.graph.row_map);
+    A.graph.row_map = ArowmapCopy;
+    KokkosSparse::spgemm_numeric(kh, A, false, B, false, C);
 
     std::cout << "Ran spgemm: product C is " << C.numRows() << 'x'
               << C.numCols() << " and has " << C.nnz() << " nonzeros.\n";
