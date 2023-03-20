@@ -34,3 +34,8 @@ KOKKOSKERNELS_ADD_EXECUTABLE_AND_TEST(
   wiki_gauss_seidel
   SOURCES KokkosSparse_wiki_gauss_seidel.cpp
   )
+
+KOKKOSKERNELS_ADD_EXECUTABLE_AND_TEST(
+  sandbox
+  SOURCES sandbox.cpp
+  )
