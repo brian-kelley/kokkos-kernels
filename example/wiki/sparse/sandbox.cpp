@@ -23,6 +23,14 @@ using Vector = Kokkos::View<Scalar*, Kokkos::LayoutLeft, Device>;
 using MultiVector = Kokkos::View<Scalar**, Kokkos::LayoutLeft, Device>;
 using PivotVector = Kokkos::View<int*, Kokkos::LayoutLeft, Device>;
 
+Vector randVec(int n)
+{
+  Kokkos::Random_XorShift64_Pool<typename Device::execution_space> rand_pool(12345);
+  Vector v("v", n);
+  Kokkos::fill_random(v, rand_pool, -10.0, 10.0);
+  return v;
+}
+
 // Ax - b
 Vector residual(const Matrix& A, const Vector& x, const Vector& b)
 {
@@ -99,7 +107,7 @@ Vector iterate(const Matrix& A, const Vector& b)
 {
   auto n = A.numRows();
   // Rank or dimension of the search subspace determined by bouncing vectors inside the contour
-  const int rank = 4;
+  const int rank = 3;
   MultiVector basis("subspace", n, rank);
   MultiVector basisImage("subspace (image via A)", n, rank);
   // The system matrix for solving the LSS.
@@ -114,8 +122,8 @@ Vector iterate(const Matrix& A, const Vector& b)
   Vector p("p", n);
   // All gradient evaluations will happen on the surface defined by: loss(A, x, b) == contourLoss
   Scalar contourLoss = loss(A, p, b);
-  std::cout << "** Contour loss (eval. at origin): " << contourLoss << '\n';
-  Vector search = gradient(A, p, b);
+  //std::cout << "** Contour loss (eval. at origin): " << contourLoss << '\n';
+  Vector search = normalize(gradient(A, p, b));
   Kokkos::deep_copy(Kokkos::subview(basis, Kokkos::ALL(), 0), search);
   for(int k = 1; k < rank; k++)
   {
@@ -128,14 +136,14 @@ Vector iterate(const Matrix& A, const Vector& b)
     Vector newP("newsearch", n);
     Kokkos::deep_copy(newP, p);
     KokkosBlas::axpby(t, search, 1.0, newP);
-    std::cout << "   Contour loss at bounce point " << k << ": " << loss(A, newP, b) << '\n';
+    //std::cout << "   Contour loss at bounce point " << k << ": " << loss(A, newP, b) << '\n';
     Vector grad = normalize(gradient(A, newP, b));
     // Bounce the old search direction off of gradient to get new search dir
     //Vector newSearch = reflect(grad, search);
     Vector newSearch = grad;
     KokkosBlas::scal(newSearch, -1.0, newSearch);
     // Sanity check reflect: input and output should be the same length
-    std::cout << "Norms before/after bounce: " << KokkosBlas::nrm2(search) << "/" << KokkosBlas::nrm2(newSearch) << '\n';
+    //std::cout << "Norms before/after bounce: " << KokkosBlas::nrm2(search) << "/" << KokkosBlas::nrm2(newSearch) << '\n';
     // Copy into the basis
     Kokkos::deep_copy(Kokkos::subview(basis, Kokkos::ALL(), k), newSearch);
     // and update p, search
@@ -167,6 +175,14 @@ Vector iterate(const Matrix& A, const Vector& b)
 void solve(const Matrix& A, const Vector& b)
 {
   int n = A.numRows();
+  //Scale each row of A to be unit length (and b correspondingly)
+  for(int i = 0; i < n; i++)
+  {
+    auto Arow = Kokkos::subview(A.values, Kokkos::make_pair(A.graph.row_map(i), A.graph.row_map(i + 1)));
+    Scalar rowNorm = KokkosBlas::nrm2(Arow);
+    KokkosBlas::scal(Arow, 1.0 / rowNorm, Arow);
+    b(i) /= rowNorm;
+  }
   //Relative residual norm, where the
   //resnorm of initial guess (0 vector) is 1.0
   Scalar tol = 1e-11;
@@ -203,12 +219,9 @@ int main(int argc, const char** argv)
     //Set up problem
     std::cout << "Reading problem matrix from \"" << argv[1] << "\"\n";
     Matrix A = KokkosSparse::Impl::read_kokkos_crst_matrix<Matrix>(argv[1]);
-    //Create unit-length random RHS
-    Kokkos::Random_XorShift64_Pool<typename Device::execution_space> rand_pool(12345);
     auto n = A.numRows();
-    Vector b("b", n);
-    Kokkos::fill_random(b, rand_pool, -10.0, 10.0);
-    b = normalize(b);
+    //Create unit-length random RHS
+    Vector b = normalize(randVec(n));
     solve(A, b);
   }
   Kokkos::finalize();
