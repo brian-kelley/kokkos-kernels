@@ -3,13 +3,7 @@
 #include "KokkosSparse_CrsMatrix.hpp"
 #include "KokkosSparse_IOUtils.hpp"
 #include "KokkosSparse_spmv.hpp"
-#include "KokkosBlas1_nrm2.hpp"
-#include "KokkosBlas1_nrm2_squared.hpp"
-#include "KokkosBlas1_dot.hpp"
-#include "KokkosBlas1_axpby.hpp"
-#include "KokkosBlas2_gemv.hpp"
-#include "KokkosBlas3_gemm.hpp"
-#include "KokkosBlas_gesv.hpp"
+#include "KokkosBlas.hpp"
 
 using Scalar  = default_scalar;
 using Ordinal = default_lno_t;
@@ -18,16 +12,22 @@ using Layout  = default_layout;
 using Device  = Kokkos::DefaultExecutionSpace;
 using KAT     = Kokkos::ArithTraits<Scalar>;
 
-using Matrix = KokkosSparse::CrsMatrix<Scalar, Ordinal, Device, void, Offset>;
+//using Matrix = KokkosSparse::CrsMatrix<Scalar, Ordinal, Device, void, Offset>;
+using Matrix = Kokkos::View<Scalar**, Kokkos::LayoutLeft, Device>;
 using Vector = Kokkos::View<Scalar*, Kokkos::LayoutLeft, Device>;
 using MultiVector = Kokkos::View<Scalar**, Kokkos::LayoutLeft, Device>;
-using PivotVector = Kokkos::View<int*, Kokkos::LayoutLeft, Device>;
+
+template<typename T>
+void fillRand(const T& v)
+{
+  Kokkos::Random_XorShift64_Pool<typename Device::execution_space> rand_pool(12345);
+  Kokkos::fill_random(v, rand_pool, -1.0, 1.0);
+}
 
 Vector randVec(int n)
 {
-  Kokkos::Random_XorShift64_Pool<typename Device::execution_space> rand_pool(12345);
   Vector v("v", n);
-  Kokkos::fill_random(v, rand_pool, -10.0, 10.0);
+  fillRand(v);
   return v;
 }
 
@@ -37,7 +37,7 @@ Vector residual(const Matrix& A, const Vector& x, const Vector& b)
   auto n = b.extent(0);
   Vector res("res", n);
   Kokkos::deep_copy(res, b);
-  KokkosSparse::spmv("N", 1.0, A, x, -1.0, res);
+  KokkosBlas::gemv("N", 1.0, A, x, -1.0, res);
   return res;
 }
 
@@ -54,7 +54,7 @@ Vector gradient(const Matrix& A, const Vector& x, const Vector& b)
   auto n = b.extent(0);
   Vector res = residual(A, x, b);
   Vector g("g", n);
-  KokkosSparse::spmv("T", 1.0, A, res, 0.0, g);
+  KokkosBlas::gemv("T", 1.0, A, res, 0.0, g);
   KokkosBlas::scal(g, 2.0, g);
   return g;
 }
@@ -70,156 +70,192 @@ Vector normalize(const Vector& v)
   return vnorm;
 }
 
-//Reflect vector dir against plane with normal norm
-Vector reflect(const Vector& norm, const Vector& dir)
+struct Solver
 {
-  auto n = dir.extent(0);
-  //Make sure that n is actually normalized
-  Vector nnorm = normalize(norm);
-  Scalar d = KokkosBlas::dot(nnorm, dir);
-  Vector rdir("rdir", n);
-  Kokkos::deep_copy(rdir, dir);
-  KokkosBlas::axpby(-2 * d, nnorm, 1.0, rdir);
-  return rdir;
-}
-
-//Use modified Gram-Schmidt to make the basis orthonormal.
-//This might be important if some vectors are nearly linearly dependent.
-MultiVector mgs(const MultiVector& basis)
-{
-  int k = basis.extent(1);
-  for(int i = 0; i < k; i++)
+  Solver(const Matrix& A, const Vector& b)
   {
-    auto icol = Kokkos::subview(basis, Kokkos::ALL(), i);
-    auto normCol = normalize(icol);
-    Kokkos::deep_copy(icol, normCol);
-    for(int j = i + 1; j < k; j++)
+    n = A.extent(0);
+    //First, choose the two dimensions (d1, d2) to search.
+    //Pick those with the smallest magnitude loss gradient at the origin
+    d1 = 0;
+    d2 = 0;
     {
-      auto jcol = Kokkos::subview(basis, Kokkos::ALL(), j);
-      Scalar d = KokkosBlas::dot(icol, jcol);
-      KokkosBlas::axpby(-d, icol, 1, jcol);
+      Vector x("x", n);
+      Vector g = gradient(A, x, b);
+      KokkosBlas::abs(g, g);
+      for(int i = 0; i < n; i++)
+      {
+        if(g(d1) > g(i))
+          d1 = i;
+      }
+      //Make sure d2 can never be the same as d1
+      if(d1 == 0)
+        d2++;
+      for(int i = 0; i < n; i++)
+      {
+        if(g(d2) > g(i) && i != d1)
+          d2 = i;
+      }
+      if(d1 > d2)
+        std::swap(d1, d2);
+      assert(d1 != d2);
     }
+    std::cout << "Using coordinate plane x_" << d1 << " * x_" << d2 << '\n';
+    //Start computing vectors and quantities in terms of these x values.
+    //Represent vectors as 3-column multivectors with x_d1, x_d2, and 1 as coefficients
+    
+    // b - Ax
+    bmAx = MultiVector("Ax", n, 3);
+    //Since x is just a sum of 2 elementary vectors, this is just selecting two columns of A
+    for(int i = 0; i < n; i++)
+    {
+      bmAx(i, 0) = -A(i, d1);
+      bmAx(i, 1) = -A(i, d2);
+      bmAx(i, 2) = b(i);
+    }
+    // y = A'(b - Ax)
+    // Compute by applying A' to each column with a gemm
+    y = MultiVector("y", n, 3);
+    KokkosBlas::gemm("T", "N", 1.0, A, bmAx, 0.0, y);
+    // Ay
+    Ay = MultiVector("Ay", n, 3);
+    KokkosBlas::gemm("N", "N", 1.0, A, y, 0.0, Ay);
+    // tn, td (t = tn/td). Each consists of 6 terms when fully reduced.
+    // Terms are: d1^2, d2^2, d1d2, d1, d2, 1
+    tn = Vector("tn", 6);
+    td = Vector("td", 6);
+    bmAx2 = Vector("bmAx2", 6);
+    {
+      Matrix tmp("tmp", 3, 3);
+      //First, compute tn as <b-Ax, Ay>
+      KokkosBlas::gemm("T", "N", 1.0, bmAx, Ay, 0.0, tmp);
+      tn(0) = tmp(0, 0);
+      tn(1) = tmp(1, 1);
+      tn(2) = tmp(0, 1) + tmp(1, 0);
+      tn(3) = tmp(0, 2) + tmp(2, 0);
+      tn(4) = tmp(1, 2) + tmp(2, 1);
+      tn(5) = tmp(2, 2);
+      //Then compute td as <Ay, Ay>
+      KokkosBlas::gemm("T", "N", 1.0, Ay, Ay, 0.0, tmp);
+      td(0) = tmp(0, 0);
+      td(1) = tmp(1, 1);
+      td(2) = tmp(0, 1) + tmp(1, 0);
+      td(3) = tmp(0, 2) + tmp(2, 0);
+      td(4) = tmp(1, 2) + tmp(2, 1);
+      td(5) = tmp(2, 2);
+      //Finally, bmAx2 is <b-Ax, b-Ax>
+      KokkosBlas::gemm("T", "N", 1.0, bmAx, bmAx, 0.0, tmp);
+      bmAx2(0) = tmp(0, 0);
+      bmAx2(1) = tmp(1, 1);
+      bmAx2(2) = tmp(0, 1) + tmp(1, 0);
+      bmAx2(3) = tmp(0, 2) + tmp(2, 0);
+      bmAx2(4) = tmp(1, 2) + tmp(2, 1);
+      bmAx2(5) = tmp(2, 2);
+    }
+    std::cout << "Done constructing solver. Let (x, y) = (x_" << d1 << ", x_" << d2 << ")\n";
+    std::cout << "Let g(x,y) = c - a*a/b\n";
+    std::cout << "a = " << tn(0) << "xx + " << tn(1) << "yy + " << tn(2) << "xy + " << tn(3) << "x + " << tn(4) << "y + " << tn(5) << '\n';
+    std::cout << "b = " << td(0) << "xx + " << td(1) << "yy + " << td(2) << "xy + " << td(3) << "x + " << td(4) << "y + " << td(5) << '\n';
+    std::cout << "c = " << bmAx2(0) << "xx + " << bmAx2(1) << "yy + " << bmAx2(2) << "xy + " << bmAx2(3) << "x + " << bmAx2(4) << "y + " << bmAx2(5) << '\n';
   }
-  return basis;
-}
 
-Vector iterate(const Matrix& A, const Vector& b)
-{
-  auto n = A.numRows();
-  // Rank or dimension of the search subspace determined by bouncing vectors inside the contour
-  const int rank = 3;
-  MultiVector basis("subspace", n, rank);
-  MultiVector basisImage("subspace (image via A)", n, rank);
-  // The system matrix for solving the LSS.
-  MultiVector lssA("least-squares A", rank, rank);
-  // The LHS for the full-rank version of the LSS.
-  Vector coeffs("coeffs", rank);
-  // The RHS for the full-rank version of the LSS.
-  Vector lssB("coeffs", rank);
-  //The first column of the search subspace is the negative loss gradient from origin.
-  //The remaining columns come from reflecting the previous search vector off the loss contour.
-  //  (The normal to the loss countour is just given by the gradient at that point)
-  Vector p("p", n);
-  // All gradient evaluations will happen on the surface defined by: loss(A, x, b) == contourLoss
-  Scalar contourLoss = loss(A, p, b);
-  //std::cout << "** Contour loss (eval. at origin): " << contourLoss << '\n';
-  Vector search = normalize(gradient(A, p, b));
-  Kokkos::deep_copy(Kokkos::subview(basis, Kokkos::ALL(), 0), search);
-  for(int k = 1; k < rank; k++)
+  Scalar eval6Term(Scalar xd1, Scalar xd2, const Vector& coef)
   {
-    // Find the intersection of ray "p + t*search" with the contour
-    Vector Asearch("Asearch", n);
-    KokkosSparse::spmv("N", 1.0, A, search, 0.0, Asearch);
-    Vector res = residual(A, p, b);
-    Scalar Avnorm2 = KokkosBlas::nrm2_squared(Asearch);
-    Scalar t = -2.0 * KokkosBlas::dot(Asearch, res) / Avnorm2;
-    Vector newP("newsearch", n);
-    Kokkos::deep_copy(newP, p);
-    KokkosBlas::axpby(t, search, 1.0, newP);
-    //std::cout << "   Contour loss at bounce point " << k << ": " << loss(A, newP, b) << '\n';
-    Vector grad = normalize(gradient(A, newP, b));
-    // Bounce the old search direction off of gradient to get new search dir
-    //Vector newSearch = reflect(grad, search);
-    Vector newSearch = grad;
-    KokkosBlas::scal(newSearch, -1.0, newSearch);
-    // Sanity check reflect: input and output should be the same length
-    //std::cout << "Norms before/after bounce: " << KokkosBlas::nrm2(search) << "/" << KokkosBlas::nrm2(newSearch) << '\n';
-    // Copy into the basis
-    Kokkos::deep_copy(Kokkos::subview(basis, Kokkos::ALL(), k), newSearch);
-    // and update p, search
-    Kokkos::deep_copy(search, newSearch);
-    Kokkos::deep_copy(p, newP);
+    return
+      coef(0) * xd1 * xd1 +
+      coef(1) * xd2 * xd2 +
+      coef(2) * xd1 * xd2 +
+      coef(3) * xd1 +
+      coef(4) * xd2 +
+      coef(5);
   }
-  // Now orthogonalize the search basis (may not be necessary, but reduces condition number of LSS)
-  basis = mgs(basis);
-  // Find the image of the basis (this is the LSS matrix)
-  KokkosSparse::spmv("N", 1.0, A, basis, 0.0, basisImage);
-  // Now solve the LSS: basisImage * coeffs = b
-  // Do that by forming a full-rank linear system: basisImage^T * basisImage * coeffs = basisImage^T * b
-  KokkosBlas::gemm("T", "N", 1.0, basisImage, basisImage, 0.0, lssA);
-  KokkosBlas::gemv("T", 1.0, basisImage, b, 0.0, lssB);
+
+  // Function to minimize: g(x_d1, x_d2)
+  // gives the squared residual norm after one step of gradient descent with line search, starting from x.
+  Scalar g(Scalar xd1, Scalar xd2)
   {
-    //Directly solve that system
-    //Note: gesv will overwrite lssA, but this is OK, we don't need it anymore
-    //The solution will be placed into lssB (we don't need that anymore either)
-    PivotVector ipiv("ipiv", rank);
-    KokkosBlas::gesv(lssA, lssB, ipiv);
-    Kokkos::deep_copy(coeffs, lssB);
+    Scalar evalTN = eval6Term(xd1, xd2, tn);
+    Scalar evalTD = eval6Term(xd1, xd2, td);
+    Scalar evalBMAX2 = eval6Term(xd1, xd2, bmAx2);
+    return evalBMAX2 - evalTN * evalTN / evalTD;
   }
-  Vector x("x", n);
-  //Form the final x (approx) for this iteration, by taking a linear combo of basis using coeffs
-  KokkosBlas::gemv("N", 1.0, basis, coeffs, 0.0, x);
-  return x;
-}
+  
+  Vector grad_g(Scalar xd1, Scalar xd2)
+  {
+    Vector grad("grad", 2);
+    return grad;
+  }
+
+  Matrix hess_g(Scalar xd1, Scalar xd2)
+  {
+    Matrix hess("hess", 2, 2);
+    return hess;
+  }
+
+  int n;
+  int d1;
+  int d2;
+  MultiVector bmAx;
+  MultiVector y;
+  MultiVector Ay;
+  // The following are scalar expressions in terms of x_d1, x_d2
+  // There are 6 terms: d1^2, d2^2, d1d2, d1, d2, 1
+  Vector tn;
+  Vector td;
+  Vector bmAx2;
+};
 
 void solve(const Matrix& A, const Vector& b)
 {
-  int n = A.numRows();
-  //Scale each row of A to be unit length (and b correspondingly)
-  for(int i = 0; i < n; i++)
-  {
-    auto Arow = Kokkos::subview(A.values, Kokkos::make_pair(A.graph.row_map(i), A.graph.row_map(i + 1)));
-    Scalar rowNorm = KokkosBlas::nrm2(Arow);
-    KokkosBlas::scal(Arow, 1.0 / rowNorm, Arow);
-    b(i) /= rowNorm;
-  }
-  //Relative residual norm, where the
-  //resnorm of initial guess (0 vector) is 1.0
-  Scalar tol = 1e-11;
-  Vector x("x", n);
-  Scalar initResNorm = Kokkos::sqrt(loss(A, x, b));
-  std::cout << "Iter 0: scaled res norm: 1\n";
-  for(int iter = 1;; iter++)
-  {
-    // At each iteration, solve for the residual
-    Vector res = residual(A, x, b);
-    Vector update = iterate(A, res);
-    // and update x
-    KokkosBlas::axpby(-1.0, update, 1.0, x);
-    Scalar relResNorm = Kokkos::sqrt(loss(A, x, b)) / initResNorm;
-    std::cout << "Iter " << iter << ": scaled res norm: " << relResNorm << "\n";
-    if(relResNorm <= tol)
-    {
-      std::cout << "Converged to desired tolerance of " << tol << ", done.\n";
-      break;
-    }
-  }
+  Solver s(A, b);
+  Scalar test_x1 = 0.383;
+  Scalar test_x2 = -0.024;
+  std::cout << "Solver using plane x_" << s.d1 << ", x_" << s.d2 << '\n';
+  std::cout << "Solver says g(" << test_x1 << ", " << test_x2 << ") = " << s.g(test_x1, test_x2) << '\n';
+  // Now form the full, explicit vector there
+  Vector x("x", s.n);
+  x(s.d1) = test_x1;
+  x(s.d2) = test_x2;
+  // Compute gradient
+  Vector grad = gradient(A, x, b);
+  // Compute optimal step size from x
+  Vector res = residual(A, x, b);
+  Vector Agrad("Agrad", s.n);
+  KokkosBlas::gemv("N", 1.0, A, grad, 0.0, Agrad);
+  Scalar t = -KokkosBlas::dot(res, Agrad) / KokkosBlas::nrm2_squared(Agrad);
+  Vector newX("newX", s.n);
+  Kokkos::deep_copy(newX, x);
+  KokkosBlas::axpy(t, grad, newX);
+  Scalar newResNrm = KokkosBlas::nrm2_squared(residual(A, newX, b));
+  std::cout << "Explicit calc says grad.desc. from x gives " << newResNrm << '\n';
 }
 
 int main(int argc, const char** argv)
 {
+  /*
   if(argc != 2)
   {
     std::cout << "Provide matrix (MatrixMarket format)\n";
     return 0;
   }
+  */
 
   Kokkos::initialize();
   {
     //Set up problem
+    /*
     std::cout << "Reading problem matrix from \"" << argv[1] << "\"\n";
     Matrix A = KokkosSparse::Impl::read_kokkos_crst_matrix<Matrix>(argv[1]);
     auto n = A.numRows();
+    */
+    int n = 10;
+    Matrix A("A", n, n);
+    fillRand(A);
+    for(int i = 0; i < n; i++)
+    {
+      A(i, i) = KAT::abs(A(i, i));
+      A(i, i) += 1.0;
+    }
     //Create unit-length random RHS
     Vector b = normalize(randVec(n));
     solve(A, b);
