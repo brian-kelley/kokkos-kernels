@@ -258,6 +258,12 @@ int main(int argc, const char** argv)
     }
     //Create unit-length random RHS
     Vector b = normalize(randVec(n));
+    std::cout << "*** System matrix: ***\n\n";
+    for(int i = 0; i < n; i++)
+      KokkosKernels::Impl::print_1Dview(Kokkos::subview(A, i, Kokkos::ALL()));
+    std::cout << "\n\n*** System RHS: ***\n\n";
+    KokkosKernels::Impl::print_1Dview(b);
+    std::cout << "\n***\n";
     solve(A, b);
   }
   Kokkos::finalize();
