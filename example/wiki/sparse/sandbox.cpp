@@ -68,6 +68,14 @@ Vector randVec(int n)
   return v;
 }
 
+Matrix identity(int n)
+{
+  Matrix I("I", n, n);
+  for(int i = 0; i < n; i++)
+    I(i, i) = 1;
+  return I;
+}
+
 // Ax - b
 template<typename AT>
 Vector residual(const AT& A, const Vector& x, const Vector& b)
@@ -117,7 +125,8 @@ Vector householder(const T& x, int k, double& tau, double& c)
 {
   c = KokkosBlas::nrm2(x);
   Vector v("HH v", x.extent(0));
-  double sk = (x(k) < 0.0) ? -1.0 : 1.0;
+  //double sk = (x(k + 1) < 0.0) ? -1.0 : 1.0;
+  double sk = 1.0;
   Kokkos::deep_copy(v, x);
   v(k) += sk * c;
   tau = KokkosBlas::nrm2_squared(v) / 2;
@@ -132,7 +141,7 @@ void applyHouseholder1D(const T& x, const Vector& v, double tau)
 {
   static_assert(T::rank == 1, "Rank-1 only");
   double d = KokkosBlas::dot(x, v);
-  double alpha = d / tau;
+  double alpha = -d / tau;
   KokkosBlas::axpy(alpha, v, x);
 }
 
@@ -171,10 +180,22 @@ int main()
     std::cout << "Matrix A:\n";
     print2D(A);
     double tau, c;
-    auto v = householder(Kokkos::subview(A, Kokkos::ALL(), 1), 1, tau, c);
+    auto v = householder(Kokkos::subview(A, Kokkos::ALL(), 1), 4, tau, c);
     applyHouseholderLeft(A, v, tau);
-    std::cout << "Matrix A, after eliminating the column 1 except element 1:\n";
+    std::cout << "Matrix A, after eliminating the column 1 except element 4:\n";
     print2D(A);
+    v = householder(Kokkos::subview(A, 3, Kokkos::ALL()), 2, tau, c);
+    applyHouseholderRight(A, v, tau);
+    std::cout << "Now, Matrix A, after eliminating the row 3 except element 2:\n";
+    print2D(A);
+    std::cout << "Forming H explicitly.\n";
+    Matrix H = identity(5);
+    applyHouseholderRight(H, v, tau);
+    print2D(H);
+    std::cout << "H^2:\n";
+    Matrix H2("H*H", 5, 5);
+    KokkosBlas::gemm("N", "N", 1.0, H, H, 0.0, H2);
+    print2D(H2);
 
     //Set up problem
     /*
