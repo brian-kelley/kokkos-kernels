@@ -106,6 +106,12 @@ bool is_same_matrix(crsMat_t output_mat_actual, crsMat_t output_mat_reference) {
     return false;
   }
 
+  // Print the values
+  std::cout << "Correct scalar values (" << output_mat_reference.nnz() << "):\n";
+  KokkosKernels::Impl::print_1Dview(output_mat_reference.values);
+  std::cout << "Actual scalar values (" << output_mat_actual.nnz() << "):\n";
+  KokkosKernels::Impl::print_1Dview(output_mat_actual.values);
+
   scalar_view_t valueDiff(
       Kokkos::view_alloc(Kokkos::WithoutInitializing, "spgemm values diff"),
       output_mat_actual.values.extent(0));
@@ -286,7 +292,7 @@ int parse_inputs(KokkosKernels::Experiment::Parameters& params, int argc,
 }
 
 template <typename ExecSpace>
-void run_spgemm(int argc, char** argv, perf_test::CommonInputParams) {
+void run_spgemm(int argc, char** argv, perf_test::CommonInputParams commonParams) {
   using namespace KokkosSparse;
   using namespace KokkosSparse::Experimental;
 
@@ -299,6 +305,8 @@ void run_spgemm(int argc, char** argv, perf_test::CommonInputParams) {
                                                     void, size_type>;
   using KernelHandle = KokkosKernels::Experimental::KokkosKernelsHandle<
       size_type, lno_t, scalar_t, ExecSpace, MemSpace, MemSpace>;
+
+  std::cout << "Runnning on device " << ExecSpace().name() << "/" << MemSpace().name() << '\n';
 
   KokkosKernels::Experiment::Parameters params;
 
@@ -329,7 +337,7 @@ void run_spgemm(int argc, char** argv, perf_test::CommonInputParams) {
   }
 
   int algorithm  = params.algorithm;
-  int repeat     = params.repeat;
+  int repeat     = commonParams.repeat;
   int chunk_size = params.chunk_size;
 
   int shmemsize                 = params.shmemsize;
@@ -464,9 +472,12 @@ void run_spgemm(int argc, char** argv, perf_test::CommonInputParams) {
       entriesC = lno_nnz_view_t(
           Kokkos::view_alloc(Kokkos::WithoutInitializing, "entriesC"),
           c_nnz_size);
+      /*
       valuesC = scalar_view_t(
           Kokkos::view_alloc(Kokkos::WithoutInitializing, "valuesC"),
           c_nnz_size);
+          */
+      valuesC = scalar_view_t("valuesC", c_nnz_size);
     }
     spgemm_numeric(&kh, m, n, k, A.graph.row_map, A.graph.entries, A.values,
                    TRANSPOSEFIRST, B.graph.row_map, B.graph.entries, B.values,

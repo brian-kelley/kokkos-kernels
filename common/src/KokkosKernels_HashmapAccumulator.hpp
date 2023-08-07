@@ -397,6 +397,7 @@ struct HashmapAccumulator {
 
       for (; i != -1; i = hash_nexts[i]) {
         if (keys[i] == key) {
+          volatile value_type before = values[i];
           values[i] = values[i] + value;
           return __insert_success;
         }

@@ -470,8 +470,12 @@ struct KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_,
     char *all_shared_memory =
         (char *)(teamMember.team_shmem().get_shmem(shared_memory_size));
 
+    KOKKOS_IMPL_DO_NOT_USE_PRINTF("Hello, teamsize, shared/team, shared/thread: %d, %d, %d\n", (int) teamMember.team_size(), (int) shared_memory_size, (int) thread_memory);
+
     // shift it to the thread private part
     all_shared_memory += thread_memory * teamMember.team_rank();
+
+    char* beginMem = all_shared_memory;
 
     // used_hash_sizes hold the size of 1st and 2nd level hashes
     volatile nnz_lno_t *used_hash_sizes =
@@ -499,6 +503,8 @@ struct KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_,
     // remainder of shmem allocation for vals
     scalar_t *vals =
         KokkosKernels::Impl::alignPtr<char *, scalar_t>(all_shared_memory);
+    char* endMem = (char*) (&vals[thread_shmem_key_size]);
+    KOKKOS_IMPL_DO_NOT_USE_PRINTF("Bytes actually used by thread: %d\n", (int) (endMem - beginMem));
 
     KokkosKernels::Experimental::HashmapAccumulator<
         nnz_lno_t, nnz_lno_t, scalar_t,
@@ -521,7 +527,8 @@ struct KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_,
           bool is_global_alloced                = false;
           nnz_lno_t *globally_used_hash_indices = NULL;
 
-          if (global_memory_hash_size > thread_shmem_key_size) {
+          if (global_memory_hash_size > thread_shmem_key_size)
+          {
             volatile nnz_lno_t *tmp = NULL;
             // size_t tid = get_thread_id(row_index);
             // the code gets internal compiler error on gcc 4.7.2
@@ -578,10 +585,12 @@ struct KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_,
                   const size_type adjind = i + rowBegin;
                   nnz_lno_t b_col_ind    = entriesB[adjind];
                   scalar_t b_val         = valuesB[adjind] * valA;
-                  volatile int num_unsuccess =
-                      hm.vector_atomic_insert_into_hash_mergeAdd(
-                          b_col_ind, b_val, used_hash_sizes);
+                  KOKKOS_IMPL_DO_NOT_USE_PRINTF("Inserting value C(%d, %d) = %f\n", (int) row_index, (int) b_col_ind, b_val);
+                  volatile int num_unsuccess = 
+                  hm.vector_atomic_insert_into_hash_mergeAdd(
+                      b_col_ind, b_val, used_hash_sizes);
                   if (num_unsuccess) {
+                    KOKKOS_IMPL_DO_NOT_USE_PRINTF("C(%d, %d) did not fit in hm, falling back to hm2\n", (int) row_index, (int) b_col_ind);
                     hm2.vector_atomic_insert_into_hash_mergeAdd_TrackHashes(
                         b_col_ind, b_val, used_hash_sizes + 1,
                         globally_used_hash_count, globally_used_hash_indices);
@@ -615,6 +624,7 @@ struct KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_,
               Kokkos::ThreadVectorRange(teamMember, num_elements),
               [&](nnz_lno_t i) {
                 pEntriesC[c_row_begin + written_index + i] = keys[i];
+                KOKKOS_IMPL_DO_NOT_USE_PRINTF("Writing C row %d, index %d = %f from shared\n", (int) row_index, (int) (written_index + i), vals[i]);
                 pvaluesC[c_row_begin + written_index + i]  = vals[i];
               });
         });
@@ -1620,6 +1630,7 @@ void KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_,
             " KokkosSPGEMM_numeric_hash SPGEMM_KK_MEMORY_SPREADTEAM: "
             "Insufficient shmem available for key for hash map accumulator ");
       }
+      std::cout << "Hello, launching with gpu_team_policy4_t (SPGEMM_KK_MEMORY_SPREADTEAM)\n";
       Kokkos::parallel_for(
           "KOKKOSPARSE::SPGEMM::SPGEMM_KK_MEMORY_SPREADTEAM",
           gpu_team_policy4_t(a_row_cnt / team_row_chunk_size + 1,
@@ -1639,6 +1650,7 @@ void KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_,
             " KokkosSPGEMM_numeric_hash SPGEMM_KK_MEMORY_BIGSPREADTEAM: "
             "Insufficient shmem available for key for hash map accumulator ");
       }
+      std::cout << "Hello, launching with gpu_team_policy6_t (SPGEMM_KK_MEMORY_BIGSPREADTEAM)\n";
       Kokkos::parallel_for(
           "KOKKOSPARSE::SPGEMM::SPGEMM_KK_MEMORY_BIGSPREADTEAM",
           gpu_team_policy6_t(a_row_cnt / team_row_chunk_size + 1,
@@ -1656,6 +1668,7 @@ void KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_,
             " KokkosSPGEMM_numeric_hash SPGEMM_KK_MEMORY: Insufficient shmem "
             "available for key for hash map accumulator ");
       }
+      std::cout << "Hello, launching with gpu_team_policy_t (SPGEMM_KK_MEMORY)\n";
       Kokkos::parallel_for(
           "KOKKOSPARSE::SPGEMM::SPGEMM_KK_MEMORY",
           gpu_team_policy_t(a_row_cnt / team_row_chunk_size + 1,
