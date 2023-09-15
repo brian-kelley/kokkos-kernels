@@ -68,7 +68,7 @@ template <class KernelHandle, class size_view_t, class lno_view_t,
           bool eti_spec_avail = color_d1_eti_spec_avail<
               KernelHandle, size_view_t, lno_view_t>::value>
 struct COLOR_D1 {
-  static void color_d1(KernelHandle *handle,
+  static void color_d1(const typename KernelHandle::HandleExecSpace& exec, KernelHandle *handle,
                        typename lno_view_t::non_const_value_type num_rows,
                        size_view_t rowmap, lno_view_t entries);
 };
@@ -78,10 +78,10 @@ struct COLOR_D1 {
 template <class KernelHandle, class size_view_t, class lno_view_t>
 struct COLOR_D1<KernelHandle, size_view_t, lno_view_t, false,
                 KOKKOSKERNELS_IMPL_COMPILE_LIBRARY> {
-  static void color_d1(KernelHandle *handle,
+  static void color_d1(const typename KernelHandle::HandleExecSpace& exec, KernelHandle *handle,
                        typename lno_view_t::non_const_value_type num_rows,
                        size_view_t rowmap, lno_view_t entries) {
-    KokkosGraph::Impl::graph_color_impl(handle, num_rows, rowmap, entries);
+    KokkosGraph::Impl::graph_color_impl(exec, handle, num_rows, rowmap, entries);
   }
 };
 

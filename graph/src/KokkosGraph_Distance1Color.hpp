@@ -24,13 +24,11 @@ namespace KokkosGraph {
 
 namespace Experimental {
 
-template <class KernelHandle, typename lno_row_view_t_,
-          typename lno_nnz_view_t_>
-void graph_color_symbolic(KernelHandle *handle,
-                          typename KernelHandle::nnz_lno_t num_rows,
-                          typename KernelHandle::nnz_lno_t /* num_cols */,
-                          lno_row_view_t_ row_map, lno_nnz_view_t_ entries,
-                          bool /* is_symmetric */ = true) {
+template <class KernelHandle, typename lno_row_view_t_, typename lno_nnz_view_t_>
+void graph_color(const typename KernelHandle::HandleExecSpace& exec, *handle,
+                 typename KernelHandle::nnz_lno_t num_vertices,
+                 const lno_row_view_t_& row_map, const lno_nnz_view_t_& entries)
+{
   typedef typename KernelHandle::HandleExecSpace ExecSpace;
   typedef typename KernelHandle::HandleTempMemorySpace MemSpace;
   typedef typename KernelHandle::HandlePersistentMemorySpace PersistentMemSpace;
@@ -57,20 +55,44 @@ void graph_color_symbolic(KernelHandle *handle,
       Internal_entries;
   KokkosGraph::Impl::
       COLOR_D1<ConstKernelHandle, Internal_rowmap, Internal_entries>::color_d1(
-          &tmp_handle, num_rows,
+          exec,
+          &tmp_handle, num_vertices,
           Internal_rowmap(row_map.data(), row_map.extent(0)),
           Internal_entries(entries.data(), entries.extent(0)));
 }
 
-template <class KernelHandle, typename lno_row_view_t_,
-          typename lno_nnz_view_t_>
+template <class KernelHandle, typename lno_row_view_t_, typename lno_nnz_view_t_>
 void graph_color(KernelHandle *handle,
                  typename KernelHandle::nnz_lno_t num_rows,
-                 typename KernelHandle::nnz_lno_t num_cols,
+                 const lno_row_view_t_& row_map, const lno_nnz_view_t_& entries)
+{
+  graph_color(typename KernelHandle::HandleExecSpace{}, handle, num_rows, row_map, entries);
+}
+
+template <class KernelHandle, typename lno_row_view_t_,
+          typename lno_nnz_view_t_>
+void graph_color [[deprecated("Please call graph_color([exec,] handle, num_rows, row_map, entries) instead"]]
+    (KernelHandle *handle,
+                 typename KernelHandle::nnz_lno_t num_rows,
+                 typename KernelHandle::nnz_lno_t /* num_cols */,
                  lno_row_view_t_ row_map, lno_nnz_view_t_ entries,
                  bool is_symmetric = true) {
-  graph_color_symbolic(handle, num_rows, num_cols, row_map, entries,
-                       is_symmetric);
+    if(!is_symmetric)
+      throw(std::invalid_argument("graph_color: is_symmetric must be true and graph must be symmetric/undirected"));
+    graph_color(handle, num_rows, row_map, entries);
+}
+
+template <class KernelHandle, typename lno_row_view_t_,
+          typename lno_nnz_view_t_>
+void graph_color_symbolic [[deprecated("Please call graph_color([exec,] handle, num_rows, row_map, entries) instead"]]
+    (KernelHandle *handle,
+                          typename KernelHandle::nnz_lno_t num_rows,
+                          typename KernelHandle::nnz_lno_t /* num_cols */,
+                          lno_row_view_t_ row_map, lno_nnz_view_t_ entries,
+                          bool /* is_symmetric */ = true) {
+    if(!is_symmetric)
+      throw(std::invalid_argument("graph_color: is_symmetric must be true and graph must be symmetric/undirected"));
+    graph_color(handle, num_rows, row_map, entries);
 }
 
 }  // end namespace Experimental
