@@ -31,9 +31,108 @@
 #include <KokkosSparse_spmv.hpp>
 #include "KokkosKernels_default_types.hpp"
 
-typedef default_scalar Scalar;
-typedef default_lno_t Ordinal;
-typedef default_size_type Offset;
+typedef double Scalar;
+typedef int64_t Ordinal;
+typedef size_t Offset;
+
+void kokkos_sparse_kernel_0(
+    Kokkos::View<double*, Kokkos::LayoutRight, Kokkos::CudaSpace> v1 /* y */,
+    Kokkos::View<const size_t*, Kokkos::LayoutRight, Kokkos::CudaSpace> v2 /* Arowptr */,
+    Kokkos::View<const int64_t*, Kokkos::LayoutRight, Kokkos::CudaSpace> v3 /* Aentries */,
+    Kokkos::View<const double*, Kokkos::LayoutRight, Kokkos::CudaSpace> v4 /* Avalues */,
+    Kokkos::View<const double*, Kokkos::LayoutRight, Kokkos::CudaSpace> v5 /* x */) {
+  using exec_space = Kokkos::DefaultExecutionSpace;
+  size_t m = v2.extent(0) - 1;
+  // scf.parallel
+  typedef Kokkos::TeamPolicy<exec_space>::member_type member_type;
+  int league_size = (m - 0 + 1 - 1) / 1;
+  //Kokkos::TeamPolicy<exec_space> policy (league_size, Kokkos::AUTO(), Kokkos::AUTO() );
+  Kokkos::TeamPolicy<exec_space> policy (league_size, 1, 8);
+  Kokkos::parallel_for(policy, KOKKOS_LAMBDA(member_type member)
+  {
+    int64_t unit_v6 = member.league_rank ();
+    int64_t v6 = 0 + unit_v6 * 1;
+    // memref.load
+    double v7 = v1(v6);
+    // memref.load
+    size_t v8 = v2(v6);
+    // arith.addi
+    size_t v9 = v6 + 1;
+    // memref.load
+    size_t v10 = v2(v9);
+    // scf.parallel
+    double v11;
+    Kokkos::parallel_reduce(Kokkos::TeamVectorRange(member, (v10 - v8 + 1 - 1) / 1),
+    [&](const int64_t &unit_v12, double& v13)
+    {
+      int64_t v12 = v8 + unit_v12 * 1;
+      // memref.load
+      size_t v14 = v3(v12);
+      // memref.load
+      double v15 = v4(v12);
+      // memref.load
+      double v16 = v5(v14);
+      // arith.mulf
+      double v17 = v15 * v16;
+      // scf.reduce
+      v13 += v17;
+      // scf.yield
+      ;
+    }, v11)
+    ;
+    // memref.store
+    Kokkos::single(Kokkos::PerTeam(member),
+        [&] () { v1(v6) = v11; });
+    // scf.yield
+    ;
+  })
+  ;
+  // func.return
+  return;
+}
+
+void kokkos_sparse_kernel_1(Kokkos::View<double*, Kokkos::LayoutRight, Kokkos::AnonymousSpace> v1, Kokkos::View<const size_t*, Kokkos::LayoutRight, Kokkos::AnonymousSpace> v2, Kokkos::View<const int64_t*, Kokkos::LayoutRight, Kokkos::AnonymousSpace> v3, Kokkos::View<const double*, Kokkos::LayoutRight, Kokkos::AnonymousSpace> v4, Kokkos::View<const double*, Kokkos::LayoutRight, Kokkos::AnonymousSpace> v5) {
+  using exec_space = Kokkos::DefaultExecutionSpace;
+  size_t m = v2.extent(0) - 1;
+  // scf.parallel
+  Kokkos::parallel_for(Kokkos::RangePolicy<exec_space>(0, (m - 0 + 1 - 1) / 1),
+  KOKKOS_LAMBDA(int64_t unit_v6)
+  {
+    int64_t v6 = 0 + unit_v6 * 1;
+    // memref.load
+    double v7 = v1(v6);
+    // memref.load
+    size_t v8 = v2(v6);
+    // arith.addi
+    size_t v9 = v6 + 1;
+    // memref.load
+    size_t v10 = v2(v9);
+    // scf.for
+    double v11;
+    double v12 = v7;
+    for (size_t v13 = v8; v13 < v10; v13 += 1) {
+      // memref.load
+      size_t v14 = v3(v13);
+      // memref.load
+      double v15 = v4(v13);
+      // memref.load
+      double v16 = v5(v14);
+      // arith.mulf
+      double v17 = v15 * v16;
+      // arith.addf
+      double v18 = v12 + v17;
+      v12 = v18;
+    }
+    v11 = v12;;
+    // memref.store
+    v1(v6) = v11;
+    // scf.yield
+    ;
+  })
+  ;
+  // func.return
+  return;
+}
 
 template <typename Layout>
 void run_spmv(Ordinal numRows, Ordinal numCols, const char* filename, int loop,
@@ -84,28 +183,49 @@ void run_spmv(Ordinal numRows, Ordinal numCols, const char* filename, int loop,
   auto y0 = Kokkos::subview(y, Kokkos::ALL(), 0);
   // Do 5 warm up calls (not timed)
   for (int i = 0; i < 5; i++) {
-    if (num_vecs == 1) {
-      // run the rank-1 version
-      KokkosSparse::spmv(&mode, 1.0, A, x0, beta, y0);
-    } else {
-      // rank-2
-      KokkosSparse::spmv(&mode, 1.0, A, x, beta, y);
-    }
+    KokkosSparse::spmv(&mode, 1.0, A, x0, beta, y0);
     Kokkos::DefaultExecutionSpace().fence();
   }
   Kokkos::Timer timer;
   for (int i = 0; i < loop; i++) {
-    if (num_vecs == 1) {
-      // run the rank-1 version
-      KokkosSparse::spmv(&mode, 1.0, A, x0, beta, y0);
-    } else {
-      // rank-2
-      KokkosSparse::spmv(&mode, 1.0, A, x, beta, y);
-    }
+    KokkosSparse::spmv(&mode, 1.0, A, x0, beta, y0);
     Kokkos::DefaultExecutionSpace().fence();
   }
   double avg_time = timer.seconds() / loop;
-  std::cout << avg_time << " s\n";
+  std::cout << "KK default (tpl): " << avg_time << " s\n";
+
+  KokkosKernels::Experimental::Controls c({{"algorithm", "native"}});
+  // Do 5 warm up calls (not timed)
+  for (int i = 0; i < 5; i++) {
+    KokkosSparse::spmv(c, &mode, 1.0, A, x0, beta, y0);
+    Kokkos::DefaultExecutionSpace().fence();
+  }
+  timer.reset();
+  for (int i = 0; i < loop; i++) {
+    KokkosSparse::spmv(c, &mode, 1.0, A, x0, beta, y0);
+    Kokkos::DefaultExecutionSpace().fence();
+  }
+  avg_time = timer.seconds() / loop;
+  std::cout << "KK native: " << avg_time << " s\n";
+
+  // Do 5 warm up calls (not timed)
+//void kokkos_sparse_kernel_0(
+//    Kokkos::View<double*, Kokkos::LayoutRight, Kokkos::AnonymousSpace> v1 /* y */,
+//    Kokkos::View<size_t*, Kokkos::LayoutRight, Kokkos::AnonymousSpace> v2 /* Arowptr */,
+//    Kokkos::View<size_t*, Kokkos::LayoutRight, Kokkos::AnonymousSpace> v3 /* Aentries */,
+//    Kokkos::View<double*, Kokkos::LayoutRight, Kokkos::AnonymousSpace> v4 /* Avalues */,
+//    Kokkos::View<double*, Kokkos::LayoutRight, Kokkos::AnonymousSpace> v5 /* x */) {
+  for (int i = 0; i < 5; i++) {
+    kokkos_sparse_kernel_1(y0, A.graph.row_map, A.graph.entries, A.values, x0);
+    Kokkos::DefaultExecutionSpace().fence();
+  }
+  timer.reset();
+  for (int i = 0; i < loop; i++) {
+    kokkos_sparse_kernel_1(y0, A.graph.row_map, A.graph.entries, A.values, x0);
+    Kokkos::DefaultExecutionSpace().fence();
+  }
+  avg_time = timer.seconds() / loop;
+  std::cout << "MLIR: " << avg_time << " s\n";
 }
 
 void print_help() {
