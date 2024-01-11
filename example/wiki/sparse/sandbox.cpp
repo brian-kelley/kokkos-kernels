@@ -132,136 +132,156 @@ Vector mysolve(const Matrix& A, const Vector& b)
 // - The matrix, as CRS
 // - A mapping from hypersparse variables to original variables (many -> one)
 // - The transposed graph of the hypersparse matrix
-void assembleHypersparse(CrsMatrix A, Vector b, CrsMatrix& Ah, Vector& bh, IntVector& varMap, CrsGraph& transGraph)
+struct BMK
 {
-  auto At = KokkosSparse::Impl::transpose_matrix(A);
-  int numVars = 0;
-  int numRows = 0;
-  // Build Ah as COO
-  std::vector<int> rows;
-  std::vector<int> cols;
-  std::vector<double> vals;
-  std::vector<double> bvec;
-  using Entry = std::pair<int, int>;
-  using EntryVal = std::pair<int, double>;
-  std::map<Entry, int> entryToVar;
-  // First, create an unknown variable for each entry in A, and add equality constraints
-  // It's easiest to do this by iterating down columns (rows of At)
-  for(int c = 0; c < At.numRows(); c++)
+  BMK(CrsMatrix A_, Vector b_)
+    : A(A_), b(b_)
   {
-    // Record the previous free variable in the column
-    int lastVar = -1;
-    for(int j = At.graph.row_map(c); j < At.graph.row_map(c + 1); j++)
+    auto At = KokkosSparse::Impl::transpose_matrix(A);
+    int numVars = 0;
+    int numRows = 0;
+    // Build Ah as COO
+    std::vector<int> rows;
+    std::vector<int> cols;
+    std::vector<double> vals;
+    std::vector<double> bvec;
+    using Entry = std::pair<int, int>;
+    using EntryVal = std::pair<int, double>;
+    std::map<Entry, int> entryToVar;
+    // First, create an unknown variable for each entry in A, and add equality constraints
+    // It's easiest to do this by iterating down columns (rows of At)
+    for(int c = 0; c < At.numRows(); c++)
     {
-      int r = At.graph.entries(j);
-      int var = numVars++;
-      entryToVar[Entry(r, c)] = var;
-      if(lastVar == -1)
-        lastVar = var;
-      else {
-        // Add constraint that var is equal to lastVar:
-        // var - lastVar = 0
-        int hrow = numRows++;
-        rows.push_back(hrow);
-        cols.push_back(lastVar);
-        vals.push_back(1);
-        rows.push_back(hrow);
-        cols.push_back(var);
-        vals.push_back(-1);
-        bvec.push_back(0);
-        lastVar = var;
+      // Record the previous free variable in the column
+      int lastVar = -1;
+      for(int j = At.graph.row_map(c); j < At.graph.row_map(c + 1); j++)
+      {
+        int r = At.graph.entries(j);
+        int var = numVars++;
+        entryToVar[Entry(r, c)] = var;
+        if(lastVar == -1)
+          lastVar = var;
+        else {
+          // Add constraint that var is equal to lastVar:
+          // var - lastVar = 0
+          int hrow = numRows++;
+          rows.push_back(hrow);
+          cols.push_back(lastVar);
+          vals.push_back(1);
+          rows.push_back(hrow);
+          cols.push_back(var);
+          vals.push_back(-1);
+          bvec.push_back(0);
+          lastVar = var;
+        }
       }
     }
-  }
-  // Next, for each row of the original matrix, express that
-  // <A_row, x> = b_row using a binary tree reduction
-  for(int r = 0; r < A.numRows(); r++)
-  {
-    double bval = b(r);
-    std::vector<EntryVal> valuesToReduce;
-    for(int j = A.graph.row_map(r); j < A.graph.row_map(r + 1); j++)
+    // Next, for each row of the original matrix, express that
+    // <A_row, x> = b_row using a binary tree reduction
+    for(int r = 0; r < A.numRows(); r++)
     {
-      int c = A.graph.entries(j);
-      // Get the free variable for which this entry is the coefficient
-      int hvar = entryToVar[Entry(r, c)];
-      double v = A.values(j);
-      valuesToReduce.emplace_back(hvar, v);
+      double bval = b(r);
+      std::vector<EntryVal> valuesToReduce;
+      for(int j = A.graph.row_map(r); j < A.graph.row_map(r + 1); j++)
+      {
+        int c = A.graph.entries(j);
+        // Get the free variable for which this entry is the coefficient
+        int hvar = entryToVar[Entry(r, c)];
+        double v = A.values(j);
+        valuesToReduce.emplace_back(hvar, v);
+      }
+      // Now build the binary tree sum-reduction by introducing a new variable for each summed pair.
+      // Except, when the final pair is summed, it's the original b value
+      std::vector<EntryVal> nextValuesToReduce;
+      while(true)
+      {
+        nextValuesToReduce.clear();
+        if(valuesToReduce.size() == 2)
+        {
+          // The last two variables have weighted sum equal to original b
+          int hrow = numRows++;
+          rows.push_back(hrow);
+          cols.push_back(valuesToReduce[0].first);
+          vals.push_back(valuesToReduce[0].second);
+          rows.push_back(hrow);
+          cols.push_back(valuesToReduce[1].first);
+          vals.push_back(valuesToReduce[1].second);
+          bvec.push_back(bval);
+          break;
+        }
+        // If an odd number of entries, move the last one in front for balancing
+        if(valuesToReduce.size() % 2)
+        {
+          nextValuesToReduce.push_back(valuesToReduce.back());
+          valuesToReduce.pop_back();
+        }
+        // now valuesToReduce is an even number at least 2
+        for(size_t i = 0; i < valuesToReduce.size(); i += 2)
+        {
+          int var1 = valuesToReduce[i].first;
+          int var2 = valuesToReduce[i + 1].first;
+          double coeff1 = valuesToReduce[i].second;
+          double coeff2 = valuesToReduce[i + 1].second;
+          int hrow = numRows++;
+          int sumvar = numVars++;
+          // coeff1 * var1 + coeff2 * var2 - sumvar = 0
+          rows.push_back(hrow);
+          cols.push_back(var1);
+          vals.push_back(coeff1);
+          rows.push_back(hrow);
+          cols.push_back(var2);
+          vals.push_back(coeff2);
+          rows.push_back(hrow);
+          cols.push_back(sumvar);
+          vals.push_back(-1);
+          nextValuesToReduce.emplace_back(sumvar, 1);
+          bvec.push_back(0);
+        }
+        valuesToReduce = nextValuesToReduce;
+      }
     }
-    // Now build the binary tree sum-reduction by introducing a new variable for each summed pair.
-    // Except, when the final pair is summed, it's the original b value
-    std::vector<EntryVal> nextValuesToReduce;
-    while(true)
+    std::cout << "Finished assembling hypersparse problem.\n";
+    std::cout << "Orig problem has " << A.numRows() << " unknowns and " << A.nnz() << " nonzeros.\n";
+    std::cout << "Hypersparse problem has " << numVars << " unknowns and " << rows.size() << " nonzeros.\n";
+    std::cout << "Number of rows should match unknowns: " << numRows << '\n';
+    std::cout << "The system, as COO:\n";
+    for(size_t i = 0; i < rows.size(); i++)
     {
-      nextValuesToReduce.clear();
-      if(valuesToReduce.size() == 2)
-      {
-        // The last two variables have weighted sum equal to original b
-        int hrow = numRows++;
-        rows.push_back(hrow);
-        cols.push_back(valuesToReduce[0].first);
-        vals.push_back(valuesToReduce[0].second);
-        rows.push_back(hrow);
-        cols.push_back(valuesToReduce[1].first);
-        vals.push_back(valuesToReduce[1].second);
-        bvec.push_back(bval);
-        break;
-      }
-      // If an odd number of entries, move the last one in front for balancing
-      if(valuesToReduce.size() % 2)
-      {
-        nextValuesToReduce.push_back(valuesToReduce.back());
-        valuesToReduce.pop_back();
-      }
-      // now valuesToReduce is an even number at least 2
-      for(size_t i = 0; i < valuesToReduce.size(); i += 2)
-      {
-        int var1 = valuesToReduce[i].first;
-        int var2 = valuesToReduce[i + 1].first;
-        double coeff1 = valuesToReduce[i].second;
-        double coeff2 = valuesToReduce[i + 1].second;
-        int hrow = numRows++;
-        int sumvar = numVars++;
-        // coeff1 * var1 + coeff2 * var2 - sumvar = 0
-        rows.push_back(hrow);
-        cols.push_back(var1);
-        vals.push_back(coeff1);
-        rows.push_back(hrow);
-        cols.push_back(var2);
-        vals.push_back(coeff2);
-        rows.push_back(hrow);
-        cols.push_back(sumvar);
-        vals.push_back(-1);
-        nextValuesToReduce.emplace_back(sumvar, 1);
-        bvec.push_back(0);
-      }
-      valuesToReduce = nextValuesToReduce;
+      std::cout << "(" << rows[i] << ", " << cols[i] << ") = " << vals[i] << '\n';
+    }
+    Kokkos::View<int*> cooRows(rows.data(), rows.size());
+    Kokkos::View<int*> cooCols(cols.data(), cols.size());
+    Kokkos::View<double*> cooVals(vals.data(), vals.size());
+    nh = numVars;
+    Ah = KokkosSparse::coo2crs(nh, nh, cooRows, cooCols, cooVals);
+    transGraph = KokkosSparse::Impl::transpose_matrix(Ah).graph;
+    bh = Vector("bh", nh);
+    for(int i = 0; i < nh; i++)
+      bh(i) = bvec[i];
+    varMap = IntVector("varMap", numVars);
+    Kokkos::deep_copy(varMap, -1);
+    // Use entryToVar to populate
+    for(const auto& e : entryToVar)
+    {
+      varMap(e.second) = e.first.second;
     }
   }
-  std::cout << "Finished assembling hypersparse problem.\n";
-  std::cout << "Orig problem has " << A.numRows() << " unknowns and " << A.nnz() << " nonzeros.\n";
-  std::cout << "Hypersparse problem has " << numVars << " unknowns and " << rows.size() << " nonzeros.\n";
-  std::cout << "Number of rows should match unknowns: " << numRows << '\n';
-  std::cout << "The system, as COO:\n";
-  for(size_t i = 0; i < rows.size(); i++)
+
+  // Solve the system (producing x vector in original variables)
+  // Internally, the x that's iterated corresponds to the hypersparse system
+  Vector solve()
   {
-    std::cout << "(" << rows[i] << ", " << cols[i] << ") = " << vals[i] << '\n';
+    Vector xh("xh", nh);
   }
-  Kokkos::View<int*> cooRows(rows.data(), rows.size());
-  Kokkos::View<int*> cooCols(cols.data(), cols.size());
-  Kokkos::View<double*> cooVals(vals.data(), vals.size());
-  Ah = KokkosSparse::coo2crs(numVars, numVars, cooRows, cooCols, cooVals);
-  transGraph = KokkosSparse::Impl::transpose_matrix(Ah).graph;
-  bh = Vector("bh", numVars);
-  for(int i = 0; i < numVars; i++)
-    bh(i) = bvec[i];
-  varMap = IntVector("varMap", numVars);
-  Kokkos::deep_copy(varMap, -1);
-  // Use entryToVar to populate
-  for(const auto& e : entryToVar)
-  {
-    varMap(e.second) = e.first.second;
-  }
-}
+
+  CrsMatrix A;
+  Vector b;
+  int nh;
+  CrsMatrix Ah;
+  Vector bh;
+  IntVector varMap;
+  CrsGraph transGraph;
+};
 
 /*
 void pcg(const RemoteVector& x, const LocalVector& b) {
@@ -325,15 +345,11 @@ int main()
     KokkosSparse::spmv("N", 1.0, A, xgold, 0, b);
     std::cout << "Orig b: ";
     print1D(b);
-    CrsMatrix Ah;
-    Vector bh;
-    IntVector varMap;
-    CrsGraph transGraph;
-    assembleHypersparse(A, b, Ah, bh, varMap, transGraph);
+    BMK bmk(A, b);
     std::cout << "H -> orig variable map:\n";
-    print1D(varMap);
+    print1D(bmk.varMap);
     std::cout << "bh:\n";
-    print1D(bh);
+    print1D(bmk.bh);
   }
   Kokkos::finalize();
   return 0;
