@@ -7,6 +7,7 @@
 #include "KokkosSparse_CrsMatrix.hpp"
 #include "KokkosSparse_CooMatrix.hpp"
 #include "KokkosSparse_spmv.hpp"
+#include "KokkosSparse_coo2crs.hpp"
 #include <iostream>
 #include <map>
 
@@ -216,8 +217,8 @@ void assembleHypersparse(CrsMatrix A, Vector b, CrsMatrix& Ah, Vector& bh, IntVe
       {
         int var1 = valuesToReduce[i].first;
         int var2 = valuesToReduce[i + 1].first;
-        int coeff1 = valuesToReduce[i].second;
-        int coeff2 = valuesToReduce[i + 1].second;
+        double coeff1 = valuesToReduce[i].second;
+        double coeff2 = valuesToReduce[i + 1].second;
         int hrow = numRows++;
         int sumvar = numVars++;
         // coeff1 * var1 + coeff2 * var2 - sumvar = 0
@@ -240,6 +241,26 @@ void assembleHypersparse(CrsMatrix A, Vector b, CrsMatrix& Ah, Vector& bh, IntVe
   std::cout << "Orig problem has " << A.numRows() << " unknowns and " << A.nnz() << " nonzeros.\n";
   std::cout << "Hypersparse problem has " << numVars << " unknowns and " << rows.size() << " nonzeros.\n";
   std::cout << "Number of rows should match unknowns: " << numRows << '\n';
+  std::cout << "The system, as COO:\n";
+  for(size_t i = 0; i < rows.size(); i++)
+  {
+    std::cout << "(" << rows[i] << ", " << cols[i] << ") = " << vals[i] << '\n';
+  }
+  Kokkos::View<int*> cooRows(rows.data(), rows.size());
+  Kokkos::View<int*> cooCols(cols.data(), cols.size());
+  Kokkos::View<double*> cooVals(vals.data(), vals.size());
+  Ah = KokkosSparse::coo2crs(numVars, numVars, cooRows, cooCols, cooVals);
+  transGraph = KokkosSparse::Impl::transpose_matrix(Ah).graph;
+  bh = Vector("bh", numVars);
+  for(int i = 0; i < numVars; i++)
+    bh(i) = bvec[i];
+  varMap = IntVector("varMap", numVars);
+  Kokkos::deep_copy(varMap, -1);
+  // Use entryToVar to populate
+  for(const auto& e : entryToVar)
+  {
+    varMap(e.second) = e.first.second;
+  }
 }
 
 /*
@@ -302,11 +323,17 @@ int main()
     Vector xgold = randVec(n);
     Vector b("b", n);
     KokkosSparse::spmv("N", 1.0, A, xgold, 0, b);
+    std::cout << "Orig b: ";
+    print1D(b);
     CrsMatrix Ah;
     Vector bh;
     IntVector varMap;
     CrsGraph transGraph;
     assembleHypersparse(A, b, Ah, bh, varMap, transGraph);
+    std::cout << "H -> orig variable map:\n";
+    print1D(varMap);
+    std::cout << "bh:\n";
+    print1D(bh);
   }
   Kokkos::finalize();
   return 0;
