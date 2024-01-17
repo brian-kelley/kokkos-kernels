@@ -8,6 +8,7 @@
 #include "KokkosSparse_CooMatrix.hpp"
 #include "KokkosSparse_spmv.hpp"
 #include "KokkosSparse_coo2crs.hpp"
+#include "KokkosGraph_Distance2Color.hpp"
 #include <iostream>
 #include <map>
 
@@ -249,29 +250,96 @@ struct BMK
     {
       std::cout << "(" << rows[i] << ", " << cols[i] << ") = " << vals[i] << '\n';
     }
+    nh = numVars;
+    varMap = IntVector("varMap", numVars);
+    // For each i, compute the ellipsoid coefficient in x_i^2.
+    // Will use this to rescale each variable so that the x_i^2 coeffs are all 1.
+    IntVector varDuplication("varDup", A.numRows());
+    Vector varScaling("varScaling", nh);
+    for(size_t i = 0; i < rows.size(); i++) {
+      varScaling(cols[i]) += vals[i] * vals[i];
+    }
+    for(int i = 0; i < nh; i++)
+      varScaling(i) = Kokkos::sqrt(varScaling(i));
+    Kokkos::deep_copy(varMap, -1);
+    varWeights = Vector("varWeights", nh);
+    // Use entryToVar to populate varMap
+    for(const auto& e : entryToVar)
+    {
+      int origVar = e.first.second;
+      int newVar = e.second;
+      varMap(newVar) = origVar;
+      varDuplication(origVar)++;
+    }
+    for(int i = 0; i < nh; i++)
+    {
+      if(varMap(i) >= 0)
+        varWeights(i) = varScaling(i) / varDuplication(varMap(i));
+    }
+    // Finally, rescale all hypersparse coeffs
+    for(size_t i = 0; i < rows.size(); i++)
+      vals[i] /= varScaling(cols[i]);
+    // Everything ready to construct the persistent data structures
     Kokkos::View<int*> cooRows(rows.data(), rows.size());
     Kokkos::View<int*> cooCols(cols.data(), cols.size());
     Kokkos::View<double*> cooVals(vals.data(), vals.size());
-    nh = numVars;
     Ah = KokkosSparse::coo2crs(nh, nh, cooRows, cooCols, cooVals);
     transGraph = KokkosSparse::Impl::transpose_matrix(Ah).graph;
     bh = Vector("bh", nh);
     for(int i = 0; i < nh; i++)
       bh(i) = bvec[i];
-    varMap = IntVector("varMap", numVars);
-    Kokkos::deep_copy(varMap, -1);
-    // Use entryToVar to populate
-    for(const auto& e : entryToVar)
+    // Compute the bipartite row coloring of Ah
     {
-      varMap(e.second) = e.first.second;
+      using Handle = KokkosKernels::Experimental::KokkosKernelsHandle<int, int, double, typename Device::execution_space, typename Device::memory_space, typename Device::memory_space>;
+      Handle handle;
+      // Use the default algorithm (chosen based on ExecSpace)
+      handle.create_distance2_graph_coloring_handle(KokkosGraph::COLORING_D2_DEFAULT);
+      // Run coloring
+      KokkosGraph::Experimental::bipartite_color_rows(&handle, nh, nh, Ah.graph.row_map, Ah.graph.entries);
+      // Get the colors array, and the number of colors used from the handle.
+      colors = handle.get_distance2_graph_coloring_handle()->get_vertex_colors();
+      numColors = handle.get_distance2_graph_coloring_handle()->get_num_colors();
+      handle.destroy_distance2_graph_coloring_handle();
+      std::cout << "** Colored hypersparse A with " << numColors << " colors.\n";
     }
   }
 
   // Solve the system (producing x vector in original variables)
-  // Internally, the x that's iterated corresponds to the hypersparse system
+  // Internally, the iterate xh corresponds to the hypersparse system
   Vector solve()
   {
+    double initialNorm = KokkosBlas::nrm2(b);
     Vector xh("xh", nh);
+    for(int iter = 0; iter < 10; iter++)
+    {
+      {
+        // Determine the current iterate in the original system, and calculate rel. res. norm
+        Vector xorig("xorig", b.extent(0));
+        for(int i = 0; i < nh; i++)
+        {
+          int origVar = varMap(i);
+          if(origVar >= 0)
+          {
+            // just average all hypersparse variables corresponding to the original variable
+            // (varWeights takes into account the number of such variables, and the rescaling on each one)
+            xorig(origVar) += xh(i) * varWeights(i);
+          }
+        }
+        Vector residual("residual", b.extent(0));
+        Kokkos::deep_copy(residual, b);
+        KokkosSparse::spmv("N", 1.0, A, xorig, -1, residual);
+        double currentNorm = KokkosBlas::nrm2(residual);
+        printf("Iter %d: relative residual = %.3e\n", iter, currentNorm / initialNorm);
+      }
+      // xiter will be computed in this iteration based on bh.
+      // Then xh will be updated with xiter, and bh will be updated to the residual.
+      Vector xiter("xiter", nh);
+      // Compute xiter initially as the center of the axis-aligned ellipsoid
+      // (based only on the x_i^2 and x_i coefficients - ignoring x_i*x_j coefficients
+
+    }
+    //TODO
+    return Vector();
   }
 
   CrsMatrix A;
@@ -279,8 +347,15 @@ struct BMK
   int nh;
   CrsMatrix Ah;
   Vector bh;
+  // If i is a hypersparse unknown, varMap(i) gives the corresponding
+  // original unknown (or -1 if i is an intermediate sum variable)
   IntVector varMap;
+  // If i is an unknown in the hypersparse system, and j is varMap(i),
+  // then varWeights(i) * xh(i) gives the contribution to x(j).
+  Vector varWeights;
   CrsGraph transGraph;
+  IntVector colors;
+  int numColors;
 };
 
 /*
@@ -350,6 +425,7 @@ int main()
     print1D(bmk.varMap);
     std::cout << "bh:\n";
     print1D(bmk.bh);
+    Vector x = bmk.solve();
   }
   Kokkos::finalize();
   return 0;
