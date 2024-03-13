@@ -21,7 +21,7 @@
 
 #include "KokkosKernels_Test_Structured_Matrix.hpp"
 
-using Scalar  = default_scalar;
+using Scalar  = Kokkos::complex<double>;
 using Ordinal = default_lno_t;
 using Offset  = default_size_type;
 using Layout  = default_layout;
