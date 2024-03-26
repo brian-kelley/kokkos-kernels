@@ -32,6 +32,7 @@
 #include "KokkosBlas1_scal.hpp"
 #include "KokkosKernels_Utils.hpp"
 #include "KokkosKernels_Error.hpp"
+#include "/home/bmkelle/BMK_DebugUtils.hpp"
 
 namespace KokkosSparse {
 
@@ -395,6 +396,14 @@ void spmv(const ExecutionSpace& space, Handle* handle, const char mode[],
         useNative = useNative || (mode[0] == Conjugate[0]);
       }
 #endif
+      std::cout << "Calling spmv bsr, rank-2 xy, useNative = " << useNative << '\n';
+      std::cout << "Types: " << demangledType<ExecutionSpace>() << "\n" << demangledType<HandleImpl>() << "\n" << demangledType<AMatrix_Internal>() << "\n" << demangledType<XVector_Internal>() << "\n" <<    demangledType<YVector_Internal>()  << "\n\n";
+      std::cout << "TPL avail? " << Impl::spmv_mv_bsrmatrix_tpl_spec_avail<
+            ExecutionSpace, HandleImpl, AMatrix_Internal, XVector_Internal,
+            YVector_Internal,
+            std::is_integral<
+                typename AMatrix_Internal::const_value_type>::value>::value << '\n';
+
       if (useNative) {
         // Explicitly call the non-TPL SPMV_BSRMATRIX implementation
         std::string label =
