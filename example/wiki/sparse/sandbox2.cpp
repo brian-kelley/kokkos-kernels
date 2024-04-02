@@ -223,16 +223,6 @@ struct BMK
     std::cout << "Orig problem has " << n << " unknowns.\n";
     std::cout << "Hypersparse problem has " << numVars << " unknowns and " << rows.size() << " nonzeros.\n";
     std::cout << "Number of rows should match unknowns: " << numRows << '\n';
-    /*
-    std::cout << "Variable labels:\n";
-    for(auto& l : labels)
-      std::cout << l << '\n';
-    std::cout << "The system, as COO:\n";
-    for(size_t i = 0; i < rows.size(); i++)
-    {
-      std::cout << "(" << rows[i] << ", " << cols[i] << ") = " << vals[i] << '\n';
-    }
-    */
     nh = numVars;
     bh = Vector("bh", nh);
     for(size_t i = 0; i < bvec.size(); i++)
@@ -245,12 +235,13 @@ struct BMK
   }
 
   // Display Ah as an undirected graph to show connectivity between variables
-  void displayAsGraph(int id)
+  void displayAsGraph(std::string label, int id)
   {
     std::string dotname = std::string("bmk") + std::to_string(id) + ".dot";
     std::string imgname = std::string("bmk") + std::to_string(id) + ".png";
     std::ofstream f(dotname);
     f << "graph {\n";
+    f << "label=\"" << label << "\"\n";
     // For each nonzero in Ah, produce an edge
     for(int i = pivot; i < nh; i++)
     {
@@ -273,8 +264,103 @@ struct BMK
     std::ostringstream cmd1, cmd2;
     cmd1 << "dot -Tpng -K" << layoutEngine << " " << dotname << " -o " << imgname;
     system(cmd1.str().c_str());
-    cmd2 << "okular " << imgname;
+    cmd2 << "firefox " << imgname;
     system(cmd2.str().c_str());
+  }
+
+  void elimStep()
+  {
+    int elimVar, pivRow;
+    std::string s;
+    std::cout << "Enter name of variable to eliminate: ";
+    std::cin >> s;
+    elimVar = -1;
+    for(size_t i = 0; i < varLabels.size(); i++)
+    {
+      if(varLabels[i] == s)
+      {
+        elimVar = i;
+        break;
+      }
+    }
+    if(elimVar == -1)
+      throw std::invalid_argument("Not a valid var name");
+    std::cout << "Enter name of pivot row: ";
+    std::cin >> s;
+    pivRow = -1;
+    for(size_t i = 0; i < rowLabels.size(); i++)
+    {
+      if(rowLabels[i] == s)
+      {
+        pivRow = i;
+        break;
+      }
+    }
+    if(pivRow == -1)
+      throw std::invalid_argument("Not a valid row name");
+    if(pivRow < pivot)
+      throw std::invalid_argument("Pivot has already moved past that row");
+    // Make sure variable to eliminate actually appears in that row
+    if(Ah(pivRow, elimVar) == 0.0)
+    {
+      throw std::runtime_error("Variable to eliminate is zero in that row, cannot use as pivot!");
+    }
+    // Swap 3 things to swap pivRow to pivot:
+    // - row labels
+    // - values of Ah
+    // - values of bh
+    std::swap(rowLabels[pivot], rowLabels[pivRow]);
+    for(int i = 0; i < nh; i++)
+    {
+      std::swap(Ah(pivot, i), Ah(pivRow, i));
+    }
+    std::swap(bh(pivot), bh(pivRow));
+    pivRow = pivot;
+    // Do the same to swap column elimVar to pivot
+    std::swap(varLabels[pivot], varLabels[elimVar]);
+    for(int j = 0; j < nh; j++)
+    {
+      std::swap(Ah(j, pivot), Ah(j, elimVar));
+    }
+    // Go down the column under pivot and eliminate all the nonzeros
+    double pivval = Ah(pivot, pivot);
+    for(int r = pivot + 1; r < nh; r++)
+    {
+      if(Ah(r, pivot) != 0.0)
+      {
+        double mult = Ah(r, pivot) / pivval;
+        for(int c = pivot; c < nh; c++)
+        {
+          Ah(r, c) -= mult * Ah(pivot, c);
+        }
+        bh(r) -= mult * bh(pivot);
+      }
+    }
+    // Now advance pivot to effectively remove 1 row and 1 column from flow graph to display next
+    pivot++;
+  }
+
+  void interactiveEliminate()
+  {
+    displayAsGraph("Initial system", 0);
+    for(int step = 0;; step++)
+    {
+      bool success = true;
+      do
+      {
+        try
+        {
+          elimStep();
+        }
+        catch(std::exception& e)
+        {
+          std::cout << e.what() << '\n';
+          std::cout << "Try again\n";
+          success = false;
+        }
+      } while(!success);
+      displayAsGraph("Elim step" + std::to_string(step), step+1);
+    }
   }
 
   int n;
@@ -295,7 +381,8 @@ int main()
     Matrix A = randMat(4);
     Vector b = randVec(4);
     BMK bmk(A, b);
-    bmk.displayAsGraph(0);
+    //bmk.displayAsGraph("Initia0);
+    bmk.interactiveEliminate();
   }
   Kokkos::finalize();
   return 0;
