@@ -39,3 +39,8 @@ KOKKOSKERNELS_ADD_EXECUTABLE_AND_TEST(
   sandbox
   SOURCES sandbox.cpp
   )
+
+KOKKOSKERNELS_ADD_EXECUTABLE_AND_TEST(
+  sandbox2
+  SOURCES sandbox2.cpp
+  )

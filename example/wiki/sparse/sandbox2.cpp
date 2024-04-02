@@ -1,0 +1,303 @@
+#include "Kokkos_Core.hpp"
+#include "KokkosKernels_default_types.hpp"
+#include "KokkosKernels_Utils.hpp"
+#include "KokkosSparse_Utils.hpp"
+#include "KokkosSparse_IOUtils.hpp"
+#include "KokkosBlas.hpp"
+#include <iostream>
+#include <map>
+#include <string>
+
+using Device = Kokkos::DefaultHostExecutionSpace;
+using Matrix = Kokkos::View<double**, Kokkos::LayoutRight, Device>;
+using Vector = Kokkos::View<double*, Kokkos::LayoutLeft, Device>;
+using IntVector = Kokkos::View<int*, Kokkos::LayoutLeft, Device>;
+using KAT = Kokkos::ArithTraits<double>;
+
+template<typename T>
+void print1D(const T& x)
+{
+  KokkosKernels::Impl::print_1Dview(x);
+  std::cout << '\n';
+}
+
+template<typename T>
+void print2D(const T& A)
+{
+  int n = A.extent(0);
+  for(int i = 0; i < n; i++)
+    KokkosKernels::Impl::print_1Dview(Kokkos::subview(A, i, Kokkos::ALL()));
+  std::cout << '\n';
+}
+
+template<typename T>
+void fillRand(const T& v)
+{
+  Kokkos::Random_XorShift64_Pool<typename Device::execution_space> rand_pool(12345);
+  Kokkos::fill_random(v, rand_pool, 0.3, 1.0);
+}
+
+Vector randVec(int n)
+{
+  Vector v("v", n);
+  fillRand(v);
+  return v;
+}
+
+Matrix randMat(int n)
+{
+  Matrix m("m", n, n);
+  fillRand(m);
+  return m;
+}
+
+Matrix identity(int n)
+{
+  Matrix I("I", n, n);
+  for(int i = 0; i < n; i++)
+    I(i, i) = 1;
+  return I;
+}
+
+// Ax - b
+template<typename AT>
+Vector residual(const AT& A, const Vector& x, const Vector& b)
+{
+  auto n = b.extent(0);
+  Vector res("res", n);
+  Kokkos::deep_copy(res, b);
+  KokkosBlas::gemv("N", 1.0, A, x, -1.0, res);
+  return res;
+}
+
+//Scale v to be unit length.
+Vector normalize(const Vector& v)
+{
+  auto norm = KokkosBlas::nrm2(v);
+  Vector vnorm("vnorm", v.extent(0));
+  if(KAT::abs(norm) < 1e-15)
+    return vnorm;
+  KokkosBlas::scal(vnorm, 1.0 / norm, v);
+  return vnorm;
+}
+
+//Scale v to be unit length.
+void normalizeInPlace(const Vector& v)
+{
+  auto norm = KokkosBlas::nrm2(v);
+  KokkosBlas::scal(v, 1.0 / norm, v);
+}
+
+struct BMK
+{
+  BMK(Matrix A_, Vector b_)
+    : A(A_), b(b_)
+  {
+    // n = rank of original system
+    n = A.extent(0);
+    int numVars = 0;
+    int numRows = 0;
+    int erowCounter = 0;
+    int srowCounter = 0;
+    int tsrowCounter = 0;
+    // Build Ah as COO initially
+    std::vector<int> rows;
+    std::vector<int> cols;
+    std::vector<double> vals;
+    std::vector<double> bvec;
+    using Entry = std::pair<int, int>;
+    using EntryVal = std::pair<int, double>;
+    std::map<Entry, int> entryToVar;
+    // First, create an unknown variable for each entry in A
+    for(int c = 0; c < n; c++)
+    {
+      for(int r = 0; r < n; r++)
+      {
+        int var = numVars++;
+        std::ostringstream oss;
+        oss << "X_" << r << "_" << c;
+        varLabels.push_back(oss.str());
+        entryToVar[Entry(r, c)] = var;
+      }
+    }
+    // Add equality constraints for each column of Ah (each variable in A)
+    for(int c = 0; c < n; c++)
+    {
+      std::vector<int> varsToMakeEqual;
+      for(int r = 0; r < n; r++)
+      {
+        // Get the free variable for which this entry is the coefficient
+        varsToMakeEqual.push_back(entryToVar[Entry(r, c)]);
+      }
+      while(varsToMakeEqual.size() >= 2)
+      {
+        std::vector<int> nextVarsToMakeEqual;
+        for(size_t i = 0; i < varsToMakeEqual.size(); i += 2)
+        {
+          int hrow = numRows++;
+          rowLabels.push_back(std::string("Equal") + std::to_string(erowCounter++));
+          int v1 = varsToMakeEqual[i];
+          int v2 = varsToMakeEqual[i + 1];
+          nextVarsToMakeEqual.push_back(v1);
+          rows.push_back(hrow);
+          cols.push_back(v1);
+          vals.push_back(1);
+          rows.push_back(hrow);
+          cols.push_back(v2);
+          vals.push_back(-1);
+          bvec.push_back(0);
+        }
+        varsToMakeEqual = nextVarsToMakeEqual;
+      }
+    }
+    // Next, for each row of the original matrix, express that
+    // <A_row, x> = b_row using a binary tree reduction
+    int sumcounter = 0;
+    for(int r = 0; r < n; r++)
+    {
+      double bval = b(r);
+      std::vector<EntryVal> valuesToReduce;
+      for(int c = 0; c < n; c++)
+      {
+        // Get the free variable for which this entry is the coefficient
+        int hvar = entryToVar[Entry(r, c)];
+        double v = A(r, c);
+        valuesToReduce.emplace_back(hvar, v);
+      }
+      // Now build the binary tree sum-reduction by introducing a new variable for each summed pair.
+      // Except, when the final pair is summed, it's the original b value
+      std::vector<EntryVal> nextValuesToReduce;
+      while(true)
+      {
+        nextValuesToReduce.clear();
+        if(valuesToReduce.size() == 2)
+        {
+          // The last two variables have weighted sum equal to original b
+          int hrow = numRows++;
+          rowLabels.push_back(std::string("Top_Sum") + std::to_string(tsrowCounter++));
+          rows.push_back(hrow);
+          cols.push_back(valuesToReduce[0].first);
+          vals.push_back(valuesToReduce[0].second);
+          rows.push_back(hrow);
+          cols.push_back(valuesToReduce[1].first);
+          vals.push_back(valuesToReduce[1].second);
+          bvec.push_back(bval);
+          break;
+        }
+        // If an odd number of entries, move the last one in front for balancing
+        if(valuesToReduce.size() % 2)
+        {
+          nextValuesToReduce.push_back(valuesToReduce.back());
+          valuesToReduce.pop_back();
+        }
+        // now valuesToReduce is an even number at least 2
+        for(size_t i = 0; i < valuesToReduce.size(); i += 2)
+        {
+          int var1 = valuesToReduce[i].first;
+          int var2 = valuesToReduce[i + 1].first;
+          double coeff1 = valuesToReduce[i].second;
+          double coeff2 = valuesToReduce[i + 1].second;
+          int hrow = numRows++;
+          rowLabels.push_back(std::string("Sum") + std::to_string(srowCounter++));
+          int sumvar = numVars++;
+          std::ostringstream oss;
+          oss << "t_" << sumcounter++;
+          varLabels.push_back(oss.str());
+          // coeff1 * var1 + coeff2 * var2 - sumvar = 0
+          rows.push_back(hrow);
+          cols.push_back(var1);
+          vals.push_back(coeff1);
+          rows.push_back(hrow);
+          cols.push_back(var2);
+          vals.push_back(coeff2);
+          rows.push_back(hrow);
+          cols.push_back(sumvar);
+          vals.push_back(-1);
+          nextValuesToReduce.emplace_back(sumvar, 1);
+          bvec.push_back(0);
+        }
+        valuesToReduce = nextValuesToReduce;
+      }
+    }
+    std::cout << "Finished assembling hypersparse problem.\n";
+    std::cout << "Orig problem has " << n << " unknowns.\n";
+    std::cout << "Hypersparse problem has " << numVars << " unknowns and " << rows.size() << " nonzeros.\n";
+    std::cout << "Number of rows should match unknowns: " << numRows << '\n';
+    /*
+    std::cout << "Variable labels:\n";
+    for(auto& l : labels)
+      std::cout << l << '\n';
+    std::cout << "The system, as COO:\n";
+    for(size_t i = 0; i < rows.size(); i++)
+    {
+      std::cout << "(" << rows[i] << ", " << cols[i] << ") = " << vals[i] << '\n';
+    }
+    */
+    nh = numVars;
+    bh = Vector("bh", nh);
+    for(size_t i = 0; i < bvec.size(); i++)
+      bh(i) = bvec[i];
+    Ah = Matrix("Ah", nh, nh);
+    for(size_t i = 0; i < rows.size(); i++)
+      Ah(rows[i], cols[i]) = vals[i];
+    //initially, pivot is entry 0,0 (nothing eliminated yet)
+    pivot = 0;
+  }
+
+  // Display Ah as an undirected graph to show connectivity between variables
+  void displayAsGraph(int id)
+  {
+    std::string dotname = std::string("bmk") + std::to_string(id) + ".dot";
+    std::string imgname = std::string("bmk") + std::to_string(id) + ".png";
+    std::ofstream f(dotname);
+    f << "graph {\n";
+    // For each nonzero in Ah, produce an edge
+    for(int i = pivot; i < nh; i++)
+    {
+      // Define a "row" node with blue color
+      f << rowLabels[i] << " [color=blue];\n";
+    }
+    for(int i = pivot; i < nh; i++)
+    {
+      for(int j = pivot; j < nh; j++)
+      {
+        if(Ah(i,j) != 0.0)
+        {
+          f << varLabels[j] << " -- " << rowLabels[i] << '\n';
+        }
+      }
+    }
+    f << "}\n";
+    f.close();
+    std::string layoutEngine = "neato";
+    std::ostringstream cmd1, cmd2;
+    cmd1 << "dot -Tpng -K" << layoutEngine << " " << dotname << " -o " << imgname;
+    system(cmd1.str().c_str());
+    cmd2 << "okular " << imgname;
+    system(cmd2.str().c_str());
+  }
+
+  int n;
+  int nh;
+  Matrix A;
+  Matrix Ah;
+  Vector b;
+  Vector bh;
+  std::vector<std::string> varLabels;
+  std::vector<std::string> rowLabels;
+  int pivot;
+};
+
+int main()
+{
+  Kokkos::initialize();
+  {
+    Matrix A = randMat(4);
+    Vector b = randVec(4);
+    BMK bmk(A, b);
+    bmk.displayAsGraph(0);
+  }
+  Kokkos::finalize();
+  return 0;
+}
+

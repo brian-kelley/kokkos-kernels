@@ -310,6 +310,7 @@ struct BMK
   {
     double initialNorm = KokkosBlas::nrm2(b);
     Vector xh("xh", nh);
+    Vector delta("delta", nh);
     for(int iter = 0; iter < 10; iter++)
     {
       {
