@@ -115,7 +115,7 @@ struct BMK
       {
         int var = numVars++;
         std::ostringstream oss;
-        oss << "X_" << r << "_" << c;
+        oss << "X_" << c << "_" << r;
         varLabels.push_back(oss.str());
         entryToVar[Entry(r, c)] = var;
       }
@@ -241,7 +241,8 @@ struct BMK
     std::string imgname = std::string("bmk") + std::to_string(id) + ".png";
     std::ofstream f(dotname);
     f << "graph {\n";
-    f << "label=\"" << label << "\"\n";
+    f << "label=\"" << label << "\";\n";
+    f << "overlap=false;\n";
     // For each nonzero in Ah, produce an edge
     for(int i = pivot; i < nh; i++)
     {
@@ -268,16 +269,16 @@ struct BMK
     system(cmd2.str().c_str());
   }
 
-  void elimStep()
+  // Use given row to get an expression for the given variable,
+  // and subsitute that variable in all its other uses.
+  // This swaps the row to the current pivot position, and
+  // then advances pivot by 1.
+  void elim(std::string varName, std::string rowName)
   {
-    int elimVar, pivRow;
-    std::string s;
-    std::cout << "Enter name of variable to eliminate: ";
-    std::cin >> s;
-    elimVar = -1;
+    int elimVar = -1;
     for(size_t i = 0; i < varLabels.size(); i++)
     {
-      if(varLabels[i] == s)
+      if(varLabels[i] == varName)
       {
         elimVar = i;
         break;
@@ -285,12 +286,10 @@ struct BMK
     }
     if(elimVar == -1)
       throw std::invalid_argument("Not a valid var name");
-    std::cout << "Enter name of pivot row: ";
-    std::cin >> s;
-    pivRow = -1;
+    int pivRow = -1;
     for(size_t i = 0; i < rowLabels.size(); i++)
     {
-      if(rowLabels[i] == s)
+      if(rowLabels[i] == rowName)
       {
         pivRow = i;
         break;
@@ -337,7 +336,18 @@ struct BMK
       }
     }
     // Now advance pivot to effectively remove 1 row and 1 column from flow graph to display next
+    std::cout << "Elimated " << varName << " using row " << rowName << '\n';
     pivot++;
+  }
+
+  void elimStepInteractive()
+  {
+    std::string varName, rowName;
+    std::cout << "Enter name of variable to eliminate: ";
+    std::cin >> varName;
+    std::cout << "Enter name of pivot row: ";
+    std::cin >> rowName;
+    elim(varName, rowName);
   }
 
   void interactiveEliminate()
@@ -350,7 +360,7 @@ struct BMK
       {
         try
         {
-          elimStep();
+          elimStepInteractive();
         }
         catch(std::exception& e)
         {
@@ -361,6 +371,61 @@ struct BMK
       } while(!success);
       displayAsGraph("Elim step" + std::to_string(step), step+1);
     }
+  }
+
+  void elimMultiple(std::vector<std::string> varsToElim, std::vector<std::string> rowsToUse)
+  {
+    for(size_t i = 0; i < varsToElim.size(); i++)
+      elim(varsToElim[i], rowsToUse[i]);
+  }
+
+  void elimInterleaved(std::vector<std::string> names)
+  {
+    for(size_t i = 0; i < names.size(); i += 2)
+      elim(names[i], names[i + 1]);
+  }
+
+  void noninteractiveEliminate()
+  {
+    displayAsGraph("Initial system", 0);
+    elimInterleaved({"t_1", "Sum1", "X_2_1", "Equal6", "X_3_1", "Sum3", "X_3_0", "Equal9"});
+    elimInterleaved({"t_2", "Sum2", "X_0_1", "Equal0", "X_1_0", "Sum0", "X_1_1", "Equal3"});
+    elimInterleaved({"t_5", "Sum5", "X_3_2", "Equal10", "X_3_3", "Sum7", "X_2_3", "Equal7"});
+    elimInterleaved({"t_6", "Sum6", "X_1_3", "Equal4", "X_1_2", "Sum4", "X_0_3", "Equal1"});
+    displayAsGraph("Elim step 1", 1);
+    elimInterleaved({"X_2_0", "Equal8", "X_0_2", "Equal2"});
+    displayAsGraph("Elim step 2", 2);
+    //elimInterleaved({"t_4", "Top_Sum3", "X_0_0", "Equal5", "t_0", "Top_Sum1", "t_3", "Top_Sum0", "X_2_2", "Equal11", "t_7", "Top_Sum2"});
+    elimInterleaved({"t_4", "Top_Sum3", "t_0", "Top_Sum1", "X_2_2", "Equal11"});
+    displayAsGraph("Elim step 3", 3);
+    /*
+    elimMultiple(
+        {"t_2", "X_3_1", "X_2_1", "X_2_3", "X_1_3", "t_0", "t_4", "t_6", "X_3_3", "X_0_1", "X_1_1", "X_0_3"},
+        {"Top_Sum1", "Equal9", "Equal6", "Equal7", "Equal4", "Top_Sum0", "Top_Sum2", "Top_Sum3", "Equal10", "Equal0", "Equal3", "Equal1"});
+    displayAsGraph("Elim step 1", 1);
+    // Contract upper-left to just X_0_0
+    elimMultiple(
+        {"X_0_1", "X_1_1", "X_1_0"},
+        {"Equal0", "Sum2", "Equal3"});
+    // Contract upper-right to just X_2_0
+    elimMultiple(
+        {"X_2_1", "X_3_1", "X_3_0"},
+        {"Equal6", "Sum3", "Equal9"});
+    // Contract lower-left to just X_0_2
+    elimMultiple(
+        {"X_0_3", "X_1_3", "X_1_2"},
+        {"Equal1", "Sum6", "Equal4"});
+    // Contract lower-right to just X_2_2
+    elimMultiple(
+        {"X_2_3", "X_3_2", "X_3_3"},
+        {"Equal7", "Sum5", "Equal10"});
+    displayAsGraph("Elim step 1", 1);
+    // Contract intermediate sums
+    elimMultiple(
+        {"t_2", "t_3", "t_6", "t_7"},
+        {"Sum0", "Top_Sum1", "Sum4", "Top_Sum3"});
+    displayAsGraph("Elim step 2", 2);
+        */
   }
 
   int n;
@@ -382,7 +447,7 @@ int main()
     Vector b = randVec(4);
     BMK bmk(A, b);
     //bmk.displayAsGraph("Initia0);
-    bmk.interactiveEliminate();
+    bmk.noninteractiveEliminate();
   }
   Kokkos::finalize();
   return 0;
