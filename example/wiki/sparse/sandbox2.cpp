@@ -265,8 +265,10 @@ struct BMK
     std::ostringstream cmd1, cmd2;
     cmd1 << "dot -Tpng -K" << layoutEngine << " " << dotname << " -o " << imgname;
     system(cmd1.str().c_str());
+    /*
     cmd2 << "firefox " << imgname;
     system(cmd2.str().c_str());
+    */
   }
 
   // Use given row to get an expression for the given variable,
@@ -388,44 +390,29 @@ struct BMK
   void noninteractiveEliminate()
   {
     displayAsGraph("Initial system", 0);
-    elimInterleaved({"t_1", "Sum1", "X_2_1", "Equal6", "X_3_1", "Sum3", "X_3_0", "Equal9"});
-    elimInterleaved({"t_2", "Sum2", "X_0_1", "Equal0", "X_1_0", "Sum0", "X_1_1", "Equal3"});
-    elimInterleaved({"t_5", "Sum5", "X_3_2", "Equal10", "X_3_3", "Sum7", "X_2_3", "Equal7"});
-    elimInterleaved({"t_6", "Sum6", "X_1_3", "Equal4", "X_1_2", "Sum4", "X_0_3", "Equal1"});
+    // First, partially reduce grid vertically by 2x (odd rows eliminated)
+    elimInterleaved({"X_0_1", "Equal0", "X_1_1", "Equal3", "X_2_1", "Equal6", "X_3_1", "Equal9", "X_0_3", "Equal1", "X_1_3", "Equal4", "X_2_3", "Equal7", "X_3_3", "Equal10"});
     displayAsGraph("Elim step 1", 1);
-    elimInterleaved({"X_2_0", "Equal8", "X_0_2", "Equal2"});
+    // Partially reduce grid horizontally by 2x (eliminate sums)
+    elimInterleaved({"X_1_0", "Sum2", "X_3_0", "Sum3", "X_1_2", "Sum6", "X_3_2", "Sum7"});
     displayAsGraph("Elim step 2", 2);
-    //elimInterleaved({"t_4", "Top_Sum3", "X_0_0", "Equal5", "t_0", "Top_Sum1", "t_3", "Top_Sum0", "X_2_2", "Equal11", "t_7", "Top_Sum2"});
-    elimInterleaved({"t_4", "Top_Sum3", "t_0", "Top_Sum1", "X_2_2", "Equal11"});
+    // Finish reducting grid vertically
+    elimInterleaved({"t_3", "Sum1", "t_7", "Sum5", "t_6", "Sum4", "t_2", "Sum0"});
     displayAsGraph("Elim step 3", 3);
+    // ???
+    elimInterleaved({"X_0_2", "Equal2", "t_5", "Top_Sum2", "X_2_0", "Equal8", "t_0", "Top_Sum0"});
+    displayAsGraph("Elim step 4", 4);
     /*
-    elimMultiple(
-        {"t_2", "X_3_1", "X_2_1", "X_2_3", "X_1_3", "t_0", "t_4", "t_6", "X_3_3", "X_0_1", "X_1_1", "X_0_3"},
-        {"Top_Sum1", "Equal9", "Equal6", "Equal7", "Equal4", "Top_Sum0", "Top_Sum2", "Top_Sum3", "Equal10", "Equal0", "Equal3", "Equal1"});
+    elimInterleaved({"t_2", "Sum2", "X_0_1", "Equal0", "X_1_0", "Sum0", "X_1_1", "Equal3"});
+    elimInterleaved({"t_3", "Sum3", "X_2_1", "Equal6", "X_3_1", "Equal9", "X_3_0", "Sum1"});
+    elimInterleaved({"t_6", "Sum6", "X_1_3", "Equal4", "X_1_2", "Sum4", "X_0_3", "Equal1"});
+    elimInterleaved({"t_7", "Sum7", "X_3_2", "Sum5", "X_3_3", "Equal10", "X_2_3", "Equal7"});
     displayAsGraph("Elim step 1", 1);
-    // Contract upper-left to just X_0_0
-    elimMultiple(
-        {"X_0_1", "X_1_1", "X_1_0"},
-        {"Equal0", "Sum2", "Equal3"});
-    // Contract upper-right to just X_2_0
-    elimMultiple(
-        {"X_2_1", "X_3_1", "X_3_0"},
-        {"Equal6", "Sum3", "Equal9"});
-    // Contract lower-left to just X_0_2
-    elimMultiple(
-        {"X_0_3", "X_1_3", "X_1_2"},
-        {"Equal1", "Sum6", "Equal4"});
-    // Contract lower-right to just X_2_2
-    elimMultiple(
-        {"X_2_3", "X_3_2", "X_3_3"},
-        {"Equal7", "Sum5", "Equal10"});
-    displayAsGraph("Elim step 1", 1);
-    // Contract intermediate sums
-    elimMultiple(
-        {"t_2", "t_3", "t_6", "t_7"},
-        {"Sum0", "Top_Sum1", "Sum4", "Top_Sum3"});
+    elimInterleaved({"t_4", "Top_Sum2", "t_5", "Top_Sum3", "t_0", "Top_Sum1", "t_1", "Top_Sum0"});
     displayAsGraph("Elim step 2", 2);
-        */
+    elimInterleaved({"X_0_2", "Equal2", "X_2_2", "Equal8"});
+    displayAsGraph("Elim step 3", 3);
+    */
   }
 
   int n;
