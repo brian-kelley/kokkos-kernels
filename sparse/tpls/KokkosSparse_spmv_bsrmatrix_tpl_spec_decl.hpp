@@ -345,6 +345,11 @@ KOKKOSSPARSE_SPMV_MV_MKL(Kokkos::complex<double>, Kokkos::OpenMP)
 namespace KokkosSparse {
 namespace Impl {
 
+// Note BMK 5-28-24: This function is commented out because spmv_mv_bsr_cusparse
+// is used for rank-1 x and y for performance reasons (see below).
+// This could be re-enabled in future versions if the performance of
+// cusparseXbsrmv is improved.
+/*
 template <class Handle, class AMatrix, class XVector, class YVector>
 void spmv_bsr_cusparse(const Kokkos::Cuda& exec, Handle* handle,
                        const char mode[],
@@ -356,13 +361,13 @@ void spmv_bsr_cusparse(const Kokkos::Cuda& exec, Handle* handle,
   using entry_type  = typename AMatrix::non_const_ordinal_type;
   using value_type  = typename AMatrix::non_const_value_type;
 
-  /* initialize cusparse library */
+  // initialize cusparse library
   cusparseHandle_t cusparseHandle =
       KokkosKernels::Impl::CusparseSingleton::singleton().cusparseHandle;
-  /* Set cuSPARSE to use the given stream until this function exits */
+  // Set cuSPARSE to use the given stream until this function exits
   KokkosSparse::Impl::TemporarySetCusparseStream tscs(cusparseHandle, exec);
 
-  /* Set the operation mode */
+  // Set the operation mode
   cusparseOperation_t myCusparseOperation;
   switch (toupper(mode[0])) {
     case 'N': myCusparseOperation = CUSPARSE_OPERATION_NON_TRANSPOSE; break;
@@ -382,7 +387,7 @@ void spmv_bsr_cusparse(const Kokkos::Cuda& exec, Handle* handle,
           "KokkosSparse::spmv: subhandle is not set up for cusparse");
     subhandle->set_exec_space(exec);
   } else {
-    /* create and set the subhandle and matrix descriptor */
+    // create and set the subhandle and matrix descriptor
     subhandle         = new KokkosSparse::Impl::CuSparse9_SpMV_Data(exec);
     handle->tpl_rank1 = subhandle;
     KOKKOS_CUSPARSE_SAFE_CALL(cusparseCreateMatDescr(&subhandle->mat));
@@ -394,7 +399,7 @@ void spmv_bsr_cusparse(const Kokkos::Cuda& exec, Handle* handle,
 
   cusparseDirection_t dirA = CUSPARSE_DIRECTION_ROW;
 
-  /* perform the actual SpMV operation */
+  // perform the actual SpMV operation
   static_assert(
       std::is_same_v<int, offset_type> && std::is_same_v<int, entry_type>,
       "With cuSPARSE non-generic API, offset and entry types must both be int. "
@@ -442,6 +447,7 @@ void spmv_bsr_cusparse(const Kokkos::Cuda& exec, Handle* handle,
                   "float/double, nor complex of either!");
   }
 }
+*/
 
 // Reference
 // https://docs.nvidia.com/cuda/cusparse/index.html#bsrmm
@@ -573,6 +579,9 @@ void spmv_mv_bsr_cusparse(const Kokkos::Cuda& exec, Handle* handle,
   }
 }
 
+// Note BMK 5-28-24: even though this is the cusparse wrapper for rank-1 x and
+// y, use spmv_mv_bsr_cusparse (which calls cusparseXbsrmm) because it performs
+// much better than cusparseXbsrmv in versions measured: CUDA 11.2.0 and 12.0.
 #define KOKKOSSPARSE_SPMV_CUSPARSE(SCALAR, ORDINAL, OFFSET, LAYOUT, SPACE)    \
   template <>                                                                 \
   struct SPMV_BSRMATRIX<                                                      \
@@ -601,6 +610,11 @@ void spmv_mv_bsr_cusparse(const Kokkos::Cuda& exec, Handle* handle,
         Kokkos::MemoryTraits<Kokkos::Unmanaged | Kokkos::RandomAccess>>;      \
     using YVector =                                                           \
         Kokkos::View<SCALAR*, LAYOUT, device_type, memory_trait_type>;        \
+    using XVector2D = Kokkos::View<                                           \
+        SCALAR const**, Kokkos::LayoutLeft, device_type,                      \
+        Kokkos::MemoryTraits<Kokkos::Unmanaged | Kokkos::RandomAccess>>;      \
+    using YVector2D = Kokkos::View<SCALAR**, Kokkos::LayoutLeft, device_type, \
+                                   memory_trait_type>;                        \
                                                                               \
     using coefficient_type = typename YVector::non_const_value_type;          \
                                                                               \
@@ -613,7 +627,9 @@ void spmv_mv_bsr_cusparse(const Kokkos::Cuda& exec, Handle* handle,
       std::string label = "KokkosSparse::spmv[TPL_CUSPARSE,BSRMATRIX" +       \
                           Kokkos::ArithTraits<SCALAR>::name() + "]";          \
       Kokkos::Profiling::pushRegion(label);                                   \
-      spmv_bsr_cusparse(exec, handle, mode, alpha, A, x, beta, y);            \
+      XVector2D x2d(x.data(), x.extent(0), 1);                                \
+      YVector2D y2d(y.data(), y.extent(0), 1);                                \
+      spmv_mv_bsr_cusparse(exec, handle, mode, alpha, A, x2d, beta, y2d);     \
       Kokkos::Profiling::popRegion();                                         \
     }                                                                         \
   };
