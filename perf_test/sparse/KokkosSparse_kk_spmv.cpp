@@ -60,6 +60,9 @@ struct SPMVBenchmarking {
     using mv_type   = Kokkos::View<Scalar**, Layout>;
     using h_mv_type = typename mv_type::HostMirror;
 
+    using v_type   = Kokkos::View<Scalar*, Layout>;
+    using h_v_type   = typename v_type::HostMirror;
+
     srand(17312837);
     matrix_type A;
     if (filename != "") {
@@ -110,18 +113,19 @@ struct SPMVBenchmarking {
     Kokkos::deep_copy(x, h_x);
 
     // Benchmark
-    auto x0 = Kokkos::subview(x, Kokkos::ALL(), 0);
-    auto y0 = Kokkos::subview(y, Kokkos::ALL(), 0);
+    // only use x0, y0 (rank-1 views of first column) if num_vecs == 1
+    v_type x0(x.data(), xlen);
+    v_type y0(y.data(), ylen);
 
     // Create handles for both rank-1 and rank-2 cases,
     // even though only 1 will get used below (depending on num_vecs)
 
     KokkosSparse::SPMVHandle<Kokkos::DefaultExecutionSpace, matrix_type,
-                             decltype(x0), decltype(y0)>
-        handle_rank1;
+                             v_type, v_type>
+        handle_rank1(KokkosSparse::SPMV_NATIVE);
     KokkosSparse::SPMVHandle<Kokkos::DefaultExecutionSpace, matrix_type,
                              mv_type, mv_type>
-        handle_rank2;
+        handle_rank2(KokkosSparse::SPMV_NATIVE);
     // Assuming that 1GB is enough to fully clear the L3 cache of a CPU, or the
     // L2 of a GPU. (Some AMD EPYC chips have 768 MB L3)
     Kokkos::View<char*, Kokkos::DefaultExecutionSpace> cacheFlushData;
@@ -131,26 +135,34 @@ struct SPMVBenchmarking {
 
     Kokkos::DefaultExecutionSpace space;
 
-    // Do 5 warm up calls (not timed). This will also initialize the handle.
-    for (int i = 0; i < 5; i++) {
-      if (num_vecs == 1) {
-        // run the rank-1 version
-        if (non_reuse)
-          KokkosSparse::spmv(space, &mode, 1.0, A, x0, beta, y0);
-        else
-          KokkosSparse::spmv(space, &handle_rank1, &mode, 1.0, A, x0, beta, y0);
-      } else {
-        // rank-2
-        if (non_reuse)
-          KokkosSparse::spmv(space, &mode, 1.0, A, x, beta, y);
-        else
-          KokkosSparse::spmv(space, &handle_rank2, &mode, 1.0, A, x, beta, y);
-      }
-      space.fence();
+    // First, do an untimed warm up to make sure the device and TPL are initialized
+    {
+      KokkosSparse::SPMVHandle<Kokkos::DefaultExecutionSpace, matrix_type,
+        v_type, v_type> handle_temp(KokkosSparse::SPMV_NATIVE);
+      for(int i = 0; i < 10; i++)
+        KokkosSparse::spmv(space, &handle_temp, &mode, 1.0, A, x0, beta, y0);
     }
+    Kokkos::fence();
 
-    double totalTime = 0;
     Kokkos::Timer timer;
+    // Do 5 warm up calls (not timed). This will also initialize the handle.
+    if (num_vecs == 1) {
+      // run the rank-1 version
+      if (non_reuse)
+        KokkosSparse::spmv(space, &mode, 1.0, A, x0, beta, y0);
+      else
+        KokkosSparse::spmv(space, &handle_rank1, &mode, 1.0, A, x0, beta, y0);
+    } else {
+      // rank-2
+      if (non_reuse)
+        KokkosSparse::spmv(space, &mode, 1.0, A, x, beta, y);
+      else
+        KokkosSparse::spmv(space, &handle_rank2, &mode, 1.0, A, x, beta, y);
+    }
+    space.fence();
+    double initTime = timer.seconds();
+    timer.reset();
+    double totalTime = 0;
     for (int i = 0; i < loop; i++) {
       if (flush_cache) {
         // Copy some non-zero data to the view multiple times to flush the
@@ -178,7 +190,8 @@ struct SPMVBenchmarking {
       totalTime += timer.seconds();
     }
     double avg_time = totalTime / loop;
-    std::cout << avg_time << " s\n";
+    std::cout << "** Time for first call  : " << initTime << " s\n";
+    std::cout << "** Time for average call: " << avg_time << " s\n";
   }
 };
 

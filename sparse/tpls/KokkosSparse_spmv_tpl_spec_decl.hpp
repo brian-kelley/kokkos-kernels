@@ -392,7 +392,11 @@ void spmv_rocsparse(const Kokkos::HIP& exec, Handle* handle, const char mode[],
       &vecY, y.extent_int(0), y_data,
       rocsparse_compute_type<typename YVector::non_const_value_type>()));
 
-  rocsparse_spmv_alg alg = rocsparse_spmv_alg_default;
+  // Order from cheapest to fastest setup, and worst to best imbalance performance:
+  //rocsparse_spmv_alg_csr_stream
+  //rocsparse_spmv_alg_csr_lrb
+  //rocsparse_spmv_alg_csr_adaptive
+  rocsparse_spmv_alg alg = rocsparse_spmv_alg_csr_adaptive;
 
   KokkosSparse::Impl::RocSparse_CRS_SpMV_Data* subhandle;
   if (handle->tpl_rank1) {
