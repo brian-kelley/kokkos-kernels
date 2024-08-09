@@ -267,6 +267,8 @@ struct BMK
     system(cmd1.str().c_str());
     /*
     cmd2 << "firefox " << imgname;
+    // OR:
+    cmd2 << "open " << imgname;
     system(cmd2.str().c_str());
     */
   }
