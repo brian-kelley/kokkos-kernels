@@ -299,7 +299,7 @@ KOKKOSBLAS3_CTRSM_BLAS(Kokkos::LayoutRight, Kokkos::LayoutRight, Kokkos::HostSpa
 
 // cuBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -370,15 +370,15 @@ namespace Impl {
         diag_ = CUBLAS_DIAG_NON_UNIT;                                                                                  \
                                                                                                                        \
       KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                       \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                    \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                    \
       if (A_is_ll) {                                                                                                   \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(                                                                                  \
-            cublasDtrsm(s.handle, side_, uplo_, trans_, diag_, M, N, &alpha, A.data(), LDA, B.data(), LDB));           \
+            cublasDtrsm(handle, side_, uplo_, trans_, diag_, M, N, &alpha, A.data(), LDA, B.data(), LDB));           \
       } else {                                                                                                         \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(                                                                                  \
-            cublasDtrsm(s.handle, side_, uplo_, trans_, diag_, N, M, &alpha, A.data(), LDA, B.data(), LDB));           \
+            cublasDtrsm(handle, side_, uplo_, trans_, diag_, N, M, &alpha, A.data(), LDA, B.data(), LDB));           \
       }                                                                                                                \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                   \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                   \
       Kokkos::Profiling::popRegion();                                                                                  \
     }                                                                                                                  \
   };
@@ -449,15 +449,15 @@ namespace Impl {
         diag_ = CUBLAS_DIAG_NON_UNIT;                                                                                 \
                                                                                                                       \
       KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                      \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                   \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                   \
       if (A_is_ll) {                                                                                                  \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(                                                                                 \
-            cublasStrsm(s.handle, side_, uplo_, trans_, diag_, M, N, &alpha, A.data(), LDA, B.data(), LDB));          \
+            cublasStrsm(handle, side_, uplo_, trans_, diag_, M, N, &alpha, A.data(), LDA, B.data(), LDB));          \
       } else {                                                                                                        \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(                                                                                 \
-            cublasStrsm(s.handle, side_, uplo_, trans_, diag_, N, M, &alpha, A.data(), LDA, B.data(), LDB));          \
+            cublasStrsm(handle, side_, uplo_, trans_, diag_, N, M, &alpha, A.data(), LDA, B.data(), LDB));          \
       }                                                                                                               \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                  \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                  \
                                                                                                                       \
       Kokkos::Profiling::popRegion();                                                                                 \
     }                                                                                                                 \
@@ -529,19 +529,19 @@ namespace Impl {
         diag_ = CUBLAS_DIAG_NON_UNIT;                                                                      \
                                                                                                            \
       KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();           \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                        \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                        \
       if (A_is_ll) {                                                                                       \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZtrsm(s.handle, side_, uplo_, trans_, diag_, M, N,              \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZtrsm(handle, side_, uplo_, trans_, diag_, M, N,              \
                                                  reinterpret_cast<const cuDoubleComplex*>(&alpha),         \
                                                  reinterpret_cast<const cuDoubleComplex*>(A.data()), LDA,  \
                                                  reinterpret_cast<cuDoubleComplex*>(B.data()), LDB));      \
       } else {                                                                                             \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZtrsm(s.handle, side_, uplo_, trans_, diag_, N, M,              \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZtrsm(handle, side_, uplo_, trans_, diag_, N, M,              \
                                                  reinterpret_cast<const cuDoubleComplex*>(&alpha),         \
                                                  reinterpret_cast<const cuDoubleComplex*>(A.data()), LDA,  \
                                                  reinterpret_cast<cuDoubleComplex*>(B.data()), LDB));      \
       }                                                                                                    \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                       \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                       \
                                                                                                            \
       Kokkos::Profiling::popRegion();                                                                      \
     }                                                                                                      \
@@ -613,17 +613,17 @@ namespace Impl {
         diag_ = CUBLAS_DIAG_NON_UNIT;                                                                         \
                                                                                                               \
       KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();              \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                           \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                           \
       if (A_is_ll) {                                                                                          \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCtrsm(                                                             \
-            s.handle, side_, uplo_, trans_, diag_, M, N, reinterpret_cast<const cuComplex*>(&alpha),          \
+            handle, side_, uplo_, trans_, diag_, M, N, reinterpret_cast<const cuComplex*>(&alpha),          \
             reinterpret_cast<const cuComplex*>(A.data()), LDA, reinterpret_cast<cuComplex*>(B.data()), LDB)); \
       } else {                                                                                                \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCtrsm(                                                             \
-            s.handle, side_, uplo_, trans_, diag_, N, M, reinterpret_cast<const cuComplex*>(&alpha),          \
+            handle, side_, uplo_, trans_, diag_, N, M, reinterpret_cast<const cuComplex*>(&alpha),          \
             reinterpret_cast<const cuComplex*>(A.data()), LDA, reinterpret_cast<cuComplex*>(B.data()), LDB)); \
       }                                                                                                       \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                          \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                          \
                                                                                                               \
       Kokkos::Profiling::popRegion();                                                                         \
     }                                                                                                         \

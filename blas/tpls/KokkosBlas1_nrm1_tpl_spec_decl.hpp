@@ -105,7 +105,7 @@ KOKKOSBLAS1_NRM1_TPL_SPEC_DECL_BLAS(Kokkos::complex<double>, Kokkos::LayoutLeft,
 
 // cuBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -117,24 +117,24 @@ void cublasAsumWrapper(const ExecutionSpace& space, RViewType& R, const XViewTyp
   nrm1_print_specialization<RViewType, XViewType>();
   const int N                            = static_cast<int>(X.extent(0));
   constexpr int one                      = 1;
-  KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();
+  cublasSingleton& s = cublasSingleton::singleton();
 
-  KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));
+  KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));
   if constexpr (std::is_same_v<XScalar, float>) {
-    KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSasum(s.handle, N, X.data(), one, R.data()));
+    KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSasum(handle, N, X.data(), one, R.data()));
   }
   if constexpr (std::is_same_v<XScalar, double>) {
-    KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasDasum(s.handle, N, X.data(), one, R.data()));
+    KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasDasum(handle, N, X.data(), one, R.data()));
   }
   if constexpr (std::is_same_v<XScalar, Kokkos::complex<float>>) {
     KOKKOS_CUBLAS_SAFE_CALL_IMPL(
-        cublasScasum(s.handle, N, reinterpret_cast<const cuComplex*>(X.data()), one, R.data()));
+        cublasScasum(handle, N, reinterpret_cast<const cuComplex*>(X.data()), one, R.data()));
   }
   if constexpr (std::is_same_v<XScalar, Kokkos::complex<double>>) {
     KOKKOS_CUBLAS_SAFE_CALL_IMPL(
-        cublasDzasum(s.handle, N, reinterpret_cast<const cuDoubleComplex*>(X.data()), one, R.data()));
+        cublasDzasum(handle, N, reinterpret_cast<const cuDoubleComplex*>(X.data()), one, R.data()));
   }
-  KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));
+  KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));
 }
 
 #define KOKKOSBLAS1_NRM1_TPL_SPEC_DECL_CUBLAS(SCALAR, LAYOUT, MEMSPACE)                                               \
@@ -187,7 +187,7 @@ KOKKOSBLAS1_NRM1_TPL_SPEC_DECL_CUBLAS(Kokkos::complex<double>, Kokkos::LayoutLef
 
 // rocBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_rocblas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -201,22 +201,22 @@ void rocblasAsumWrapper(const ExecutionSpace& space, RViewType& R, const XViewTy
   constexpr int one                     = 1;
   KokkosBlas::Impl::RocBlasSingleton& s = KokkosBlas::Impl::RocBlasSingleton::singleton();
 
-  KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, space.hip_stream()));
+  KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, space.hip_stream()));
   if constexpr (std::is_same_v<XScalar, float>) {
-    KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_sasum(s.handle, N, X.data(), one, R.data()));
+    KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_sasum(handle, N, X.data(), one, R.data()));
   }
   if constexpr (std::is_same_v<XScalar, double>) {
-    KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_dasum(s.handle, N, X.data(), one, R.data()));
+    KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_dasum(handle, N, X.data(), one, R.data()));
   }
   if constexpr (std::is_same_v<XScalar, Kokkos::complex<float>>) {
     KOKKOS_ROCBLAS_SAFE_CALL_IMPL(
-        rocblas_scasum(s.handle, N, reinterpret_cast<const rocblas_float_complex*>(X.data()), one, R.data()));
+        rocblas_scasum(handle, N, reinterpret_cast<const rocblas_float_complex*>(X.data()), one, R.data()));
   }
   if constexpr (std::is_same_v<XScalar, Kokkos::complex<double>>) {
     KOKKOS_ROCBLAS_SAFE_CALL_IMPL(
-        rocblas_dzasum(s.handle, N, reinterpret_cast<const rocblas_double_complex*>(X.data()), one, R.data()));
+        rocblas_dzasum(handle, N, reinterpret_cast<const rocblas_double_complex*>(X.data()), one, R.data()));
   }
-  KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, NULL));
+  KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, NULL));
 }
 
 #define KOKKOSBLAS1_NRM1_TPL_SPEC_DECL_ROCBLAS(SCALAR, LAYOUT, MEMSPACE)                                         \
@@ -265,7 +265,6 @@ KOKKOSBLAS1_NRM1_TPL_SPEC_DECL_ROCBLAS(Kokkos::complex<double>, Kokkos::LayoutLe
 
 #if defined(KOKKOS_ENABLE_SYCL)
 
-#include <KokkosBlas_tpl_spec.hpp>
 #include <oneapi/mkl/blas.hpp>
 
 namespace KokkosBlas {

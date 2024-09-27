@@ -30,13 +30,7 @@ ENDIF()
 # Include cuda lapack TPL source file
 IF (KOKKOSKERNELS_ENABLE_TPL_CUSOLVER)
   LIST(APPEND SOURCES
-   lapack/tpls/KokkosLapack_Cuda_tpl.cpp
-  )
-ENDIF()
-
-IF (KOKKOSKERNELS_ENABLE_TPL_MAGMA)
-  LIST(APPEND SOURCES
-   lapack/tpls/KokkosLapack_Magma_tpl.cpp
+   lapack/tpls/KokkosLapack_cusolver_tpl.cpp
   )
 ENDIF()
 

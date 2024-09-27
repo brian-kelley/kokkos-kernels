@@ -146,7 +146,7 @@ KOKKOSBLAS1_CROT_TPL_SPEC_DECL_BLAS(Kokkos::LayoutLeft, Kokkos::OpenMP, false)
 
 // cuBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -166,7 +166,7 @@ namespace Impl {
                     ScalarView const& s) {                                                                           \
       Kokkos::Profiling::pushRegion("KokkosBlas::rot[TPL_CUBLAS,double]");                                           \
       rot_print_specialization<EXECSPACE, VectorView, ScalarView>();                                                 \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton();             \
+      cublasSingleton& singleton = cublasSingleton::singleton();             \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));                          \
       cublasPointerMode_t pointer_mode;                                                                              \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasGetPointerMode(singleton.handle, &pointer_mode));                           \
@@ -192,7 +192,7 @@ namespace Impl {
                     ScalarView const& s) {                                                                             \
       Kokkos::Profiling::pushRegion("KokkosBlas::rot[TPL_CUBLAS,float]");                                              \
       rot_print_specialization<EXECSPACE, VectorView, ScalarView>();                                                   \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton();               \
+      cublasSingleton& singleton = cublasSingleton::singleton();               \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));                            \
       cublasPointerMode_t pointer_mode;                                                                                \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasGetPointerMode(singleton.handle, &pointer_mode));                             \
@@ -219,7 +219,7 @@ namespace Impl {
                     ScalarView const& s) {                                                                          \
       Kokkos::Profiling::pushRegion("KokkosBlas::rot[TPL_CUBLAS,complex<double>]");                                 \
       rot_print_specialization<EXECSPACE, VectorView, ScalarView>();                                                \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton();            \
+      cublasSingleton& singleton = cublasSingleton::singleton();            \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));                         \
       cublasPointerMode_t pointer_mode;                                                                             \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasGetPointerMode(singleton.handle, &pointer_mode));                          \
@@ -247,7 +247,7 @@ namespace Impl {
                     ScalarView const& s) {                                                                             \
       Kokkos::Profiling::pushRegion("KokkosBlas::rot[TPL_CUBLAS,complex<float>]");                                     \
       rot_print_specialization<EXECSPACE, VectorView, ScalarView>();                                                   \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton();               \
+      cublasSingleton& singleton = cublasSingleton::singleton();               \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));                            \
       cublasPointerMode_t pointer_mode;                                                                                \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasGetPointerMode(singleton.handle, &pointer_mode));                             \

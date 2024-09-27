@@ -116,7 +116,7 @@ KOKKOSBLAS3_CGEMM_BLAS(Kokkos::LayoutRight, Kokkos::LayoutRight, Kokkos::LayoutR
 
 // cuBLAS
 #if defined(KOKKOSKERNELS_ENABLE_TPL_CUBLAS)
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 #include <KokkosBlas3_gemm_dotbased_impl.hpp>
 
 namespace KokkosBlas {
@@ -174,21 +174,21 @@ namespace Impl {
                          : (transa == CUBLAS_OP_C ? true : false);                                                    \
         gemm.run(space, conjT);                                                                                       \
       } else {                                                                                                        \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                    \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                 \
+        cublasSingleton& s = cublasSingleton::singleton();                    \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                 \
         if (!A_is_lr && !B_is_lr && !C_is_lr)                                                                         \
           KOKKOS_CUBLAS_SAFE_CALL_IMPL(CUBLAS_FN(                                                                     \
-              s.handle, transa, transb, M, N, K, reinterpret_cast<const CUDA_SCALAR_TYPE*>(&alpha),                   \
+              handle, transa, transb, M, N, K, reinterpret_cast<const CUDA_SCALAR_TYPE*>(&alpha),                   \
               reinterpret_cast<const CUDA_SCALAR_TYPE*>(A.data()), LDA,                                               \
               reinterpret_cast<const CUDA_SCALAR_TYPE*>(B.data()), LDB,                                               \
               reinterpret_cast<const CUDA_SCALAR_TYPE*>(&beta), reinterpret_cast<CUDA_SCALAR_TYPE*>(C.data()), LDC)); \
         if (A_is_lr && B_is_lr && C_is_lr)                                                                            \
           KOKKOS_CUBLAS_SAFE_CALL_IMPL(CUBLAS_FN(                                                                     \
-              s.handle, transb, transa, N, M, K, reinterpret_cast<const CUDA_SCALAR_TYPE*>(&alpha),                   \
+              handle, transb, transa, N, M, K, reinterpret_cast<const CUDA_SCALAR_TYPE*>(&alpha),                   \
               reinterpret_cast<const CUDA_SCALAR_TYPE*>(B.data()), LDB,                                               \
               reinterpret_cast<const CUDA_SCALAR_TYPE*>(A.data()), LDA,                                               \
               reinterpret_cast<const CUDA_SCALAR_TYPE*>(&beta), reinterpret_cast<CUDA_SCALAR_TYPE*>(C.data()), LDC)); \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                \
       }                                                                                                               \
       Kokkos::Profiling::popRegion();                                                                                 \
     }                                                                                                                 \
@@ -254,7 +254,7 @@ KOKKOSBLAS3_CGEMM_CUBLAS(Kokkos::LayoutRight, Kokkos::LayoutRight, Kokkos::Layou
 
 // rocBLAS
 #if defined(KOKKOSKERNELS_ENABLE_TPL_ROCBLAS)
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_rocblas_tpl.hpp>
 #include <KokkosBlas3_gemm_dotbased_impl.hpp>
 
 namespace KokkosBlas {
@@ -313,22 +313,22 @@ namespace Impl {
         gemm.run(space, conjT);                                                                                    \
       } else {                                                                                                     \
         KokkosBlas::Impl::RocBlasSingleton& s = KokkosBlas::Impl::RocBlasSingleton::singleton();                   \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, space.hip_stream()));                           \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, space.hip_stream()));                           \
         if (!is_lr)                                                                                                \
-          KOKKOS_ROCBLAS_SAFE_CALL_IMPL(ROCBLAS_FN(s.handle, transa, transb, M, N, K,                              \
+          KOKKOS_ROCBLAS_SAFE_CALL_IMPL(ROCBLAS_FN(handle, transa, transb, M, N, K,                              \
                                                    reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(&alpha),           \
                                                    reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(A.data()), LDA,    \
                                                    reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(B.data()), LDB,    \
                                                    reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(&beta),            \
                                                    reinterpret_cast<ROCBLAS_SCALAR_TYPE*>(C.data()), LDC));        \
         else                                                                                                       \
-          KOKKOS_ROCBLAS_SAFE_CALL_IMPL(ROCBLAS_FN(s.handle, transb, transa, N, M, K,                              \
+          KOKKOS_ROCBLAS_SAFE_CALL_IMPL(ROCBLAS_FN(handle, transb, transa, N, M, K,                              \
                                                    reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(&alpha),           \
                                                    reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(B.data()), LDB,    \
                                                    reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(A.data()), LDA,    \
                                                    reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(&beta),            \
                                                    reinterpret_cast<ROCBLAS_SCALAR_TYPE*>(C.data()), LDC));        \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, NULL));                                         \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, NULL));                                         \
       }                                                                                                            \
       Kokkos::Profiling::popRegion();                                                                              \
     }                                                                                                              \

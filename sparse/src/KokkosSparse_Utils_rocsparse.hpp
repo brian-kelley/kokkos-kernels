@@ -19,6 +19,8 @@
 
 #include <type_traits>
 #include <sstream>
+#include "Kokkos_Core.hpp"
+#include <KokkosKernels_config.h>
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE
 #if __has_include(<rocm-core/rocm_version.h>)

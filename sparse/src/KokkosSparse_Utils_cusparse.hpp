@@ -161,8 +161,8 @@ struct TemporarySetCusparseStream {
 };
 
 }  // namespace Impl
-
 }  // namespace KokkosSparse
 
 #endif  // KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
 #endif  // _KOKKOSKERNELS_SPARSEUTILS_CUSPARSE_HPP
+

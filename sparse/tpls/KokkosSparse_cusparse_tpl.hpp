@@ -13,6 +13,19 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //@HEADER
-#include <Kokkos_Core.hpp>
+
+#ifndef KOKKOSSPARSE_CUSPARSE_TPL_HPP
+#define KOKKOSSPARSE_CUSPARSE_TPL_HPP
+
 #include <KokkosKernels_config.h>
-#include <KokkosLapack_Cuda_tpl.hpp>
+#include "KokkosKernels_TPLSingleton.hpp"
+
+#ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
+#include "cusparse.h"
+
+namespace KokkosSparse::Impl {
+  using cusparseSingleton = ::KokkosKernels::Impl::TPLSingleton<cusparseHandle_t>;
+}
+
+#endif // KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
+#endif // KOKKOSSPARSE_CUSPARSE_TPL_HPP

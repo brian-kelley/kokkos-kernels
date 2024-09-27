@@ -201,7 +201,7 @@ KOKKOSBLAS2_CGEMV_BLAS(Kokkos::LayoutRight, Kokkos::LayoutRight, Kokkos::LayoutR
 
 // cuBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -252,11 +252,11 @@ namespace Impl {
                      const YViewType& Y) {                                                                            \
       Kokkos::Profiling::pushRegion("KokkosBlas::gemv[TPL_CUBLAS,double]");                                           \
       KOKKOSBLAS2_GEMV_CUBLAS_DETERMINE_ARGS(LAYOUTA);                                                                \
-      KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                      \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                   \
+      cublasSingleton& s = cublasSingleton::singleton();                      \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                   \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(                                                                                   \
-          cublasDgemv(s.handle, transa, M, N, &alpha, A.data(), LDA, X.data(), one, &beta, Y.data(), one));           \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                  \
+          cublasDgemv(handle, transa, M, N, &alpha, A.data(), LDA, X.data(), one, &beta, Y.data(), one));           \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                  \
       Kokkos::Profiling::popRegion();                                                                                 \
     }                                                                                                                 \
   };
@@ -287,11 +287,11 @@ namespace Impl {
                      const YViewType& Y) {                                                                           \
       Kokkos::Profiling::pushRegion("KokkosBlas::gemv[TPL_CUBLAS,float]");                                           \
       KOKKOSBLAS2_GEMV_CUBLAS_DETERMINE_ARGS(LAYOUTA);                                                               \
-      KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                     \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                  \
+      cublasSingleton& s = cublasSingleton::singleton();                     \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                  \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(                                                                                  \
-          cublasSgemv(s.handle, transa, M, N, &alpha, A.data(), LDA, X.data(), one, &beta, Y.data(), one));          \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                 \
+          cublasSgemv(handle, transa, M, N, &alpha, A.data(), LDA, X.data(), one, &beta, Y.data(), one));          \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                 \
       Kokkos::Profiling::popRegion();                                                                                \
     }                                                                                                                \
   };
@@ -322,13 +322,13 @@ namespace Impl {
                      const YViewType& Y) {                                                                             \
       Kokkos::Profiling::pushRegion("KokkosBlas::gemv[TPL_CUBLAS,complex<double>]");                                   \
       KOKKOSBLAS2_GEMV_CUBLAS_DETERMINE_ARGS(LAYOUTA);                                                                 \
-      KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                       \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                    \
+      cublasSingleton& s = cublasSingleton::singleton();                       \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                    \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZgemv(                                                                        \
-          s.handle, transa, M, N, reinterpret_cast<const cuDoubleComplex*>(&alpha),                                    \
+          handle, transa, M, N, reinterpret_cast<const cuDoubleComplex*>(&alpha),                                    \
           reinterpret_cast<const cuDoubleComplex*>(A.data()), LDA, reinterpret_cast<const cuDoubleComplex*>(X.data()), \
           one, reinterpret_cast<const cuDoubleComplex*>(&beta), reinterpret_cast<cuDoubleComplex*>(Y.data()), one));   \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                   \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                   \
       Kokkos::Profiling::popRegion();                                                                                  \
     }                                                                                                                  \
   };
@@ -359,13 +359,13 @@ namespace Impl {
                      const YViewType& Y) {                                                                             \
       Kokkos::Profiling::pushRegion("KokkosBlas::gemv[TPL_CUBLAS,complex<float>]");                                    \
       KOKKOSBLAS2_GEMV_CUBLAS_DETERMINE_ARGS(LAYOUTA);                                                                 \
-      KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                       \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                    \
+      auto handle = cublasSingleton::singleton();                       \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                    \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(                                                                                    \
-          cublasCgemv(s.handle, transa, M, N, reinterpret_cast<const cuComplex*>(&alpha),                              \
+          cublasCgemv(handle, transa, M, N, reinterpret_cast<const cuComplex*>(&alpha),                              \
                       reinterpret_cast<const cuComplex*>(A.data()), LDA, reinterpret_cast<const cuComplex*>(X.data()), \
                       one, reinterpret_cast<const cuComplex*>(&beta), reinterpret_cast<cuComplex*>(Y.data()), one));   \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                   \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                   \
       Kokkos::Profiling::popRegion();                                                                                  \
     }                                                                                                                  \
   };
@@ -396,7 +396,7 @@ KOKKOSBLAS2_CGEMV_CUBLAS(Kokkos::LayoutRight, Kokkos::LayoutRight, Kokkos::Layou
 
 // rocBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_rocblas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -448,10 +448,10 @@ namespace Impl {
       Kokkos::Profiling::pushRegion("KokkosBlas::gemv[TPL_ROCBLAS,double]");                                           \
       KOKKOSBLAS2_GEMV_ROCBLAS_DETERMINE_ARGS(LAYOUT);                                                                 \
       KokkosBlas::Impl::RocBlasSingleton& s = KokkosBlas::Impl::RocBlasSingleton::singleton();                         \
-      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, space.hip_stream()));                                 \
+      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, space.hip_stream()));                                 \
       KOKKOS_ROCBLAS_SAFE_CALL_IMPL(                                                                                   \
-          rocblas_dgemv(s.handle, transa, M, N, &alpha, A.data(), LDA, X.data(), one, &beta, Y.data(), one));          \
-      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, NULL));                                               \
+          rocblas_dgemv(handle, transa, M, N, &alpha, A.data(), LDA, X.data(), one, &beta, Y.data(), one));          \
+      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, NULL));                                               \
       Kokkos::Profiling::popRegion();                                                                                  \
     }                                                                                                                  \
   };
@@ -483,10 +483,10 @@ namespace Impl {
       Kokkos::Profiling::pushRegion("KokkosBlas::gemv[TPL_ROCBLAS,float]");                                           \
       KOKKOSBLAS2_GEMV_ROCBLAS_DETERMINE_ARGS(LAYOUT);                                                                \
       KokkosBlas::Impl::RocBlasSingleton& s = KokkosBlas::Impl::RocBlasSingleton::singleton();                        \
-      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, space.hip_stream()));                                \
+      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, space.hip_stream()));                                \
       KOKKOS_ROCBLAS_SAFE_CALL_IMPL(                                                                                  \
-          rocblas_sgemv(s.handle, transa, M, N, &alpha, A.data(), LDA, X.data(), one, &beta, Y.data(), one));         \
-      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, NULL));                                              \
+          rocblas_sgemv(handle, transa, M, N, &alpha, A.data(), LDA, X.data(), one, &beta, Y.data(), one));         \
+      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, NULL));                                              \
       Kokkos::Profiling::popRegion();                                                                                 \
     }                                                                                                                 \
   };
@@ -518,14 +518,14 @@ namespace Impl {
       Kokkos::Profiling::pushRegion("KokkosBlas::gemv[TPL_ROCBLAS,complex<double>]");                             \
       KOKKOSBLAS2_GEMV_ROCBLAS_DETERMINE_ARGS(LAYOUT);                                                            \
       KokkosBlas::Impl::RocBlasSingleton& s = KokkosBlas::Impl::RocBlasSingleton::singleton();                    \
-      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, space.hip_stream()));                            \
-      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_zgemv(s.handle, transa, M, N,                                         \
+      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, space.hip_stream()));                            \
+      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_zgemv(handle, transa, M, N,                                         \
                                                   reinterpret_cast<const rocblas_double_complex*>(&alpha),        \
                                                   reinterpret_cast<const rocblas_double_complex*>(A.data()), LDA, \
                                                   reinterpret_cast<const rocblas_double_complex*>(X.data()), one, \
                                                   reinterpret_cast<const rocblas_double_complex*>(&beta),         \
                                                   reinterpret_cast<rocblas_double_complex*>(Y.data()), one));     \
-      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, NULL));                                          \
+      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, NULL));                                          \
       Kokkos::Profiling::popRegion();                                                                             \
     }                                                                                                             \
   };
@@ -557,14 +557,14 @@ namespace Impl {
       Kokkos::Profiling::pushRegion("KokkosBlas::gemv[TPL_ROCBLAS,complex<float>]");                             \
       KOKKOSBLAS2_GEMV_ROCBLAS_DETERMINE_ARGS(LAYOUT);                                                           \
       KokkosBlas::Impl::RocBlasSingleton& s = KokkosBlas::Impl::RocBlasSingleton::singleton();                   \
-      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, space.hip_stream()));                           \
-      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_cgemv(s.handle, transa, M, N,                                        \
+      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, space.hip_stream()));                           \
+      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_cgemv(handle, transa, M, N,                                        \
                                                   reinterpret_cast<const rocblas_float_complex*>(&alpha),        \
                                                   reinterpret_cast<const rocblas_float_complex*>(A.data()), LDA, \
                                                   reinterpret_cast<const rocblas_float_complex*>(X.data()), one, \
                                                   reinterpret_cast<const rocblas_float_complex*>(&beta),         \
                                                   reinterpret_cast<rocblas_float_complex*>(Y.data()), one));     \
-      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, NULL));                                         \
+      KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, NULL));                                         \
       Kokkos::Profiling::popRegion();                                                                            \
     }                                                                                                            \
   };
@@ -597,7 +597,6 @@ KOKKOSBLAS2_CGEMV_ROCBLAS(Kokkos::LayoutRight, Kokkos::HIPSpace, false)
 #if defined(KOKKOSKERNELS_ENABLE_TPL_MKL) && defined(KOKKOS_ENABLE_SYCL)
 #include <mkl.h>
 #include <oneapi/mkl/blas.hpp>
-#include <KokkosBlas_tpl_spec.hpp>
 
 namespace KokkosBlas {
 namespace Impl {

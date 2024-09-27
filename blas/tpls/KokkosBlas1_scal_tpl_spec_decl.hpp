@@ -103,7 +103,7 @@ KOKKOSBLAS1_CSCAL_TPL_SPEC_DECL_BLAS(Kokkos::LayoutLeft, Kokkos::HostSpace, fals
 
 // cuBLAS
 #if defined(KOKKOSKERNELS_ENABLE_TPL_CUBLAS)
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -134,11 +134,11 @@ namespace Impl {
         scal_print_specialization<RV, AS, XV>();                                                               \
         const int N                            = static_cast<int>(numElems);                                   \
         constexpr int one                      = 1;                                                            \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();             \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                          \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(CUBLAS_FN(s.handle, N, reinterpret_cast<const CUDA_SCALAR_TYPE*>(&alpha), \
+        cublasSingleton& s = cublasSingleton::singleton();             \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                          \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(CUBLAS_FN(handle, N, reinterpret_cast<const CUDA_SCALAR_TYPE*>(&alpha), \
                                                reinterpret_cast<CUDA_SCALAR_TYPE*>(R.data()), one));           \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                         \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                         \
       } else {                                                                                                 \
         Scal<ExecSpace, RV, AS, XV, 1, false, ETI_SPEC_AVAIL>::scal(space, R, alpha, X);                       \
       }                                                                                                        \
@@ -191,7 +191,7 @@ KOKKOSBLAS1_CSCAL_TPL_SPEC_DECL_CUBLAS(Kokkos::LayoutLeft, Kokkos::CudaUVMSpace,
 
 // rocBLAS
 #if defined(KOKKOSKERNELS_ENABLE_TPL_ROCBLAS)
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_rocblas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -224,13 +224,13 @@ namespace Impl {
         const int N                           = static_cast<int>(numElems);                                         \
         constexpr int one                     = 1;                                                                  \
         KokkosBlas::Impl::RocBlasSingleton& s = KokkosBlas::Impl::RocBlasSingleton::singleton();                    \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, space.hip_stream()));                            \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, space.hip_stream()));                            \
         rocblas_pointer_mode pointer_mode;                                                                          \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_get_pointer_mode(s.handle, &pointer_mode));                           \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_pointer_mode(s.handle, rocblas_pointer_mode_host));               \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(ROCBLAS_FN(s.handle, N, reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(&alpha), \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_get_pointer_mode(handle, &pointer_mode));                           \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host));               \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(ROCBLAS_FN(handle, N, reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(&alpha), \
                                                  reinterpret_cast<ROCBLAS_SCALAR_TYPE*>(R.data()), one));           \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_pointer_mode(s.handle, pointer_mode));                            \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_pointer_mode(handle, pointer_mode));                            \
       } else {                                                                                                      \
         Scal<EXECSPACE, RV, AS, XV, 1, false, ETI_SPEC_AVAIL>::scal(space, R, alpha, X);                            \
       }                                                                                                             \

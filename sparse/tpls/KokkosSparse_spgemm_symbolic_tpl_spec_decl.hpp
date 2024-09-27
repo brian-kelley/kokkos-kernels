@@ -22,11 +22,13 @@
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
 #include "cusparse.h"
 #include "KokkosSparse_Utils_cusparse.hpp"
+#include "KokkosSparse_cusparse_tpl.hpp"
 #endif
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE
 #include "rocsparse/rocsparse.h"
 #include "KokkosSparse_Utils_rocsparse.hpp"
+#include "KokkosSparse_rocsparse_tpl.hpp"
 #endif
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_MKL

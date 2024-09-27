@@ -128,7 +128,7 @@ KOKKOSBLAS3_CTRMM_BLAS(Kokkos::LayoutRight, Kokkos::LayoutRight, Kokkos::HostSpa
 
 // cuBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -198,7 +198,7 @@ namespace Impl {
       else                                                                                                             \
         diag_ = CUBLAS_DIAG_NON_UNIT;                                                                                  \
                                                                                                                        \
-      KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                       \
+      cublasSingleton& s = cublasSingleton::singleton();                       \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                    \
       if (A_is_layout_left) {                                                                                          \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(CUBLAS_FN(                                                                        \

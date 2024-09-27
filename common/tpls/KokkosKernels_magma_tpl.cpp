@@ -14,24 +14,31 @@
 //
 //@HEADER
 
-#ifndef KOKKOSBLAS_MAGMA_HPP_
-#define KOKKOSBLAS_MAGMA_HPP_
+#include <KokkosKernels_config.h>
+#include "KokkosKernels_TPLSingleton.hpp"
+#include "KokkosKernels_magma_tpl.hpp"
 
-// If LAPACK TPL is enabled, it is preferred over magma's LAPACK
 #ifdef KOKKOSKERNELS_ENABLE_TPL_MAGMA
 #include "magma_v2.h"
 
-namespace KokkosBlas {
-namespace Impl {
+namespace KokkosKernels::Impl {
 
-struct MagmaSingleton {
-  MagmaSingleton();
+TPLSingleton<MagmaDummyHandle>& TPLSingleton<MagmaDummyHandle>::getInstance()
+{
+  static TPLSingleton<MagmaDummyHandle> s;
+  return s;
+}
 
-  static MagmaSingleton& singleton();
-};
+void TPLSingleton<MagmaDummyHandle>::initialize(MagmaDummyHandle&) {
+  magma_int_t stat = magma_init();
+  if (stat != MAGMA_SUCCESS) Kokkos::abort("MAGMA initialization failed\n");
+}
 
-}  // namespace Impl
-}  // namespace KokkosBlas
-#endif  // KOKKOSKERNELS_ENABLE_TPL_MAGMA
+void TPLSingleton<MagmaDummyHandle>::finalize(MagmaDummyHandle&) {
+  magma_finalize();
+}
 
-#endif  // KOKKOSBLAS_MAGMA_HPP_
+} // KokkosKernels::Impl
+
+#endif // KOKKOSKERNELS_ENABLE_TPL_MAGMA
+

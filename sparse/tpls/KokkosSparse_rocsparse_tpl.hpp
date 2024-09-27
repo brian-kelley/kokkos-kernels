@@ -13,6 +13,21 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //@HEADER
-#include <Kokkos_Core.hpp>
+
+#ifndef KOKKOSSPARSE_ROCSPARSE_TPL_HPP
+#define KOKKOSSPARSE_ROCSPARSE_TPL_HPP
+
 #include <KokkosKernels_config.h>
-#include <KokkosLapack_Magma_tpl.hpp>
+#include "KokkosKernels_TPLSingleton.hpp"
+
+#ifdef KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE
+#include <rocsparse/rocsparse.h>
+
+namespace KokkosSparse::Impl {
+  using rocsparseSingleton = ::KokkosKernels::Impl::TPLSingleton<rocsparse_handle>;
+
+}
+
+#endif // KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE
+#endif // KOKKOSSPARSE_ROCSPARSE_TPL_HPP
+

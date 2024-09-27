@@ -17,10 +17,9 @@
 #ifndef KOKKOSPARSE_SPADD_NUMERIC_TPL_SPEC_DECL_HPP_
 #define KOKKOSPARSE_SPADD_NUMERIC_TPL_SPEC_DECL_HPP_
 
-namespace KokkosSparse {
-namespace Impl {
-
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
+#include "KokkosSparse_cusparse_tpl.hpp"
+namespace KokkosSparse::Impl {
 
 #define KOKKOSSPARSE_SPADD_NUMERIC_TPL_SPEC_DECL_CUSPARSE(TOKEN, KOKKOS_SCALAR_TYPE, TPL_SCALAR_TYPE, ORDINAL_TYPE,    \
                                                           OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE,   \
@@ -81,7 +80,7 @@ namespace Impl {
                                                                                                                        \
       auto addHandle   = handle->get_spadd_handle();                                                                   \
       auto &cuspData   = addHandle->cusparseData;                                                                      \
-      auto &cuspHandle = KokkosKernels::Impl::CusparseSingleton::singleton().cusparseHandle;                           \
+      auto &cuspHandle = cusparseSingleton::singleton(); \
       cusparsePointerMode_t oldPtrMode;                                                                                \
                                                                                                                        \
       KOKKOS_CUSPARSE_SAFE_CALL(cusparseSetStream(cuspHandle, exec.cuda_stream()));                                    \
@@ -118,9 +117,13 @@ namespace Impl {
 
 KOKKOSSPARSE_SPADD_NUMERIC_TPL_SPEC_DECL_CUSPARSE_EXT(true)
 KOKKOSSPARSE_SPADD_NUMERIC_TPL_SPEC_DECL_CUSPARSE_EXT(false)
+}  // namespace KokkosSparse::Impl
 #endif
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE
+#include "KokkosSparse_rocsparse_tpl.hpp"
+
+namespace KokkosSparse::Impl {
 
 #define KOKKOSSPARSE_SPADD_NUMERIC_TPL_SPEC_DECL_ROCSPARSE(TOKEN, KOKKOS_SCALAR_TYPE, TPL_SCALAR_TYPE, ORDINAL_TYPE,   \
                                                            OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE,  \
@@ -181,7 +184,7 @@ KOKKOSSPARSE_SPADD_NUMERIC_TPL_SPEC_DECL_CUSPARSE_EXT(false)
                                                                                                                        \
       auto addHandle    = handle->get_spadd_handle();                                                                  \
       auto &rocData     = addHandle->rocsparseData;                                                                    \
-      auto &rocspHandle = KokkosKernels::Impl::RocsparseSingleton::singleton().rocsparseHandle;                        \
+      auto &rocspHandle = rocsparseSingleton::singleton();                        \
       rocsparse_pointer_mode oldPtrMode;                                                                               \
                                                                                                                        \
       KOKKOS_ROCSPARSE_SAFE_CALL_IMPL(rocsparse_set_stream(rocspHandle, exec.hip_stream()));                           \
@@ -220,7 +223,6 @@ KOKKOSSPARSE_SPADD_NUMERIC_TPL_SPEC_DECL_ROCSPARSE_EXT(true)
 KOKKOSSPARSE_SPADD_NUMERIC_TPL_SPEC_DECL_ROCSPARSE_EXT(false)
 #endif
 
-}  // namespace Impl
-}  // namespace KokkosSparse
+}  // namespace KokkosSparse::Impl
 
 #endif

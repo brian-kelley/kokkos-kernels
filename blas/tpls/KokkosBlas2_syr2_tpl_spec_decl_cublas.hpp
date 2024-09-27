@@ -17,7 +17,7 @@
 #ifndef KOKKOSBLAS2_SYR2_TPL_SPEC_DECL_CUBLAS_HPP_
 #define KOKKOSBLAS2_SYR2_TPL_SPEC_DECL_CUBLAS_HPP_
 
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -57,11 +57,11 @@ namespace Impl {
       Kokkos::Profiling::pushRegion("KokkosBlas::syr2[TPL_CUBLAS,double]");                                            \
       KOKKOSBLAS2_SYR2_CUBLAS_DETERMINE_ARGS(LAYOUT, uplo[0]);                                                         \
       if (A_is_ll) {                                                                                                   \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                     \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                  \
+        cublasSingleton& s = cublasSingleton::singleton();                     \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                  \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(                                                                                  \
-            cublasDsyr2(s.handle, fillMode, N, &alpha, X.data(), one, Y.data(), one, A.data(), LDA));                  \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                 \
+            cublasDsyr2(handle, fillMode, N, &alpha, X.data(), one, Y.data(), one, A.data(), LDA));                  \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                 \
       } else {                                                                                                         \
         /* cublasDsyr2() + ~A_ll => call kokkos-kernels' implementation */                                             \
         SYR2<EXEC_SPACE, XViewType, YViewType, AViewType, false, ETI_SPEC_AVAIL>::syr2(space, trans, uplo, alpha, X,   \
@@ -98,11 +98,11 @@ namespace Impl {
       Kokkos::Profiling::pushRegion("KokkosBlas::syr2[TPL_CUBLAS,float]");                                            \
       KOKKOSBLAS2_SYR2_CUBLAS_DETERMINE_ARGS(LAYOUT, uplo[0]);                                                        \
       if (A_is_ll) {                                                                                                  \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                    \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                 \
+        cublasSingleton& s = cublasSingleton::singleton();                    \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                 \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(                                                                                 \
-            cublasSsyr2(s.handle, fillMode, N, &alpha, X.data(), one, Y.data(), one, A.data(), LDA));                 \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                \
+            cublasSsyr2(handle, fillMode, N, &alpha, X.data(), one, Y.data(), one, A.data(), LDA));                 \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                \
       } else {                                                                                                        \
         /* cublasSsyr2() + ~A_ll => call kokkos-kernels' implementation */                                            \
         SYR2<EXEC_SPACE, XViewType, YViewType, AViewType, false, ETI_SPEC_AVAIL>::syr2(space, trans, uplo, alpha, X,  \
@@ -141,14 +141,14 @@ namespace Impl {
       bool justTranspose = (trans[0] == 'T') || (trans[0] == 't');                                                     \
       if (justTranspose) {                                                                                             \
         if (A_is_ll) {                                                                                                 \
-          KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                   \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZsyr2(s.handle, fillMode, N,                                              \
+          cublasSingleton& s = cublasSingleton::singleton();                   \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZsyr2(handle, fillMode, N,                                              \
                                                    reinterpret_cast<const cuDoubleComplex*>(&alpha),                   \
                                                    reinterpret_cast<const cuDoubleComplex*>(X.data()), one,            \
                                                    reinterpret_cast<const cuDoubleComplex*>(Y.data()), one,            \
                                                    reinterpret_cast<cuDoubleComplex*>(A.data()), LDA));                \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                               \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                               \
         } else {                                                                                                       \
           /* cublasZsyr2() + ~A_ll => call kokkos-kernels' implementation */                                           \
           SYR2<EXEC_SPACE, XViewType, YViewType, AViewType, false, ETI_SPEC_AVAIL>::syr2(space, trans, uplo, alpha, X, \
@@ -156,14 +156,14 @@ namespace Impl {
         }                                                                                                              \
       } else {                                                                                                         \
         if (A_is_ll) {                                                                                                 \
-          KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                   \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZher2(s.handle, fillMode, N,                                              \
+          cublasSingleton& s = cublasSingleton::singleton();                   \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZher2(handle, fillMode, N,                                              \
                                                    reinterpret_cast<const cuDoubleComplex*>(&alpha),                   \
                                                    reinterpret_cast<const cuDoubleComplex*>(X.data()), one,            \
                                                    reinterpret_cast<const cuDoubleComplex*>(Y.data()), one,            \
                                                    reinterpret_cast<cuDoubleComplex*>(A.data()), LDA));                \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                               \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                               \
         } else {                                                                                                       \
           /* cublasZher2() + ~A_ll => call kokkos-kernels' implementation */                                           \
           SYR2<EXEC_SPACE, XViewType, YViewType, AViewType, false, ETI_SPEC_AVAIL>::syr2(space, trans, uplo, alpha, X, \
@@ -203,13 +203,13 @@ namespace Impl {
       bool justTranspose = (trans[0] == 'T') || (trans[0] == 't');                                                     \
       if (justTranspose) {                                                                                             \
         if (A_is_ll) {                                                                                                 \
-          KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                   \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCsyr2(s.handle, fillMode, N, reinterpret_cast<const cuComplex*>(&alpha),  \
+          cublasSingleton& s = cublasSingleton::singleton();                   \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCsyr2(handle, fillMode, N, reinterpret_cast<const cuComplex*>(&alpha),  \
                                                    reinterpret_cast<const cuComplex*>(X.data()), one,                  \
                                                    reinterpret_cast<const cuComplex*>(Y.data()), one,                  \
                                                    reinterpret_cast<cuComplex*>(A.data()), LDA));                      \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                               \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                               \
         } else {                                                                                                       \
           /* cublasCsyr2() + ~A_ll => call kokkos-kernels' implementation */                                           \
           SYR2<EXEC_SPACE, XViewType, YViewType, AViewType, false, ETI_SPEC_AVAIL>::syr2(space, trans, uplo, alpha, X, \
@@ -217,13 +217,13 @@ namespace Impl {
         }                                                                                                              \
       } else {                                                                                                         \
         if (A_is_ll) {                                                                                                 \
-          KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                   \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCher2(s.handle, fillMode, N, reinterpret_cast<const cuComplex*>(&alpha),  \
+          cublasSingleton& s = cublasSingleton::singleton();                   \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCher2(handle, fillMode, N, reinterpret_cast<const cuComplex*>(&alpha),  \
                                                    reinterpret_cast<const cuComplex*>(X.data()), one,                  \
                                                    reinterpret_cast<const cuComplex*>(Y.data()), one,                  \
                                                    reinterpret_cast<cuComplex*>(A.data()), LDA));                      \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                               \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                               \
         } else {                                                                                                       \
           /* cublasCher2() + ~A_ll => call kokkos-kernels' implementation */                                           \
           SYR2<EXEC_SPACE, XViewType, YViewType, AViewType, false, ETI_SPEC_AVAIL>::syr2(space, trans, uplo, alpha, X, \

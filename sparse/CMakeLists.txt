@@ -5,7 +5,8 @@ LIST(APPEND KK_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/sparse/eti)
 LIST(APPEND KK_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/sparse/tpls)
 
 #Add tpls source file
-LIST(APPEND SOURCES sparse/tpls/KokkosKernels_tpl_handles.cpp)
+LIST(APPEND SOURCES sparse/tpls/KokkosSparse_cusparse_tpl.cpp)
+LIST(APPEND SOURCES sparse/tpls/KokkosSparse_rocsparse_tpl.cpp)
 
 
 ##################

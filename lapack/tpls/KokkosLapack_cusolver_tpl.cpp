@@ -14,27 +14,32 @@
 //
 //@HEADER
 
-#ifndef KOKKOSLAPACK_CUSOLVER_HPP_
-#define KOKKOSLAPACK_CUSOLVER_HPP_
+#include "KokkosLapack_cusolver_tpl.hpp"
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSOLVER
-#include <cusolverDn.h>
 
-namespace KokkosLapack {
-namespace Impl {
+namespace KokkosKernels::Impl {
 
-// Declaration of the singleton for cusolver
-// this is the only header that needs to be
-// included when using cusolverDn.
-struct CudaLapackSingleton {
-  cusolverDnHandle_t handle;
+TPLSingleton<cusolverDnHandle_t>& TPLSingleton<cusolverDnHandle_t>::getInstance()
+{
+  static TPLSingleton<cusolverDnHandle_t> s;
+  return s;
+}
 
-  CudaLapackSingleton();
+void TPLSingleton<cusolverDnHandle_t>::initialize(cusolverDnHandle_t& handle) {
+  cusolverStatus_t stat = cusolverDnCreate(&handle);
+  if (stat != CUSOLVER_STATUS_SUCCESS) Kokkos::abort("CUSOLVER initialization failed\n");
+}
 
-  static CudaLapackSingleton& singleton();
-};
+void TPLSingleton<cusolverDnHandle_t>::finalize(cusolverDnHandle_t& handle) {
+  cusolverDnDestroy(handle);
+}
 
-inline void cusolver_internal_error_throw(cusolverStatus_t cusolverStatus, const char* name, const char* file,
+} // KokkosKernels::Impl
+
+namespace KokkosLapack::Impl {
+
+void cusolver_internal_error_throw(cusolverStatus_t cusolverStatus, const char* name, const char* file,
                                           const int line) {
   std::ostringstream out;
   out << name << " error( ";
@@ -60,19 +65,13 @@ inline void cusolver_internal_error_throw(cusolverStatus_t cusolverStatus, const
   throw std::runtime_error(out.str());
 }
 
-inline void cusolver_internal_safe_call(cusolverStatus_t cusolverStatus, const char* name, const char* file = nullptr,
+void cusolver_internal_safe_call(cusolverStatus_t cusolverStatus, const char* name, const char* file = nullptr,
                                         const int line = 0) {
   if (CUSOLVER_STATUS_SUCCESS != cusolverStatus) {
     cusolver_internal_error_throw(cusolverStatus, name, file, line);
   }
 }
 
-// The macro below defines is the public interface for the safe cusolver calls.
-// The functions themselves are protected by impl namespace.
-#define KOKKOS_CUSOLVER_SAFE_CALL_IMPL(call) \
-  KokkosLapack::Impl::cusolver_internal_safe_call(call, #call, __FILE__, __LINE__)
+} // KokkosLapack::Impl
 
-}  // namespace Impl
-}  // namespace KokkosLapack
-#endif  // KOKKOSKERNELS_ENABLE_TPL_CUSOLVER
-#endif  // KOKKOSLAPACK_CUSOLVER_HPP_
+#endif // KOKKOSKERNELS_ENABLE_TPL_CUSOLVER

@@ -170,7 +170,7 @@ KOKKOSBLAS1_CNRM2_TPL_SPEC_DECL_BLAS(Kokkos::LayoutLeft, Kokkos::HostSpace, fals
 #endif
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -196,10 +196,10 @@ namespace Impl {
       if (numElems <= static_cast<size_type>(std::numeric_limits<int>::max())) {                                      \
         nrm2_print_specialization<RV, XV>();                                                                          \
         const int N                            = static_cast<int>(numElems);                                          \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                    \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                 \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(TPL_NRM2(s.handle, N, reinterpret_cast<const TPL_TYPE*>(X.data()), 1, &R()));    \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                \
+        cublasSingleton& s = cublasSingleton::singleton();                    \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                 \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(TPL_NRM2(handle, N, reinterpret_cast<const TPL_TYPE*>(X.data()), 1, &R()));    \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                \
         if (!take_sqrt) R() = R() * R();                                                                              \
       } else {                                                                                                        \
         Nrm2<EXECSPACE, RV, XV, 1, false, ETI_SPEC_AVAIL>::nrm2(space, R, X, take_sqrt);                              \
@@ -227,7 +227,7 @@ KOKKOSBLAS1_NRM2_TPL_SPEC_DECL_CUBLAS_EXT(false)
 #endif
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_rocblas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -254,9 +254,9 @@ namespace Impl {
         nrm2_print_specialization<RV, XV>();                                                                           \
         const rocblas_int N                   = static_cast<rocblas_int>(numElems);                                    \
         KokkosBlas::Impl::RocBlasSingleton& s = KokkosBlas::Impl::RocBlasSingleton::singleton();                       \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, space.hip_stream()));                               \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(TPL_NRM2(s.handle, N, reinterpret_cast<const TPL_TYPE*>(X.data()), 1, &R()));    \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, NULL));                                             \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, space.hip_stream()));                               \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(TPL_NRM2(handle, N, reinterpret_cast<const TPL_TYPE*>(X.data()), 1, &R()));    \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, NULL));                                             \
         if (!take_sqrt) R() = R() * R();                                                                               \
       } else {                                                                                                         \
         Nrm2<EXECSPACE, RV, XV, 1, false, ETI_SPEC_AVAIL>::nrm2(space, R, X, take_sqrt);                               \
@@ -286,7 +286,6 @@ KOKKOSBLAS1_NRM2_TPL_SPEC_DECL_ROCBLAS_EXT(false)
 #if defined(KOKKOSKERNELS_ENABLE_TPL_MKL) && defined(KOKKOS_ENABLE_SYCL)
 #include <mkl.h>
 #include <oneapi/mkl/blas.hpp>
-#include <KokkosBlas_tpl_spec.hpp>
 
 namespace KokkosBlas {
 namespace Impl {

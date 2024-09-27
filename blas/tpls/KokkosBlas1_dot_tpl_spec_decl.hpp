@@ -89,7 +89,7 @@ KOKKOSBLAS1_DOT_TPL_SPEC_DECL_BLAS_EXT(false)
 // Disabled because native has better performance.
 // See tpl_spec_avail file for more details
 #if 0
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -116,9 +116,9 @@ namespace Impl {
       if (numElems <= static_cast<size_type>(std::numeric_limits<int>::max())) {                                     \
         dot_print_specialization<RV, XV, XV>();                                                                      \
         const int N                            = static_cast<int>(numElems);                                         \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                   \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(TPL_DOT(s.handle, N, reinterpret_cast<const TPL_TYPE*>(X.data()), 1,            \
+        auto handle = cublasSingleton::singleton();                   \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(TPL_DOT(handle, N, reinterpret_cast<const TPL_TYPE*>(X.data()), 1,            \
                                              reinterpret_cast<const TPL_TYPE*>(Y.data()), 1,                         \
                                              reinterpret_cast<TPL_TYPE*>(&R())));                                    \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                               \
@@ -148,7 +148,7 @@ KOKKOSBLAS1_DOT_TPL_SPEC_DECL_CUBLAS_EXT(false)
 
 // rocBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_rocblas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -174,9 +174,9 @@ namespace Impl {
       if (numElems <= static_cast<size_type>(std::numeric_limits<rocblas_int>::max())) {                              \
         dot_print_specialization<RV, XV, XV>();                                                                       \
         const rocblas_int N                   = static_cast<rocblas_int>(numElems);                                   \
-        KokkosBlas::Impl::RocBlasSingleton& s = KokkosBlas::Impl::RocBlasSingleton::singleton();                      \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, space.hip_stream()));                              \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(TPL_DOT(s.handle, N, reinterpret_cast<const TPL_TYPE*>(X.data()), 1,            \
+        auto handle = rocblasSingleton::singleton();                      \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, space.hip_stream()));                              \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(TPL_DOT(handle, N, reinterpret_cast<const TPL_TYPE*>(X.data()), 1,            \
                                               reinterpret_cast<const TPL_TYPE*>(Y.data()), 1,                         \
                                               reinterpret_cast<TPL_TYPE*>(&R())));                                    \
         KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, NULL));                                            \
@@ -207,7 +207,6 @@ KOKKOSBLAS1_DOT_TPL_SPEC_DECL_ROCBLAS_EXT(false)
 #if defined(KOKKOSKERNELS_ENABLE_TPL_MKL) && defined(KOKKOS_ENABLE_SYCL)
 #include <mkl.h>
 #include <oneapi/mkl/blas.hpp>
-#include <KokkosBlas_tpl_spec.hpp>
 
 namespace KokkosBlas {
 namespace Impl {

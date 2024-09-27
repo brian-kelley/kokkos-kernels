@@ -154,7 +154,7 @@ KOKKOSBLAS1_CSWAP_TPL_SPEC_DECL_BLAS(Kokkos::LayoutLeft, Kokkos::OpenMP, false)
 
 // cuBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -173,7 +173,7 @@ namespace Impl {
     static void swap(EXECSPACE const& space, XVector const& X, YVector const& Y) {                                   \
       Kokkos::Profiling::pushRegion("KokkosBlas::swap[TPL_CUBLAS,double]");                                          \
       swap_print_specialization<EXECSPACE, XVector, YVector>();                                                      \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton();             \
+      cublasSingleton& singleton = cublasSingleton::singleton();             \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));                          \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasDswap(singleton.handle, X.extent_int(0), X.data(), 1, Y.data(), 1));        \
       Kokkos::Profiling::popRegion();                                                                                \
@@ -194,7 +194,7 @@ namespace Impl {
     static void swap(EXECSPACE const& space, XVector const& X, YVector const& Y) {                                  \
       Kokkos::Profiling::pushRegion("KokkosBlas::swap[TPL_CUBLAS,float]");                                          \
       swap_print_specialization<EXECSPACE, XVector, YVector>();                                                     \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton();            \
+      cublasSingleton& singleton = cublasSingleton::singleton();            \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));                         \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSswap(singleton.handle, X.extent_int(0), X.data(), 1, Y.data(), 1));       \
       Kokkos::Profiling::popRegion();                                                                               \
@@ -216,7 +216,7 @@ namespace Impl {
     static void swap(EXECSPACE const& space, XVector const& X, YVector const& Y) {                       \
       Kokkos::Profiling::pushRegion("KokkosBlas::swap[TPL_CUBLAS,complex<double>]");                     \
       swap_print_specialization<EXECSPACE, XVector, YVector>();                                          \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton(); \
+      cublasSingleton& singleton = cublasSingleton::singleton(); \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));              \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZswap(singleton.handle, X.extent_int(0),                        \
                                                reinterpret_cast<cuDoubleComplex*>(X.data()), 1,          \
@@ -240,7 +240,7 @@ namespace Impl {
     static void swap(EXECSPACE const& space, XVector const& X, YVector const& Y) {                       \
       Kokkos::Profiling::pushRegion("KokkosBlas::swap[TPL_CUBLAS,complex<float>]");                      \
       swap_print_specialization<EXECSPACE, XVector, YVector>();                                          \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton(); \
+      cublasSingleton& singleton = cublasSingleton::singleton(); \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));              \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCswap(singleton.handle, X.extent_int(0),                        \
                                                reinterpret_cast<cuComplex*>(X.data()), 1,                \
@@ -290,7 +290,7 @@ KOKKOSBLAS1_CSWAP_TPL_SPEC_DECL_CUBLAS(Kokkos::LayoutRight, Kokkos::Cuda, Kokkos
 
 // rocBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_rocblas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {

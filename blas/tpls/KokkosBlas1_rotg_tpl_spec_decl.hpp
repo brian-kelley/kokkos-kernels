@@ -172,7 +172,7 @@ KOKKOSBLAS1_CROTG_TPL_SPEC_DECL_BLAS(Kokkos::LayoutRight, Kokkos::OpenMP, Kokkos
 
 // cuBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -192,7 +192,7 @@ namespace Impl {
                      SViewType const& s) {                                                                          \
       Kokkos::Profiling::pushRegion("KokkosBlas::rotg[TPL_CUBLAS,double]");                                         \
       rotg_print_specialization<double, EXECSPACE>();                                                               \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton();            \
+      cublasSingleton& singleton = cublasSingleton::singleton();            \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));                         \
       cublasPointerMode_t pointer_mode;                                                                             \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasGetPointerMode(singleton.handle, &pointer_mode));                          \
@@ -218,7 +218,7 @@ namespace Impl {
                      SViewType const& s) {                                                                             \
       Kokkos::Profiling::pushRegion("KokkosBlas::rotg[TPL_CUBLAS,float]");                                             \
       rotg_print_specialization<float, EXECSPACE>();                                                                   \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton();               \
+      cublasSingleton& singleton = cublasSingleton::singleton();               \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));                            \
       cublasPointerMode_t pointer_mode;                                                                                \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasGetPointerMode(singleton.handle, &pointer_mode));                             \
@@ -245,7 +245,7 @@ namespace Impl {
                      SViewType const& s) {                                                                          \
       Kokkos::Profiling::pushRegion("KokkosBlas::rotg[TPL_CUBLAS,complex<double>]");                                \
       rotg_print_specialization<Kokkos::complex<double>, EXECSPACE>();                                              \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton();            \
+      cublasSingleton& singleton = cublasSingleton::singleton();            \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));                         \
       cublasPointerMode_t pointer_mode;                                                                             \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasGetPointerMode(singleton.handle, &pointer_mode));                          \
@@ -274,7 +274,7 @@ namespace Impl {
                      SViewType const& s) {                                                                             \
       Kokkos::Profiling::pushRegion("KokkosBlas::rotg[TPL_CUBLAS,complex<float>]");                                    \
       rotg_print_specialization<Kokkos::complex<float>, EXECSPACE>();                                                  \
-      KokkosBlas::Impl::CudaBlasSingleton& singleton = KokkosBlas::Impl::CudaBlasSingleton::singleton();               \
+      cublasSingleton& singleton = cublasSingleton::singleton();               \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(singleton.handle, space.cuda_stream()));                            \
       cublasPointerMode_t pointer_mode;                                                                                \
       KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasGetPointerMode(singleton.handle, &pointer_mode));                             \
@@ -330,7 +330,7 @@ KOKKOSBLAS1_CROTG_TPL_SPEC_DECL_CUBLAS(Kokkos::LayoutRight, Kokkos::Cuda, Kokkos
 
 // rocBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_rocblas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {

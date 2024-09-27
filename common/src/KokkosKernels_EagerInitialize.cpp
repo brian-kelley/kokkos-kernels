@@ -18,27 +18,23 @@
 #include "KokkosKernels_config.h"
 #include "Kokkos_Core.hpp"
 
-// Include the minimal set of headers that declare all TPL singletons
+// Include the minimal set of headers that declare all TPL singletons.
+// These are safe to include whether or not the TPL is enabled.
 #ifdef KOKKOSKERNELS_ENABLE_COMPONENT_BLAS
-#include "KokkosBlas_tpl_spec.hpp"  //cuBLAS, rocBLAS
-#ifdef KOKKOSKERNELS_ENABLE_TPL_MAGMA
-#include "KokkosBlas_Magma_tpl.hpp"
-#endif
+#include "KokkosBlas_cublas_tpl.hpp"
+#include "KokkosBlas_rocblas_tpl.hpp"
 #endif
 
 #ifdef KOKKOSKERNELS_ENABLE_COMPONENT_SPARSE
-// note: this file declares both cuSPARSE and rocSPARSE singletons
-#include "KokkosKernels_tpl_handles_decl.hpp"
+#include "KokkosSparse_cusparse_tpl.hpp"
+#include "KokkosSparse_rocsparse_tpl.hpp"
 #endif
 
 #ifdef KOKKOSKERNELS_ENABLE_COMPONENT_LAPACK
-#ifdef KOKKOSKERNELS_ENABLE_TPL_CUSOLVER
-#include "KokkosLapack_cusolver.hpp"
+#include "KokkosLapack_cusolver_tpl.hpp"
 #endif
-#ifdef KOKKOSKERNELS_ENABLE_TPL_MAGMA
-#include "KokkosLapack_magma.hpp"
-#endif
-#endif
+
+#include "KokkosKernels_magma_tpl.hpp"
 
 namespace KokkosKernels {
 void eager_initialize() {
@@ -47,32 +43,29 @@ void eager_initialize() {
   }
 #ifdef KOKKOSKERNELS_ENABLE_COMPONENT_BLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS
-  (void)KokkosBlas::Impl::CudaBlasSingleton::singleton();
+  (void)KokkosBlas::Impl::cublasSingleton::singleton();
 #endif
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCBLAS
-  (void)KokkosBlas::Impl::RocBlasSingleton::singleton();
+  (void)KokkosBlas::Impl::rocblasSingleton::singleton();
 #endif
+#endif
+
 #ifdef KOKKOSKERNELS_ENABLE_TPL_MAGMA
-#include "KokkosBlas_Magma_tpl.hpp"
-  (void)KokkosBlas::Impl::MagmaSingleton::singleton();
-#endif
+  (void)KokkosKernels::Impl::magmaSingleton::singleton();
 #endif
 
 #ifdef KOKKOSKERNELS_ENABLE_COMPONENT_SPARSE
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
-  (void)KokkosKernels::Impl::CusparseSingleton::singleton();
+  (void)KokkosKernels::Impl::cusparseSingleton::singleton();
 #endif
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE
-  (void)KokkosKernels::Impl::RocsparseSingleton::singleton();
+  (void)KokkosKernels::Impl::rocsparseSingleton::singleton();
 #endif
 #endif
 
 #ifdef KOKKOSKERNELS_ENABLE_COMPONENT_LAPACK
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSOLVER
-  (void)KokkosLapack::Impl::CudaLapackSingleton::singleton();
-#endif
-#ifdef KOKKOSKERNELS_ENABLE_TPL_MAGMA
-  (void)KokkosLapack::Impl::MagmaSingleton::singleton();
+  (void)KokkosLapack::Impl::cusolverSingleton::singleton();
 #endif
 #endif
 }

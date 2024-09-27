@@ -17,7 +17,7 @@
 #ifndef KOKKOSBLAS2_GER_TPL_SPEC_DECL_CUBLAS_HPP_
 #define KOKKOSBLAS2_GER_TPL_SPEC_DECL_CUBLAS_HPP_
 
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -55,14 +55,14 @@ namespace Impl {
                     const XViewType& X, const YViewType& Y, const AViewType& A) {                                      \
       Kokkos::Profiling::pushRegion("KokkosBlas::ger[TPL_CUBLAS,double]");                                             \
       KOKKOSBLAS2_GER_CUBLAS_DETERMINE_ARGS(LAYOUT);                                                                   \
-      KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                       \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                    \
+      cublasSingleton& s = cublasSingleton::singleton();                       \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                    \
       if (A_is_ll) {                                                                                                   \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasDger(s.handle, M, N, &alpha, X.data(), one, Y.data(), one, A.data(), LDA)); \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasDger(handle, M, N, &alpha, X.data(), one, Y.data(), one, A.data(), LDA)); \
       } else {                                                                                                         \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasDger(s.handle, M, N, &alpha, Y.data(), one, X.data(), one, A.data(), LDA)); \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasDger(handle, M, N, &alpha, Y.data(), one, X.data(), one, A.data(), LDA)); \
       }                                                                                                                \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                   \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                   \
       Kokkos::Profiling::popRegion();                                                                                  \
     }                                                                                                                  \
   };
@@ -92,14 +92,14 @@ namespace Impl {
                     const XViewType& X, const YViewType& Y, const AViewType& A) {                                      \
       Kokkos::Profiling::pushRegion("KokkosBlas::ger[TPL_CUBLAS,float]");                                              \
       KOKKOSBLAS2_GER_CUBLAS_DETERMINE_ARGS(LAYOUT);                                                                   \
-      KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                       \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                    \
+      cublasSingleton& s = cublasSingleton::singleton();                       \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                    \
       if (A_is_ll) {                                                                                                   \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSger(s.handle, M, N, &alpha, X.data(), one, Y.data(), one, A.data(), LDA)); \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSger(handle, M, N, &alpha, X.data(), one, Y.data(), one, A.data(), LDA)); \
       } else {                                                                                                         \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSger(s.handle, M, N, &alpha, Y.data(), one, X.data(), one, A.data(), LDA)); \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSger(handle, M, N, &alpha, Y.data(), one, X.data(), one, A.data(), LDA)); \
       }                                                                                                                \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                   \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                   \
       Kokkos::Profiling::popRegion();                                                                                  \
     }                                                                                                                  \
   };
@@ -130,23 +130,23 @@ namespace Impl {
       Kokkos::Profiling::pushRegion("KokkosBlas::ger[TPL_CUBLAS,complex<double>]");                                   \
       KOKKOSBLAS2_GER_CUBLAS_DETERMINE_ARGS(LAYOUT);                                                                  \
       bool justTranspose                     = (trans[0] == 'T') || (trans[0] == 't');                                \
-      KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                      \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                   \
+      cublasSingleton& s = cublasSingleton::singleton();                      \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                   \
       if (A_is_ll) {                                                                                                  \
         if (justTranspose) {                                                                                          \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZgeru(s.handle, M, N, reinterpret_cast<const cuDoubleComplex*>(&alpha),  \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZgeru(handle, M, N, reinterpret_cast<const cuDoubleComplex*>(&alpha),  \
                                                    reinterpret_cast<const cuDoubleComplex*>(X.data()), one,           \
                                                    reinterpret_cast<const cuDoubleComplex*>(Y.data()), one,           \
                                                    reinterpret_cast<cuDoubleComplex*>(A.data()), LDA));               \
         } else {                                                                                                      \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZgerc(s.handle, M, N, reinterpret_cast<const cuDoubleComplex*>(&alpha),  \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZgerc(handle, M, N, reinterpret_cast<const cuDoubleComplex*>(&alpha),  \
                                                    reinterpret_cast<const cuDoubleComplex*>(X.data()), one,           \
                                                    reinterpret_cast<const cuDoubleComplex*>(Y.data()), one,           \
                                                    reinterpret_cast<cuDoubleComplex*>(A.data()), LDA));               \
         }                                                                                                             \
       } else {                                                                                                        \
         if (justTranspose) {                                                                                          \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZgeru(s.handle, M, N, reinterpret_cast<const cuDoubleComplex*>(&alpha),  \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZgeru(handle, M, N, reinterpret_cast<const cuDoubleComplex*>(&alpha),  \
                                                    reinterpret_cast<const cuDoubleComplex*>(Y.data()), one,           \
                                                    reinterpret_cast<const cuDoubleComplex*>(X.data()), one,           \
                                                    reinterpret_cast<cuDoubleComplex*>(A.data()), LDA));               \
@@ -155,7 +155,7 @@ namespace Impl {
           GER<EXEC_SPACE, XViewType, YViewType, AViewType, false, ETI_SPEC_AVAIL>::ger(space, trans, alpha, X, Y, A); \
         }                                                                                                             \
       }                                                                                                               \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                  \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                  \
       Kokkos::Profiling::popRegion();                                                                                 \
     }                                                                                                                 \
   };
@@ -186,23 +186,23 @@ namespace Impl {
       Kokkos::Profiling::pushRegion("KokkosBlas::ger[TPL_CUBLAS,complex<float>]");                                    \
       KOKKOSBLAS2_GER_CUBLAS_DETERMINE_ARGS(LAYOUT);                                                                  \
       bool justTranspose                     = (trans[0] == 'T') || (trans[0] == 't');                                \
-      KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                      \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                   \
+      cublasSingleton& s = cublasSingleton::singleton();                      \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                   \
       if (A_is_ll) {                                                                                                  \
         if (justTranspose) {                                                                                          \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCgeru(s.handle, M, N, reinterpret_cast<const cuComplex*>(&alpha),        \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCgeru(handle, M, N, reinterpret_cast<const cuComplex*>(&alpha),        \
                                                    reinterpret_cast<const cuComplex*>(X.data()), one,                 \
                                                    reinterpret_cast<const cuComplex*>(Y.data()), one,                 \
                                                    reinterpret_cast<cuComplex*>(A.data()), LDA));                     \
         } else {                                                                                                      \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCgerc(s.handle, M, N, reinterpret_cast<const cuComplex*>(&alpha),        \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCgerc(handle, M, N, reinterpret_cast<const cuComplex*>(&alpha),        \
                                                    reinterpret_cast<const cuComplex*>(X.data()), one,                 \
                                                    reinterpret_cast<const cuComplex*>(Y.data()), one,                 \
                                                    reinterpret_cast<cuComplex*>(A.data()), LDA));                     \
         }                                                                                                             \
       } else {                                                                                                        \
         if (justTranspose) {                                                                                          \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCgeru(s.handle, M, N, reinterpret_cast<const cuComplex*>(&alpha),        \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCgeru(handle, M, N, reinterpret_cast<const cuComplex*>(&alpha),        \
                                                    reinterpret_cast<const cuComplex*>(Y.data()), one,                 \
                                                    reinterpret_cast<const cuComplex*>(X.data()), one,                 \
                                                    reinterpret_cast<cuComplex*>(A.data()), LDA));                     \
@@ -211,7 +211,7 @@ namespace Impl {
           GER<EXEC_SPACE, XViewType, YViewType, AViewType, false, ETI_SPEC_AVAIL>::ger(space, trans, alpha, X, Y, A); \
         }                                                                                                             \
       }                                                                                                               \
-      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                  \
+      KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                  \
       Kokkos::Profiling::popRegion();                                                                                 \
     }                                                                                                                 \
   };

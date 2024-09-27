@@ -17,11 +17,10 @@
 #ifndef KOKKOSPARSE_SPADD_SYMBOLIC_TPL_SPEC_DECL_HPP_
 #define KOKKOSPARSE_SPADD_SYMBOLIC_TPL_SPEC_DECL_HPP_
 
-namespace KokkosSparse {
-namespace Impl {
-
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
+#include "KokkosSparse_cusparse_tpl.hpp"
 
+namespace KokkosSparse::Impl {
 #define KOKKOSSPARSE_SPADD_SYMBOLIC_TPL_SPEC_DECL_CUSPARSE(TOKEN, KOKKOS_SCALAR_TYPE, TPL_SCALAR_TYPE, ORDINAL_TYPE,   \
                                                            OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE,  \
                                                            ETI_SPEC_AVAIL)                                             \
@@ -62,7 +61,7 @@ namespace Impl {
                                                                                                                        \
       auto addHandle   = handle->get_spadd_handle();                                                                   \
       auto& cuspData   = addHandle->cusparseData;                                                                      \
-      auto& cuspHandle = KokkosKernels::Impl::CusparseSingleton::singleton().cusparseHandle;                           \
+      auto &cuspHandle = cusparseSingleton::singleton(); \
                                                                                                                        \
       /* Not easy to init 'one' for cuda complex, so we don't init it. Anyway,                                         \
        * the uninit'ed var won't affect C's pattern.                                                                   \
@@ -112,9 +111,13 @@ namespace Impl {
 
 KOKKOSSPARSE_SPADD_SYMBOLIC_TPL_SPEC_DECL_CUSPARSE_EXT(true)
 KOKKOSSPARSE_SPADD_SYMBOLIC_TPL_SPEC_DECL_CUSPARSE_EXT(false)
+}
 #endif
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE
+#include "KokkosSparse_rocsparse_tpl.hpp"
+
+namespace KokkosSparse::Impl {
 
 #define KOKKOSSPARSE_SPADD_SYMBOLIC_TPL_SPEC_DECL_ROCSPARSE(                                                           \
     KOKKOS_SCALAR_TYPE, ORDINAL_TYPE, OFFSET_TYPE, LAYOUT_TYPE, EXEC_SPACE_TYPE, MEM_SPACE_TYPE, ETI_SPEC_AVAIL)       \
@@ -155,7 +158,7 @@ KOKKOSSPARSE_SPADD_SYMBOLIC_TPL_SPEC_DECL_CUSPARSE_EXT(false)
                                                                                                                        \
       auto addHandle    = handle->get_spadd_handle();                                                                  \
       auto& rocData     = addHandle->rocsparseData;                                                                    \
-      auto& rocspHandle = KokkosKernels::Impl::RocsparseSingleton::singleton().rocsparseHandle;                        \
+      auto &rocspHandle = rocsparseSingleton::singleton().rocsparseHandle;                        \
       OFFSET_TYPE nnzA  = colidxA.extent(0);                                                                           \
       OFFSET_TYPE nnzB  = colidxB.extent(0);                                                                           \
       OFFSET_TYPE nnzC  = 0;                                                                                           \
@@ -187,6 +190,7 @@ KOKKOSSPARSE_SPADD_SYMBOLIC_TPL_SPEC_DECL_CUSPARSE_EXT(false)
 
 KOKKOSSPARSE_SPADD_SYMBOLIC_TPL_SPEC_DECL_ROCSPARSE_EXT(true)
 KOKKOSSPARSE_SPADD_SYMBOLIC_TPL_SPEC_DECL_ROCSPARSE_EXT(false)
+}
 #endif
 
 }  // namespace Impl

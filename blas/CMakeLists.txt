@@ -38,14 +38,14 @@ ENDIF()
 # Include cuda blas TPL source file
 IF (KOKKOSKERNELS_ENABLE_TPL_CUBLAS)
   LIST(APPEND SOURCES
-   blas/tpls/KokkosBlas_Cuda_tpl.cpp
+   blas/tpls/KokkosBlas_cublas_tpl.cpp
   )
 ENDIF()
 
 # Include rocm blas TPL source file
 IF (KOKKOSKERNELS_ENABLE_TPL_ROCBLAS)
   LIST(APPEND SOURCES
-   blas/tpls/KokkosBlas_Rocm_tpl.cpp
+   blas/tpls/KokkosBlas_rocblas_tpl.cpp
   )
 ENDIF()
 

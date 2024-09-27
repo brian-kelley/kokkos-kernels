@@ -31,6 +31,7 @@
 #if defined(CUSPARSE_VERSION) && (10301 <= CUSPARSE_VERSION) && (CUSPARSE_VERSION != 11702)
 #include "cusparse.h"
 #include "KokkosSparse_Utils_cusparse.hpp"
+#include "KokkosSparse_cusparse_tpl.hpp"
 
 namespace KokkosSparse {
 namespace Impl {
@@ -107,7 +108,7 @@ void spmv_mv_cusparse(const Kokkos::Cuda &exec, Handle *handle, const char mode[
   using y_value_type = typename YVector::non_const_value_type;
 
   /* initialize cusparse library */
-  cusparseHandle_t cusparseHandle = KokkosKernels::Impl::CusparseSingleton::singleton().cusparseHandle;
+  cusparseHandle_t cusparseHandle = cusparseSingleton::singleton();
   /* Set cuSPARSE to use the given stream until this function exits */
   TemporarySetCusparseStream tscs(cusparseHandle, exec);
 
@@ -281,6 +282,7 @@ KOKKOSSPARSE_SPMV_MV_CUSPARSE(Kokkos::Experimental::half_t, int, int, Kokkos::La
 // rocSPARSE
 #if defined(KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE)
 #include "KokkosSparse_Utils_rocsparse.hpp"
+#include "KokkosSparse_rocsparse_tpl.hpp"
 
 namespace KokkosSparse {
 namespace Impl {
@@ -294,7 +296,7 @@ void spmv_mv_rocsparse(const Kokkos::HIP &exec, Handle *handle, const char mode[
   using value_type  = typename AMatrix::non_const_value_type;
 
   // initialize rocsparse library
-  rocsparse_handle rocsparseHandle = KokkosKernels::Impl::RocsparseSingleton::singleton().rocsparseHandle;
+  rocsparse_handle rocsparseHandle = rocsparseSingleton::singleton();
   // Set rocsparse to use the given stream until this function exits
   TemporarySetRocsparseStream tsrs(rocsparseHandle, exec);
 

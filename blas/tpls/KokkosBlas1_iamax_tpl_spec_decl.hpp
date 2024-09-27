@@ -108,7 +108,7 @@ KOKKOSBLAS1_CIAMAX_TPL_SPEC_DECL_BLAS(Kokkos::LayoutLeft, Kokkos::HostSpace, fal
 
 // cuBLAS
 #if defined(KOKKOSKERNELS_ENABLE_TPL_CUBLAS)
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -145,18 +145,18 @@ using CUBLASUVM_DEVICE_TYPE = Kokkos::Device<Kokkos::Cuda, Kokkos::CudaUVMSpace>
         const int N                            = static_cast<int>(numElems);                                          \
         const int XST                          = X.stride(0);                                                         \
         const int LDX                          = (XST == 0) ? 1 : XST;                                                \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                    \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                 \
+        cublasSingleton& s = cublasSingleton::singleton();                    \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                 \
         cublasPointerMode_t prevPtrMode;                                                                              \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasGetPointerMode(s.handle, &prevPtrMode));                                   \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasGetPointerMode(handle, &prevPtrMode));                                   \
         if (prevPtrMode == CUBLAS_PTR_MODE_2) {                                                                       \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetPointerMode(s.handle, CUBLAS_PTR_MODE_1));                            \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetPointerMode(handle, CUBLAS_PTR_MODE_1));                            \
         }                                                                                                             \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(CUBLAS_FN(s.handle, N, reinterpret_cast<const CUDA_SCALAR_TYPE*>(X.data()), LDX, \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(CUBLAS_FN(handle, N, reinterpret_cast<const CUDA_SCALAR_TYPE*>(X.data()), LDX, \
                                                reinterpret_cast<int*>(R.data())));                                    \
         if (prevPtrMode == CUBLAS_PTR_MODE_2) {                                                                       \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetPointerMode(s.handle, CUBLAS_PTR_MODE_2));                            \
-          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                              \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetPointerMode(handle, CUBLAS_PTR_MODE_2));                            \
+          KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                              \
         }                                                                                                             \
       } else {                                                                                                        \
         Iamax<EXEC_SPACE, RV, XV, 1, false, ETI_SPEC_AVAIL>::iamax(space, R, X);                                      \
@@ -273,7 +273,7 @@ KOKKOSBLAS1_CIAMAX_TPL_SPEC_DECL_CUBLAS_UVM(unsigned int, Kokkos::LayoutLeft, Ko
 
 // rocBLAS
 #if defined(KOKKOSKERNELS_ENABLE_TPL_ROCBLAS)
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_rocblas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -309,17 +309,17 @@ using ROCBLAS_DEVICE_TYPE = Kokkos::Device<Kokkos::HIP, Kokkos::HIPSpace>;
         const int XST                         = X.stride(0);                                                          \
         const int LDX                         = (XST == 0) ? 1 : XST;                                                 \
         KokkosBlas::Impl::RocBlasSingleton& s = KokkosBlas::Impl::RocBlasSingleton::singleton();                      \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, space.hip_stream()));                              \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, space.hip_stream()));                              \
         rocblas_pointer_mode prevPtrMode;                                                                             \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_get_pointer_mode(s.handle, &prevPtrMode));                              \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_get_pointer_mode(handle, &prevPtrMode));                              \
         if (prevPtrMode == ROCBLAS_PTR_MODE_2) {                                                                      \
-          KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_pointer_mode(s.handle, ROCBLAS_PTR_MODE_1));                      \
+          KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_pointer_mode(handle, ROCBLAS_PTR_MODE_1));                      \
         }                                                                                                             \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(ROCBLAS_FN(s.handle, N, reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(X.data()), \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(ROCBLAS_FN(handle, N, reinterpret_cast<const ROCBLAS_SCALAR_TYPE*>(X.data()), \
                                                  LDX, reinterpret_cast<int*>(R.data())));                             \
-        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(s.handle, NULL));                                            \
+        KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_stream(handle, NULL));                                            \
         if (prevPtrMode == ROCBLAS_PTR_MODE_2) {                                                                      \
-          KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_pointer_mode(s.handle, ROCBLAS_PTR_MODE_2));                      \
+          KOKKOS_ROCBLAS_SAFE_CALL_IMPL(rocblas_set_pointer_mode(handle, ROCBLAS_PTR_MODE_2));                      \
         }                                                                                                             \
       } else {                                                                                                        \
         Iamax<execution_space, RV, XV, 1, false, ETI_SPEC_AVAIL>::iamax(space, R, X);                                 \

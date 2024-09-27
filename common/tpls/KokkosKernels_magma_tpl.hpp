@@ -13,6 +13,20 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //@HEADER
-#include <Kokkos_Core.hpp>
-#include <KokkosKernels_config.h>
-#include <KokkosBlas_Rocm_tpl.hpp>
+#ifndef KOKKOSBLAS_MAGMA_TPL_HPP_
+#define KOKKOSBLAS_MAGMA_TPL_HPP_
+
+#include "KokkosKernels_TPLSingleton.hpp"
+
+// Magma is used by both BLAS and LAPACK components (and neither depends on the other),
+// so put its initialize/finalize logic here in Common.
+namespace KokkosKernels::Impl {
+  // Magma doesn't use a handle type.
+  // Use this dummy type as the TPLSingleton template parameter.
+  struct MagmaDummyHandle {};
+
+  using magmaSingleton = ::KokkosKernels::Impl::TPLSingleton<MagmaDummyHandle>;
+}
+
+#endif
+

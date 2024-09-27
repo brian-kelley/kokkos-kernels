@@ -190,7 +190,7 @@ KOKKOSBLAS1_CAXPBY_BLAS(Kokkos::LayoutLeft, Kokkos::HostSpace, false)
 
 // cuBLAS
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUBLAS
-#include <KokkosBlas_tpl_spec.hpp>
+#include <KokkosBlas_cublas_tpl.hpp>
 
 namespace KokkosBlas {
 namespace Impl {
@@ -221,10 +221,10 @@ namespace Impl {
         axpby_print_specialization<AV, XV, BV, YV>();                                                                  \
         const int N                            = static_cast<int>(numElems);                                           \
         constexpr int one                      = 1;                                                                    \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                     \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                  \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasDaxpy(s.handle, N, &alpha, X.data(), one, Y.data(), one));                  \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                 \
+        auto handle = cublasSingleton::singleton();                     \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                  \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasDaxpy(handle, N, &alpha, X.data(), one, Y.data(), one));                  \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                 \
       } else                                                                                                           \
         Axpby<ExecSpace, AV, XV, BV, YV, YV::rank, false, ETI_SPEC_AVAIL>::axpby(space, alpha, X, beta, Y);            \
       Kokkos::Profiling::popRegion();                                                                                  \
@@ -257,10 +257,10 @@ namespace Impl {
         axpby_print_specialization<AV, XV, BV, YV>();                                                                 \
         const int N                            = static_cast<int>(numElems);                                          \
         constexpr int one                      = 1;                                                                   \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();                    \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                                 \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSaxpy(s.handle, N, &alpha, X.data(), one, Y.data(), one));                 \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                                \
+        auto handle = cublasSingleton::singleton();                    \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                                 \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSaxpy(handle, N, &alpha, X.data(), one, Y.data(), one));                 \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, NULL));                                                \
       } else                                                                                                          \
         Axpby<ExecSpace, AV, XV, BV, YV, YV::rank, false, ETI_SPEC_AVAIL>::axpby(space, alpha, X, beta, Y);           \
       Kokkos::Profiling::popRegion();                                                                                 \
@@ -293,9 +293,9 @@ namespace Impl {
         axpby_print_specialization<AV, XV, BV, YV>();                                                           \
         const int N                            = static_cast<int>(numElems);                                    \
         constexpr int one                      = 1;                                                             \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();              \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                           \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZaxpy(s.handle, N, reinterpret_cast<const cuDoubleComplex*>(&alpha), \
+        auto handle = cublasSingleton::singleton();              \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                           \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasZaxpy(handle, N, reinterpret_cast<const cuDoubleComplex*>(&alpha), \
                                                  reinterpret_cast<const cuDoubleComplex*>(X.data()), one,       \
                                                  reinterpret_cast<cuDoubleComplex*>(Y.data()), one));           \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                          \
@@ -331,9 +331,9 @@ namespace Impl {
         axpby_print_specialization<AV, XV, BV, YV>();                                                       \
         const int N                            = static_cast<int>(numElems);                                \
         constexpr int one                      = 1;                                                         \
-        KokkosBlas::Impl::CudaBlasSingleton& s = KokkosBlas::Impl::CudaBlasSingleton::singleton();          \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, space.cuda_stream()));                       \
-        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCaxpy(s.handle, N, reinterpret_cast<const cuComplex*>(&alpha),   \
+        auto handle = cublasSingleton::singleton();          \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(handle, space.cuda_stream()));                       \
+        KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasCaxpy(handle, N, reinterpret_cast<const cuComplex*>(&alpha),   \
                                                  reinterpret_cast<const cuComplex*>(X.data()), one,         \
                                                  reinterpret_cast<cuComplex*>(Y.data()), one));             \
         KOKKOS_CUBLAS_SAFE_CALL_IMPL(cublasSetStream(s.handle, NULL));                                      \

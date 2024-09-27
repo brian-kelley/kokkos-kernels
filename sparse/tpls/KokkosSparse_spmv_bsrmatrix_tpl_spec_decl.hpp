@@ -20,7 +20,6 @@
 #include "KokkosKernels_AlwaysFalse.hpp"
 #include "KokkosSparse_Utils_mkl.hpp"
 #include "KokkosSparse_Utils_cusparse.hpp"
-#include "KokkosKernels_tpl_handles_decl.hpp"
 
 #if defined(KOKKOSKERNELS_ENABLE_TPL_MKL) && (__INTEL_MKL__ > 2017)
 #include <mkl.h>
@@ -261,6 +260,8 @@ KOKKOSSPARSE_SPMV_MV_MKL(Kokkos::complex<double>, Kokkos::OpenMP)
 // cuSPARSE
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
 #include "cusparse.h"
+#include "KokkosSparse_cusparse_tpl.hpp"
+#include "KokkosSparse_Utils_cusparse.hpp"
 
 //
 // From  https://docs.nvidia.com/cuda/cusparse/index.html#bsrmv
@@ -270,8 +271,6 @@ KOKKOSSPARSE_SPMV_MV_MKL(Kokkos::complex<double>, Kokkos::OpenMP)
 // - Only CUSPARSE_MATRIX_TYPE_GENERAL is supported.
 //
 #if (9000 <= CUDA_VERSION)
-
-#include "KokkosSparse_Utils_cusparse.hpp"
 
 namespace KokkosSparse {
 namespace Impl {
@@ -285,7 +284,7 @@ void spmv_bsr_cusparse(const Kokkos::Cuda& exec, Handle* handle, const char mode
   using value_type  = typename AMatrix::non_const_value_type;
 
   /* initialize cusparse library */
-  cusparseHandle_t cusparseHandle = KokkosKernels::Impl::CusparseSingleton::singleton().cusparseHandle;
+  cusparseHandle_t cusparseHandle = cusparseSingleton::singleton();
   /* Set cuSPARSE to use the given stream until this function exits */
   KokkosSparse::Impl::TemporarySetCusparseStream tscs(cusparseHandle, exec);
 
@@ -378,7 +377,7 @@ void spmv_mv_bsr_cusparse(const Kokkos::Cuda& exec, Handle* handle, const char m
   using value_type  = typename AMatrix::non_const_value_type;
 
   /* initialize cusparse library */
-  cusparseHandle_t cusparseHandle = KokkosKernels::Impl::CusparseSingleton::singleton().cusparseHandle;
+  cusparseHandle_t cusparseHandle = cusparseSingleton::singleton();
   /* Set cuSPARSE to use the given stream until this function exits */
   KokkosSparse::Impl::TemporarySetCusparseStream tscs(cusparseHandle, exec);
 
@@ -575,6 +574,7 @@ KOKKOSSPARSE_SPMV_MV_CUSPARSE(Kokkos::complex<float>, int, int, Kokkos::CudaUVMS
 #include <rocsparse/rocsparse.h>
 
 #include "KokkosSparse_Utils_rocsparse.hpp"
+#include "KokkosSparse_rocsparse_tpl.hpp"
 
 namespace KokkosSparse {
 namespace Impl {
@@ -619,7 +619,7 @@ void spmv_bsr_rocsparse(const Kokkos::HIP& exec, Handle* handle, const char mode
   static_assert(!std::is_same_v<typename AMatrix::index_type::array_layout, Kokkos::LayoutStride>,
                 "A entries must be contiguous");
 
-  rocsparse_handle rocsparseHandle = KokkosKernels::Impl::RocsparseSingleton::singleton().rocsparseHandle;
+  rocsparse_handle rocsparseHandle = rocsparseSingleton::singleton();
   // resets handle stream to NULL when out of scope
   KokkosSparse::Impl::TemporarySetRocsparseStream tsrs(rocsparseHandle, exec);
 

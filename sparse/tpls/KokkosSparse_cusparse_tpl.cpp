@@ -14,44 +14,29 @@
 //
 //@HEADER
 
-#ifndef KOKKOSKERNELS_TPL_HANDLES_DECL_HPP_
-#define KOKKOSKERNELS_TPL_HANDLES_DECL_HPP_
-
-#include "KokkosBlas_tpl_spec.hpp"
+#include "KokkosSparse_cusparse_tpl.hpp"
 
 #ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
+#include "KokkosSparse_Utils_cusparse.hpp"
 
 namespace KokkosKernels {
 namespace Impl {
 
-struct CusparseSingleton {
-  cusparseHandle_t cusparseHandle;
+TPLSingleton<cusparseHandle_t>& TPLSingleton<cusparseHandle_t>::getInstance()
+{
+  static TPLSingleton<cusparseHandle_t> s;
+  return s;
+}
 
-  CusparseSingleton();
+void TPLSingleton<cusparseHandle_t>::initialize(cusparseHandle_t& handle) {
+  KOKKOS_CUSPARSE_SAFE_CALL(cusparseCreate(&handle));
+}
 
-  static CusparseSingleton& singleton();
-};
-
-}  // namespace Impl
-}  // namespace KokkosKernels
-#endif
-
-#ifdef KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE
-#include <rocsparse/rocsparse.h>
-
-namespace KokkosKernels {
-namespace Impl {
-
-struct RocsparseSingleton {
-  rocsparse_handle rocsparseHandle;
-
-  RocsparseSingleton();
-
-  static RocsparseSingleton& singleton();
-};
+void TPLSingleton<cusparseHandle_t>::finalize(cusparseHandle_t& handle) {
+  KOKKOS_CUSPARSE_SAFE_CALL(cusparseDestroy(handle));
+}
 
 }  // namespace Impl
 }  // namespace KokkosKernels
-#endif
+#endif // KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
 
-#endif  // KOKKOSKERNELS_TPL_HANDLES_DECL_HPP_
