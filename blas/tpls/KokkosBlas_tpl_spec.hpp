@@ -24,14 +24,6 @@
 namespace KokkosBlas {
 namespace Impl {
 
-struct CudaBlasSingleton {
-  cublasHandle_t handle;
-
-  CudaBlasSingleton();
-
-  static CudaBlasSingleton& singleton();
-};
-
 inline void cublas_internal_error_throw(cublasStatus_t cublasState, const char* name, const char* file,
                                         const int line) {
   std::ostringstream out;
@@ -105,14 +97,6 @@ inline cublasOperation_t trans_mode_kk_to_cublas(const char kkMode[]) {
 
 namespace KokkosBlas {
 namespace Impl {
-
-struct RocBlasSingleton {
-  rocblas_handle handle;
-
-  RocBlasSingleton();
-
-  static RocBlasSingleton& singleton();
-};
 
 inline void rocblas_internal_error_throw(rocblas_status rocblasState, const char* name, const char* file,
                                          const int line) {

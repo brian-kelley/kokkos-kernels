@@ -13,6 +13,52 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //@HEADER
-#include <Kokkos_Core.hpp>
-#include "KokkosKernels_config.h"
-#include "KokkosKernels_tpl_handles_def.hpp"
+
+#include "KokkosKernels_tpl_handles_decl.hpp"
+
+#ifdef KOKKOSKERNELS_ENABLE_TPL_CUSPARSE
+#include "cusparse.h"
+#include "KokkosSparse_Utils_cusparse.hpp"
+
+namespace KokkosKernels {
+namespace Impl {
+
+TPLSingleton<cusparseHandle_t>& TPLSingleton<cusparseHandle_t>::getInstance()
+{
+}
+
+CusparseSingleton::CusparseSingleton() {
+  KOKKOS_CUSPARSE_SAFE_CALL(cusparseCreate(&cusparseHandle));
+
+  Kokkos::push_finalize_hook([&]() { cusparseDestroy(cusparseHandle); });
+}
+
+CusparseSingleton& CusparseSingleton::singleton() {
+  static CusparseSingleton s;
+  return s;
+}
+
+}  // namespace Impl
+}  // namespace KokkosKernels
+#endif
+
+#ifdef KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE
+#include "KokkosSparse_Utils_rocsparse.hpp"
+
+namespace KokkosKernels {
+namespace Impl {
+
+RocsparseSingleton::RocsparseSingleton() {
+  KOKKOS_ROCSPARSE_SAFE_CALL_IMPL(rocsparse_create_handle(&rocsparseHandle));
+
+  Kokkos::push_finalize_hook([&]() { KOKKOS_ROCSPARSE_SAFE_CALL_IMPL(rocsparse_destroy_handle(rocsparseHandle)); });
+}
+
+RocsparseSingleton& RocsparseSingleton::singleton() {
+  static RocsparseSingleton s;
+  return s;
+}
+
+}  // namespace Impl
+}  // namespace KokkosKernels
+#endif  // KOKKOSKERNELS_ENABLE_TPL_ROCSPARSE
