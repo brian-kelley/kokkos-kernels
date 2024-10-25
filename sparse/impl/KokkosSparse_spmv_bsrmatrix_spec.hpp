@@ -26,6 +26,7 @@
 #if !defined(KOKKOSKERNELS_ETI_ONLY) || KOKKOSKERNELS_IMPL_COMPILE_LIBRARY
 #include <KokkosSparse_spmv_bsrmatrix_impl.hpp>
 #include "KokkosSparse_spmv_bsrmatrix_impl_v42.hpp"
+#include "KokkosSparse_spmv_bsrmatrix_impl_v46.hpp"
 #endif
 
 namespace KokkosSparse {
@@ -131,6 +132,11 @@ struct SPMV_BSRMATRIX<ExecutionSpace, Handle, AMatrix, XVector, YVector, false, 
       } else if (modeIsTrans || modeIsConjugateTrans) {
         return Bsr::spMatVec_transpose(space, handle, alpha, A, X, beta, Y, modeIsConjugateTrans);
       }
+    }
+
+    // V46 if requested, AND on GPU, AND mode is N (though other modes can be added later)
+    if (handle->algo == SPMV_BSR_V46 && modeIsNoTrans && KokkosKernels::Impl::is_gpu_exec_space_v<ExecutionSpace>) {
+      ::KokkosSparse::Impl::apply_v46(space, alpha, A, X, beta, Y);
     }
 
     // use V42 if possible

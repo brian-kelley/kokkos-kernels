@@ -43,7 +43,8 @@ enum SPMVAlgorithm {
                            /// path. For CrsMatrix only.
   SPMV_BSR_V41,            /// Use experimental version 4.1 algorithm (for BsrMatrix only)
   SPMV_BSR_V42,            /// Use experimental version 4.2 algorithm (for BsrMatrix only)
-  SPMV_BSR_TC              /// Use experimental tensor core algorithm (for BsrMatrix only)
+  SPMV_BSR_TC,             /// Use experimental tensor core algorithm (for BsrMatrix only)
+  SPMV_BSR_V46
 };
 
 namespace Experimental {
@@ -66,6 +67,7 @@ inline const char* get_spmv_algorithm_name(SPMVAlgorithm a) {
     case SPMV_BSR_V41: return "SPMV_BSR_V41";
     case SPMV_BSR_V42: return "SPMV_BSR_V42";
     case SPMV_BSR_TC: return "SPMV_BSR_TC";
+    case SPMV_BSR_V46: return "SPMV_BSR_V46";
   }
   throw std::invalid_argument("SPMVHandle::get_algorithm_name: unknown algorithm");
   return "<Unknown>";
@@ -321,6 +323,7 @@ struct SPMVHandle
         case SPMV_BSR_V41:
         case SPMV_BSR_V42:
         case SPMV_BSR_TC:
+        case SPMV_BSR_V46:
           throw std::invalid_argument(std::string("SPMVHandle: algorithm ") + get_spmv_algorithm_name(get_algorithm()) +
                                       " cannot be used if A is a CrsMatrix");
         default:;
