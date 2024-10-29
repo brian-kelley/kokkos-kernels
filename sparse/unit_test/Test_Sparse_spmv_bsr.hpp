@@ -361,7 +361,7 @@ void test_spmv_combos(const char *mode, const Bsr &a, const Crs &acrs, size_t ma
 
   // cover a variety of algorithms
   std::vector<std::unique_ptr<handle_t>> handles;
-  for (SPMVAlgorithm algo : {SPMV_DEFAULT, SPMV_NATIVE, SPMV_BSR_V41})
+  for (SPMVAlgorithm algo : {SPMV_DEFAULT, SPMV_NATIVE, SPMV_BSR_V41, SPMV_BSR_V46})
     handles.push_back(std::make_unique<handle_t>(algo));
 
   // Tensor core algorithm temporarily disabled, fails on V100

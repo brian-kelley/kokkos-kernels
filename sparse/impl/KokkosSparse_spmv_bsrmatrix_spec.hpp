@@ -134,8 +134,10 @@ struct SPMV_BSRMATRIX<ExecutionSpace, Handle, AMatrix, XVector, YVector, false, 
       }
     }
 
-    // V46 if requested, AND on GPU, AND mode is N (though other modes can be added later)
-    if (handle->algo == SPMV_BSR_V46 && modeIsNoTrans && KokkosKernels::Impl::is_gpu_exec_space_v<ExecutionSpace>) {
+    // V46 if requested, AND on GPU, AND mode is N
+    // TODO: enable other modes.
+    // if (handle->algo == SPMV_BSR_V46 && modeIsNoTrans && KokkosKernels::Impl::is_gpu_exec_space_v<ExecutionSpace>) {
+    if (handle->algo == SPMV_BSR_V46 && modeIsNoTrans) {
       ::KokkosSparse::Impl::apply_v46(space, alpha, A, X, beta, Y);
     }
 
