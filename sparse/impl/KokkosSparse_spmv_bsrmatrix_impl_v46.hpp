@@ -24,140 +24,118 @@
 namespace KokkosSparse {
 namespace Impl {
 
-/*
- * V46 GPU BSR spmv:
- * - Maximize parallelism: ideally one thread per scalar entry of A
- * - Maximize memory coalescing and global bandwidth utilization
- *     - reads from A and x should use all lanes to read consecutive values, and all values should be used.
- *     - updates to y should be coalesced too
- * - For each team, initiate A,x global reads as soon as possible to maximally saturate the memory system
- */
-template <typename ExecSpace, typename Alpha, typename AMatrix, typename XVector, typename Beta, typename YVector>
+// Wrapper around a primitive value that replaces operator+ with max.
+template<typename Value>
+struct MaxScan
+{
+  KOKKOS_INLINE_FUNCTION void operator+=(const MaxScan<Value>& other)
+  {
+    val = Kokkos::max(val, other.val);
+  }
+  KOKKOS_INLINE_FUNCTION static MaxScan<Value> operator+(const MaxScan<Value>& lhs, const MaxScan<Value>& rhs)
+  {
+    MaxScan<Value> result;
+    result.val = Kokkos::max(lhs.val, rhs.val);
+    return result;
+  }
+
+  Value val;
+};
+
+template <typename ExecSpace, typename Alpha, typename AMatrix, typename XVector, typename Beta, typename YVector, typename TaskRows>
 struct BsrSpmvV46NonTrans {
   using size_type       = typename AMatrix::non_const_size_type;
   using Ordinal         = typename AMatrix::non_const_ordinal_type;
+  using OrdinalMaxScan  = MaxScan<Ordinal>;
   using TeamPol         = Kokkos::TeamPolicy<ExecSpace>;
   using TeamMem         = typename TeamPol::member_type;
   using AScalar         = typename AMatrix::non_const_value_type;
   using XScalar         = typename XVector::non_const_value_type;
   using YScalar         = typename YVector::value_type;
   using ScratchSpace    = typename ExecSpace::scratch_memory_space;
+  using OrdinalScratch  = Kokkos::View<Ordinal*, ScratchSpace>;
   using IntScratch      = Kokkos::View<int *, ScratchSpace>;
   using SizeTypeScratch = Kokkos::View<size_type *, ScratchSpace>;
   using XScratch        = Kokkos::View<XScalar *, ScratchSpace>;
   using YScratch        = Kokkos::View<YScalar *, ScratchSpace>;
 
- public:
-  BsrSpmvV46NonTrans(const AMatrix &A_, const XVector &x_, const YVector &y_, const Alpha &alpha_, const Beta &beta_)
-      : A(A_), x(x_), y(y_), alpha(alpha_), beta(beta_) {
-    // rowsPerTeam, entryChunkSize will be set after deciding the team size.
-  }
-
-  // How many bytes of per-team L0 scratch are required?
-  int getScratchSize(int rowsPerTeam_, int entryChunkSize_, int bs_) {
-    return XScratch::required_allocation_size(entryChunkSize_ * bs_) +
-           YScratch::required_allocation_size(entryChunkSize_ * bs_) +
-           YScratch::required_allocation_size(rowsPerTeam_ * bs_) +
-           SizeTypeScratch::required_allocation_size(rowsPerTeam_ + 1) +
-           IntScratch::required_allocation_size(entryChunkSize_);
-  }
+  BsrSpmvV46NonTrans(const AMatrix &A_, const XVector &x_, const YVector &y_, const Alpha &alpha_, const Beta &beta_, const TaskRows& taskRows_)
+      : A(A_), x(x_), y(y_), alpha(alpha_), beta(beta_), taskRows(taskRows_) {}
 
   KOKKOS_INLINE_FUNCTION void operator()(const TeamMem &t) const {
-    int bs = A.blockDim();
-    // Declare scratch views upfront, in an order than minimizes padding for alignment.
-    //
-    // Store required x entries for the chunk in shared too, since they each get reused bs times
-    XScratch xSlice(t.team_scratch(0), entryChunkSize * bs);
-    // And store intermediate y results for each block in the chunk, so that we can efficiently reduce them later
-    YScratch yChunks(t.team_scratch(0), entryChunkSize * bs);
-    // Store the output entries of y in shared, until writing them out once at the end. Initially beta * y.
-    YScratch ySlice(t.team_scratch(0), rowsPerTeam * bs);
-    // Also load required entries of rowmap, since this will get reused
-    SizeTypeScratch rowmapSlice(t.team_scratch(0), rowsPerTeam + 1);
-    // entryToRow will determine which row, in range [0, rowsToProcess), each entry in the chunk corresponds to
-    IntScratch entryToRow(t.team_scratch(0), entryChunkSize);
-    Ordinal rowStart      = t.league_rank() * rowsPerTeam;
-    Ordinal rowsToProcess = rowsPerTeam;
-    if (rowStart + rowsToProcess > A.numRows()) rowsToProcess = A.numRows() - rowStart;
-    // This pfor does 3 things in parallel by combining iteration spaces:
-    // - populate ySlice
-    // - populate rowmapSlice
-    // - zero-initialize entryToRow
-    Kokkos::parallel_for(Kokkos::TeamThreadRange(t, (rowsToProcess * bs) + (rowsToProcess + 1) + entryChunkSize),
-                         [=](Ordinal i) {
-                           if (i < rowsToProcess * bs) {
-                             // Read entries into ySlice, or zero out if beta is zero
-                             if (beta == Kokkos::ArithTraits<Beta>::zero()) {
-                               ySlice(i) = Kokkos::ArithTraits<YScalar>::zero();
-                             } else {
-                               ySlice(i) = beta * y(rowStart * bs + i);
-                             }
-                           } else {
-                             i -= rowsToProcess * bs;
-                             if (i < rowsToProcess + 1) {
-                               rowmapSlice(i) = A.graph.row_map(rowStart + i);
-                             } else {
-                               i -= (rowsToProcess + 1);
-                               entryToRow(i) = 0;
-                             }
-                           }
-                         });
+    // Allocate scratch views upfront.
+    // products: store all intermediate scalar products
+    YScratch products(t.team_scratch(0), t.team_size());
+    // xvals: store all entries of x that this team will need
+    XScratch xvals(t.team_scratch(0), nentries * bs);
+    // rows: will map (block) entries to (block) rows.
+    // For example, rows(0) will give the row containing the first block entry this team processes.
+    // This avoid storing per-row information; a long run of empty rows could make that problematic.
+    OrdinalScratch rows(t.team_scratch(0), nentries);
+    // offsetInRow: index of an entry within its row
+    OrdinalScratch offsetInRow(t.team_scratch(0), nentries);
+
+    // At which scalar entry will this team starting reading from A?
+    size_t teamScalarEntryBegin = size_t(t.league_rank()) * t.team_size();
+    // One past last entry to read from A
+    size_t teamScalarEntryEnd = teamScalarEntryBegin + t.team_size();
+    if(teamScalarEntryEnd > A.values.extent(0))
+      teamScalarEntryEnd = A.values.extent(0);
+    // taskRows was pre-populated with the rows where each team's entry range starts.
+    Ordinal rowStart = taskRows(t.league_rank());
+    Ordinal rowEnd = taskRows(t.league_rank() + 1);
+    // Read the required x values into shared
+    Kokkos::parallel_for(Kokkos::TeamThreadRange(t, (teamEntryEnd - teamEntryBegin) * bs),
+        [=](size_type i) {
+          size_type entry = teamEntryBegin + (i / bs);
+          size_type scalarInBlock = i % bs;
+          Ordinal col = scalarInBlock + bs * A.graph.entries(entry);
+          xvals(i) = x(col);
+        });
+    // Which block entry is the first one read by this team
+    size_type teamEntryBegin = teamScalarEntryBegin / bs / bs;
+    // One past the last block entry this team reads
+    size_type teamEntryEnd = (teamScalarEntryEnd + bs * bs - 1) / bs / bs;
+    // Compute entry -> row mapping.
+    Kokkos::parallel_for(Kokkos::TeamThreadRange(t, teamEntryEnd - teamEntryBegin),
+        [=](int i) {
+          rows(i) = 0;
+        });
     t.team_barrier();
-    size_type totalEntries = rowmapSlice(rowsToProcess) - rowmapSlice(0);
-    size_type rowmapSlice0 = rowmapSlice(0);
-    // Process the entries in chunks until the full spmv for these rows is complete
-    for (size_type entryChunk = 0; entryChunk < totalEntries; entryChunk += entryChunkSize) {
-      int chunkLen = entryChunkSize;
-      if (entryChunk + chunkLen > totalEntries) {
-        chunkLen = totalEntries - entryChunk;
-      }
-      // Update entryToRow using rowmapSlice.
-      // Use the fact that from chunk to chunk, the rows for each individual chunk can only increase monotonically.
-      Kokkos::parallel_for(Kokkos::TeamThreadRange(t, chunkLen + chunkLen * bs), [=](int i) {
-        if (i < chunkLen) {
-          size_type entry = rowmapSlice0 + entryChunk + i;
-          int row         = entryToRow(i);
-          while (entry > rowmapSlice(row + 1)) row++;
-          entryToRow(i) = row;
-        } else {
-          i -= chunkLen;
-          int block       = i / bs;
-          int colInBlock  = i % bs;
-          size_type entry = rowmapSlice0 + entryChunk + block;
-          Ordinal col     = A.graph.entries(entry);
-          xSlice(i)       = x(col * bs + colInBlock);
-          yChunks(i)      = Kokkos::ArithTraits<YScalar>::zero();
-        }
-      });
-      t.team_barrier();
-      // What is the starting index of this chunk within A's values?
-      size_t chunkValueOffset = size_t(rowmapSlice0 + entryChunk) * bs * bs;
-      Kokkos::parallel_for(Kokkos::TeamThreadRange(t, chunkLen * bs * bs), [=](int i) {
-        int work     = i;
-        int blockCol = i % bs;
-        i /= bs;
-        int blockRow = i % bs;
-        i /= bs;
-        // Perfectly coalesced read from A
-        AScalar aval = A.values(chunkValueOffset + work);
-        // i is block index relative to entryChunk.
-        // blockRow, blockCol give element within block.
-        // work is the index of the scalar in A we will multiply.
-        Kokkos::atomic_add(&yChunks(i * bs + blockRow), aval * xSlice(i * bs + blockCol));
-      });
-      t.team_barrier();
-      // Then combine block-level results into ySlice
-      Kokkos::parallel_for(Kokkos::TeamThreadRange(t, chunkLen * bs), [=](int i) {
-        YScalar contribution = alpha * yChunks(i);
-        int rowToUpdate      = entryToRow(i / bs);
-        int blockRow         = i % bs;
-        Kokkos::atomic_add(&ySlice(rowToUpdate * bs + blockRow), contribution);
-      });
-      t.team_barrier();
-    }
-    // Finally, write ySlice back out to y
-    Kokkos::parallel_for(Kokkos::TeamThreadRange(t, rowsToProcess * bs),
-                         [=](Ordinal i) { y(rowStart * bs + i) = ySlice(i); });
+    Kokkos::parallel_for(Kokkos::TeamThreadRange(t, rowEnd - rowBegin),
+        [=](Ordinal i) {
+          // Count the new rows which start at entry i (this is correct in the case of empty rows)
+          // Do not include a row which beings exactly at teamEntryBegin, if there is one.
+          // This would cause all the row indices to be 1 higher than they should be.
+          size_type rowIBegin = A.graph.row_map(rowBegin + i);
+          if(rowIBegin != teamEntryBegin)
+            Kokkos::atomic_increment(&rows(rowIBegin - teamEntryBegin));
+        });
+    t.team_barrier();
+    // Finally, do an exclusive scan over rows to figure out the actual rows of each entry (relative to rowBegin).
+    Kokkos::parallel_scan(Kokkos::TeamThreadRange(t, rowEnd - rowBegin),
+        [=](Ordinal i, Ordinal& lrow, bool finalPass)
+        {
+          Ordinal val = rows(i);
+          if(finalPass)
+            rows(i) = lrow;
+          lrow += val;
+        });
+    // Compute the intermediate products.
+    // This reads A.values in a perfectly aligned and coalesced way to maximize global memory utilization
+    Kokkos::parallel_for(Kokkos::TeamThreadRange(t, teamScalarEntryEnd - teamScalarEntryBegin),
+        [=](int i)
+        {
+          size_t Aindex = teamScalarEntryBegin + i;
+          AScalar Aval = A.values(Aindex);
+          int blockCol = Aindex % bs;
+          int blockRow = (Aindex / bs) % bs;
+          int entry = Aindex / bs / bs - teamEntryBegin;
+          // Write the intermediate products into shared so that values in each row are consecutive.
+          products(entry * bs * bs ) = Aval * xvals(entry * bs = blockCol);
+        });
+    t.team_barrier();
+    // Now that we have all the intermediate products, do a segmented reduction to sum across rows.
   }
 
   AMatrix A;
@@ -165,8 +143,10 @@ struct BsrSpmvV46NonTrans {
   YVector y;
   Alpha alpha;
   Beta beta;
-  int rowsPerTeam;
-  int entryChunkSize;
+  TaskRows taskRows;
+  // How many entries (upper bound) will this team process?
+  // Note: strictly less than team size, so will always fit in int.
+  int bs;
 };
 
 template <typename ExecSpace, typename Alpha, typename AMatrix, typename XVector, typename Beta, typename YVector>
@@ -205,11 +185,14 @@ void apply_v46(const ExecSpace &exec, const Alpha &alpha, const AMatrix &A, cons
   functor.rowsPerTeam    = rowsPerTeam;
   functor.entryChunkSize = entryChunkSize;
   std::cout << "Launching bsr spmv v46.\n";
+  std::cout << "alpha = " << alpha << '\n';
+  std::cout << "beta = " << beta << '\n';
   std::cout << "rowsPerTeam = " << rowsPerTeam << '\n';
   std::cout << "entryChunkSize = " << entryChunkSize << '\n';
   std::cout << "scratchRequired = " << scratchRequired << '\n';
   std::cout << "teamSize = " << teamSize << '\n';
   std::cout << "scalars per team = " << scalarsPerRow * rowsPerTeam << '\n';
+  std::cout << "\n\n";
   Kokkos::parallel_for("KokkosSparse::spmv[bsr,v46]", policy, functor);
 }
 
