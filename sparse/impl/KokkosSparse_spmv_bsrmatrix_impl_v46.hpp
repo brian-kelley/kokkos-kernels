@@ -24,24 +24,6 @@
 namespace KokkosSparse {
 namespace Impl {
 
-// Wrapper around a primitive value that replaces operator+ with max.
-template<typename Value>
-struct MaxScan
-{
-  KOKKOS_INLINE_FUNCTION void operator+=(const MaxScan<Value>& other)
-  {
-    val = Kokkos::max(val, other.val);
-  }
-  KOKKOS_INLINE_FUNCTION static MaxScan<Value> operator+(const MaxScan<Value>& lhs, const MaxScan<Value>& rhs)
-  {
-    MaxScan<Value> result;
-    result.val = Kokkos::max(lhs.val, rhs.val);
-    return result;
-  }
-
-  Value val;
-};
-
 template <typename ExecSpace, typename Alpha, typename AMatrix, typename XVector, typename Beta, typename YVector, typename TaskRows>
 struct BsrSpmvV46NonTrans {
   using size_type       = typename AMatrix::non_const_size_type;
@@ -73,7 +55,9 @@ struct BsrSpmvV46NonTrans {
     // This avoid storing per-row information; a long run of empty rows could make that problematic.
     OrdinalScratch rows(t.team_scratch(0), nentries);
     // offsetInRow: index of an entry within its row
-    OrdinalScratch offsetInRow(t.team_scratch(0), nentries);
+    // Only the entries processed by the team are counted, so the first element is 0
+    // even if the team starts in the middle of a row.
+    IntScratch offsetInRow(t.team_scratch(0), nentries);
 
     // At which scalar entry will this team starting reading from A?
     size_t teamScalarEntryBegin = size_t(t.league_rank()) * t.team_size();
@@ -84,7 +68,7 @@ struct BsrSpmvV46NonTrans {
     // taskRows was pre-populated with the rows where each team's entry range starts.
     Ordinal rowStart = taskRows(t.league_rank());
     Ordinal rowEnd = taskRows(t.league_rank() + 1);
-    // Read the required x values into shared
+    // Read the required x values into shared (coalesced over block and across blocks if 
     Kokkos::parallel_for(Kokkos::TeamThreadRange(t, (teamEntryEnd - teamEntryBegin) * bs),
         [=](size_type i) {
           size_type entry = teamEntryBegin + (i / bs);
@@ -112,8 +96,18 @@ struct BsrSpmvV46NonTrans {
             Kokkos::atomic_increment(&rows(rowIBegin - teamEntryBegin));
         });
     t.team_barrier();
-    // Finally, do an exclusive scan over rows to figure out the actual rows of each entry (relative to rowBegin).
-    Kokkos::parallel_scan(Kokkos::TeamThreadRange(t, rowEnd - rowBegin),
+    // Finally, do an exclusive scan over rows to figure out the actual rows of each entry (relative to rowBegin)
+    Kokkos::parallel_scan(Kokkos::TeamThreadRange(t, teamEntryEnd - teamEntryBegin),
+        [=](Ordinal i, Ordinal& lrow, bool finalPass)
+        {
+          Ordinal val = rows(i);
+          if(finalPass)
+            rows(i) = lrow;
+          lrow += val;
+        });
+    // Using entry -> row mapping, a segmented scan can populate offsetInRow.
+    // The value to prefix-sum is a constant 1, and the segment is given by the row.
+    Kokkos::parallel_scan(Kokkos::TeamThreadRange(t, teamEntryEnd - teamEntryBegin),
         [=](Ordinal i, Ordinal& lrow, bool finalPass)
         {
           Ordinal val = rows(i);
@@ -122,11 +116,11 @@ struct BsrSpmvV46NonTrans {
           lrow += val;
         });
     // Compute the intermediate products.
-    // This reads A.values in a perfectly aligned and coalesced way to maximize global memory utilization
     Kokkos::parallel_for(Kokkos::TeamThreadRange(t, teamScalarEntryEnd - teamScalarEntryBegin),
         [=](int i)
         {
           size_t Aindex = teamScalarEntryBegin + i;
+          // Aligned + coalesced read from A.values
           AScalar Aval = A.values(Aindex);
           int blockCol = Aindex % bs;
           int blockRow = (Aindex / bs) % bs;

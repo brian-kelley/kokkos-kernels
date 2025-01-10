@@ -28,5 +28,6 @@
 #include <Test_Common_Iota.hpp>
 #include <Test_Common_LowerBound.hpp>
 #include <Test_Common_UpperBound.hpp>
+#include <Test_Common_Segmented_ReduceScan.hpp>
 
 #endif  // TEST_COMMON_HPP
