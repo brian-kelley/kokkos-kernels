@@ -1,0 +1,1044 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineSystem.cmake:211 (message)"
+      - "CMakeLists.txt"
+    message: |
+      The system is: Linux - 5.14.0-427.18.1.el9_4.x86_64 - x86_64
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCCompiler.cmake:123 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icx 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "a.out"
+      
+      The C compiler identification is IntelLLVM, found in:
+        /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/3.27.4/CompilerIdC/a.out
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCXXCompiler.cmake:126 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "a.out"
+      
+      The CXX compiler identification is IntelLLVM, found in:
+        /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/3.27.4/CompilerIdCXX/a.out
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCompilerABI.cmake:57 (try_compile)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z"
+      binary: "/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z'
+        
+        Run Build Command(s): /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_aba24/fast
+        gmake: Warning: File 'Makefile' has modification time 81 s in the future
+        /usr/bin/gmake  -f CMakeFiles/cmTC_aba24.dir/build.make CMakeFiles/cmTC_aba24.dir/build
+        gmake[1]: Entering directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z'
+        gmake[1]: Warning: File 'CMakeFiles/cmTC_aba24.dir/flags.make' has modification time 81 s in the future
+        Building C object CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o
+        /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icx   -v -MD -MT CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -MF CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o.d -o CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -c /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeCCompilerABI.c
+        Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler
+        Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icx.cfg
+        Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Candidate multilib: .;@m64
+        Candidate multilib: 32;@m32
+        Selected multilib: .;@m64
+        Found CUDA installation: /usr/local/cuda, version 12.5
+         (in-process)
+         "/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/clang" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCCompilerABI.c -mrelocation-model static -fveclib=SVML -faltmathlib=SVMLAltMathLibrary -mframe-pointer=none -fapprox-func -funsafe-math-optimizations -fno-signed-zeros -mreassociate -freciprocal-math -fdenormal-fp-math=preserve-sign,preserve-sign -ffp-contract=fast -fno-rounding-math -complex-range=promoted -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -mllvm -x86-enable-unaligned-vector-move=true -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z -v -fcoverage-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z -fclang-abi-compat=17 -resource-dir /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20 -dependency-file CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o.d -MT CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -sys-header-deps -I/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include -I/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include -internal-externc-isystem /include -internal-externc-isystem /usr/include -O2 -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -vectorize-loops -vectorize-slp -mllvm -disable-hir-generate-mkl-call -mllvm -loopopt=1 -floopopt-pipeline=light -mllvm -intel-abi-compatible=true -D__GCC_HAVE_DWARF2_CFI_ASM=1 -fintel-compatibility -fintel-libirc-allowed -fintel-libimf-allowed -o CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -x c /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeCCompilerABI.c
+        clang -cc1 version 20.0.0git based upon LLVM 20.0.0git default target x86_64-unknown-linux-gnu
+        ignoring nonexistent directory "/usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include"
+        ignoring nonexistent directory "/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include
+         /usr/local/include
+         /usr/include
+        End of search list.
+        Linking C executable cmTC_aba24
+        /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E cmake_link_script CMakeFiles/cmTC_aba24.dir/link.txt --verbose=1
+        /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icx  -v -rdynamic CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -o cmTC_aba24 
+        Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler
+        Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icx.cfg
+        Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Candidate multilib: .;@m64
+        Candidate multilib: 32;@m32
+        Selected multilib: .;@m64
+        Found CUDA installation: /usr/local/cuda, version 12.5
+         "/usr/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_aba24 /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o /usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/usr/lib/gcc/x86_64-redhat-linux/11 -L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib -L/lib -L/usr/lib -L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib -rpath /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -Bstatic -lsvml -Bdynamic -Bstatic -lirng -Bdynamic -Bstatic -limf -Bdynamic -lm -lgcc --as-needed -lgcc_s --no-as-needed -Bstatic -lirc -Bdynamic -ldl -lgcc --as-needed -lgcc_s --no-as-needed -lc -lgcc --as-needed -lgcc_s --no-as-needed -Bstatic -lirc_s -Bdynamic /usr/lib/gcc/x86_64-redhat-linux/11/crtend.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o
+        gmake[1]: warning:  Clock skew detected.  Your build may be incomplete.
+        gmake[1]: Leaving directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z'
+        gmake: warning:  Clock skew detected.  Your build may be incomplete.
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCompilerABI.cmake:127 (message)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt"
+    message: |
+      Parsed C implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include]
+          add: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include]
+          add: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include]
+          add: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include]
+          add: [/usr/local/include]
+          add: [/usr/include]
+        end of search list found
+        collapse include dir [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include] ==> [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include]
+        collapse include dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include]
+        collapse include dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/include]
+        collapse include dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include]
+        collapse include dir [/usr/local/include] ==> [/usr/local/include]
+        collapse include dir [/usr/include] ==> [/usr/include]
+        implicit include dirs: [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/include;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include;/usr/local/include;/usr/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCompilerABI.cmake:152 (message)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        ignore line: [Change Dir: '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z']
+        ignore line: []
+        ignore line: [Run Build Command(s): /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_aba24/fast]
+        ignore line: [gmake: Warning: File 'Makefile' has modification time 81 s in the future]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_aba24.dir/build.make CMakeFiles/cmTC_aba24.dir/build]
+        ignore line: [gmake[1]: Entering directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z']
+        ignore line: [gmake[1]: Warning: File 'CMakeFiles/cmTC_aba24.dir/flags.make' has modification time 81 s in the future]
+        ignore line: [Building C object CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o]
+        ignore line: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icx   -v -MD -MT CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -MF CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o.d -o CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -c /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeCCompilerABI.c]
+        ignore line: [Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler]
+        ignore line: [Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icx.cfg]
+        ignore line: [Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Candidate multilib: 32]
+        ignore line: [@m32]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [Found CUDA installation: /usr/local/cuda  version 12.5]
+        ignore line: [ (in-process)]
+        ignore line: [ "/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/clang" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCCompilerABI.c -mrelocation-model static -fveclib=SVML -faltmathlib=SVMLAltMathLibrary -mframe-pointer=none -fapprox-func -funsafe-math-optimizations -fno-signed-zeros -mreassociate -freciprocal-math -fdenormal-fp-math=preserve-sign preserve-sign -ffp-contract=fast -fno-rounding-math -complex-range=promoted -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -mllvm -x86-enable-unaligned-vector-move=true -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z -v -fcoverage-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-GbkN5Z -fclang-abi-compat=17 -resource-dir /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20 -dependency-file CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o.d -MT CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -sys-header-deps -I/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include -I/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include -internal-externc-isystem /include -internal-externc-isystem /usr/include -O2 -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -vectorize-loops -vectorize-slp -mllvm -disable-hir-generate-mkl-call -mllvm -loopopt=1 -floopopt-pipeline=light -mllvm -intel-abi-compatible=true -D__GCC_HAVE_DWARF2_CFI_ASM=1 -fintel-compatibility -fintel-libirc-allowed -fintel-libimf-allowed -o CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -x c /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeCCompilerABI.c]
+        ignore line: [clang -cc1 version 20.0.0git based upon LLVM 20.0.0git default target x86_64-unknown-linux-gnu]
+        ignore line: [ignoring nonexistent directory "/usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include"]
+        ignore line: [ignoring nonexistent directory "/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include]
+        ignore line: [ /usr/local/include]
+        ignore line: [ /usr/include]
+        ignore line: [End of search list.]
+        ignore line: [Linking C executable cmTC_aba24]
+        ignore line: [/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E cmake_link_script CMakeFiles/cmTC_aba24.dir/link.txt --verbose=1]
+        ignore line: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icx  -v -rdynamic CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -o cmTC_aba24 ]
+        ignore line: [Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler]
+        ignore line: [Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icx.cfg]
+        ignore line: [Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Candidate multilib: 32]
+        ignore line: [@m32]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [Found CUDA installation: /usr/local/cuda  version 12.5]
+        link line: [ "/usr/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_aba24 /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o /usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/usr/lib/gcc/x86_64-redhat-linux/11 -L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib -L/lib -L/usr/lib -L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib -rpath /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o -Bstatic -lsvml -Bdynamic -Bstatic -lirng -Bdynamic -Bstatic -limf -Bdynamic -lm -lgcc --as-needed -lgcc_s --no-as-needed -Bstatic -lirc -Bdynamic -ldl -lgcc --as-needed -lgcc_s --no-as-needed -lc -lgcc --as-needed -lgcc_s --no-as-needed -Bstatic -lirc_s -Bdynamic /usr/lib/gcc/x86_64-redhat-linux/11/crtend.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o]
+          arg [/usr/bin/ld] ==> ignore
+          arg [--hash-style=gnu] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [-export-dynamic] ==> ignore
+          arg [-dynamic-linker] ==> ignore
+          arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_aba24] ==> ignore
+          arg [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o] ==> obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o]
+          arg [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o] ==> obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o]
+          arg [/usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o] ==> obj [/usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/usr/lib/gcc/x86_64-redhat-linux/11] ==> dir [/usr/lib/gcc/x86_64-redhat-linux/11]
+          arg [-L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64] ==> dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64]
+          arg [-L/lib/../lib64] ==> dir [/lib/../lib64]
+          arg [-L/usr/lib/../lib64] ==> dir [/usr/lib/../lib64]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib]
+          arg [-L/lib] ==> dir [/lib]
+          arg [-L/usr/lib] ==> dir [/usr/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib] ==> dir [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+          arg [-rpath] ==> ignore
+          arg [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> ignore
+          arg [CMakeFiles/cmTC_aba24.dir/CMakeCCompilerABI.c.o] ==> ignore
+          arg [-Bstatic] ==> search static
+          arg [-lsvml] ==> lib [svml]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-Bstatic] ==> search static
+          arg [-lirng] ==> lib [irng]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-Bstatic] ==> search static
+          arg [-limf] ==> lib [imf]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-lm] ==> lib [m]
+          arg [-lgcc] ==> lib [gcc]
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--no-as-needed] ==> ignore
+          arg [-Bstatic] ==> search static
+          arg [-lirc] ==> lib [irc]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-ldl] ==> lib [dl]
+          arg [-lgcc] ==> lib [gcc]
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--no-as-needed] ==> ignore
+          arg [-lc] ==> lib [c]
+          arg [-lgcc] ==> lib [gcc]
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--no-as-needed] ==> ignore
+          arg [-Bstatic] ==> search static
+          arg [-lirc_s] ==> lib [irc_s]
+          arg [-Bdynamic] ==> search dynamic
+          arg [/usr/lib/gcc/x86_64-redhat-linux/11/crtend.o] ==> obj [/usr/lib/gcc/x86_64-redhat-linux/11/crtend.o]
+          arg [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o] ==> obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o]
+        collapse obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o] ==> [/usr/lib64/crt1.o]
+        collapse obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o] ==> [/usr/lib64/crti.o]
+        collapse obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o] ==> [/usr/lib64/crtn.o]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/usr/lib/gcc/x86_64-redhat-linux/11] ==> [/usr/lib/gcc/x86_64-redhat-linux/11]
+        collapse library dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64] ==> [/usr/lib64]
+        collapse library dir [/lib/../lib64] ==> [/lib64]
+        collapse library dir [/usr/lib/../lib64] ==> [/usr/lib64]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/lib]
+        collapse library dir [/lib] ==> [/lib]
+        collapse library dir [/usr/lib] ==> [/usr/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib] ==> [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        implicit libs: [svml;irng;imf;m;gcc;gcc_s;irc;dl;gcc;gcc_s;c;gcc;gcc_s;irc_s]
+        implicit objs: [/usr/lib64/crt1.o;/usr/lib64/crti.o;/usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o;/usr/lib/gcc/x86_64-redhat-linux/11/crtend.o;/usr/lib64/crtn.o]
+        implicit dirs: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu;/usr/lib/gcc/x86_64-redhat-linux/11;/usr/lib64;/lib64;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/lib;/lib;/usr/lib;/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCompilerABI.cmake:57 (try_compile)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa"
+      binary: "/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa'
+        
+        Run Build Command(s): /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_6a1e0/fast
+        gmake: Warning: File 'Makefile' has modification time 81 s in the future
+        /usr/bin/gmake  -f CMakeFiles/cmTC_6a1e0.dir/build.make CMakeFiles/cmTC_6a1e0.dir/build
+        gmake[1]: Entering directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa'
+        gmake[1]: Warning: File 'CMakeFiles/cmTC_6a1e0.dir/flags.make' has modification time 81 s in the future
+        Building CXX object CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o
+        /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx   -v -MD -MT CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -MF CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o.d -o CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -c /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeCXXCompilerABI.cpp
+        Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler
+        Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icpx.cfg
+        Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Candidate multilib: .;@m64
+        Candidate multilib: 32;@m32
+        Selected multilib: .;@m64
+        Found CUDA installation: /usr/local/cuda, version 12.5
+         (in-process)
+         "/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/clang" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCXXCompilerABI.cpp -mrelocation-model static -fveclib=SVML -faltmathlib=SVMLAltMathLibrary -mframe-pointer=none -fapprox-func -funsafe-math-optimizations -fno-signed-zeros -mreassociate -freciprocal-math -fdenormal-fp-math=preserve-sign,preserve-sign -ffp-contract=fast -fno-rounding-math -complex-range=promoted -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -mllvm -x86-enable-unaligned-vector-move=true -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa -v -fcoverage-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa -fclang-abi-compat=17 -resource-dir /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20 -dependency-file CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o.d -MT CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -sys-header-deps -I/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include -I/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11 -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/backward -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include -internal-externc-isystem /include -internal-externc-isystem /usr/include -O2 -fdeprecated-macro -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -fcxx-exceptions -fexceptions -vectorize-loops -vectorize-slp -mllvm -disable-hir-generate-mkl-call -mllvm -loopopt=1 -floopopt-pipeline=light -mllvm -intel-abi-compatible=true -D__GCC_HAVE_DWARF2_CFI_ASM=1 -fintel-compatibility -fintel-libirc-allowed -fintel-libimf-allowed -o CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -x c++ /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeCXXCompilerABI.cpp
+        clang -cc1 version 20.0.0git based upon LLVM 20.0.0git default target x86_64-unknown-linux-gnu
+        ignoring nonexistent directory "/usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include"
+        ignoring nonexistent directory "/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include
+         /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11
+         /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux
+         /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/backward
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include
+         /usr/local/include
+         /usr/include
+        End of search list.
+        Linking CXX executable cmTC_6a1e0
+        /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E cmake_link_script CMakeFiles/cmTC_6a1e0.dir/link.txt --verbose=1
+        /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx  -v -rdynamic CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_6a1e0 
+        Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler
+        Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icpx.cfg
+        Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Candidate multilib: .;@m64
+        Candidate multilib: 32;@m32
+        Selected multilib: .;@m64
+        Found CUDA installation: /usr/local/cuda, version 12.5
+         "/usr/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_6a1e0 /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o /usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/usr/lib/gcc/x86_64-redhat-linux/11 -L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib -L/lib -L/usr/lib -L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib -rpath /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -Bstatic -lsvml -Bdynamic -Bstatic -lirng -Bdynamic -lstdc++ -Bstatic -limf -Bdynamic -lm -lgcc_s -lgcc -Bstatic -lirc -Bdynamic -ldl -lgcc_s -lgcc -lc -lgcc_s -lgcc -Bstatic -lirc_s -Bdynamic /usr/lib/gcc/x86_64-redhat-linux/11/crtend.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o
+        gmake[1]: warning:  Clock skew detected.  Your build may be incomplete.
+        gmake[1]: Leaving directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa'
+        gmake: warning:  Clock skew detected.  Your build may be incomplete.
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCompilerABI.cmake:127 (message)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt"
+    message: |
+      Parsed CXX implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include]
+          add: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include]
+          add: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include]
+          add: [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11]
+          add: [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux]
+          add: [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/backward]
+          add: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include]
+          add: [/usr/local/include]
+          add: [/usr/include]
+        end of search list found
+        collapse include dir [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include] ==> [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include]
+        collapse include dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include]
+        collapse include dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/include]
+        collapse include dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11] ==> [/usr/include/c++/11]
+        collapse include dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux] ==> [/usr/include/c++/11/x86_64-redhat-linux]
+        collapse include dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/backward] ==> [/usr/include/c++/11/backward]
+        collapse include dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include]
+        collapse include dir [/usr/local/include] ==> [/usr/local/include]
+        collapse include dir [/usr/include] ==> [/usr/include]
+        implicit include dirs: [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/include;/usr/include/c++/11;/usr/include/c++/11/x86_64-redhat-linux;/usr/include/c++/11/backward;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include;/usr/local/include;/usr/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeDetermineCompilerABI.cmake:152 (message)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt"
+    message: |
+      Parsed CXX implicit link information:
+        link line regex: [^( *|.*[/\\])(ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        ignore line: [Change Dir: '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa']
+        ignore line: []
+        ignore line: [Run Build Command(s): /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_6a1e0/fast]
+        ignore line: [gmake: Warning: File 'Makefile' has modification time 81 s in the future]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_6a1e0.dir/build.make CMakeFiles/cmTC_6a1e0.dir/build]
+        ignore line: [gmake[1]: Entering directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa']
+        ignore line: [gmake[1]: Warning: File 'CMakeFiles/cmTC_6a1e0.dir/flags.make' has modification time 81 s in the future]
+        ignore line: [Building CXX object CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o]
+        ignore line: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx   -v -MD -MT CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -MF CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o.d -o CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -c /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeCXXCompilerABI.cpp]
+        ignore line: [Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler]
+        ignore line: [Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icpx.cfg]
+        ignore line: [Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Candidate multilib: 32]
+        ignore line: [@m32]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [Found CUDA installation: /usr/local/cuda  version 12.5]
+        ignore line: [ (in-process)]
+        ignore line: [ "/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/clang" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCXXCompilerABI.cpp -mrelocation-model static -fveclib=SVML -faltmathlib=SVMLAltMathLibrary -mframe-pointer=none -fapprox-func -funsafe-math-optimizations -fno-signed-zeros -mreassociate -freciprocal-math -fdenormal-fp-math=preserve-sign preserve-sign -ffp-contract=fast -fno-rounding-math -complex-range=promoted -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -mllvm -x86-enable-unaligned-vector-move=true -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa -v -fcoverage-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-6TIsVa -fclang-abi-compat=17 -resource-dir /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20 -dependency-file CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o.d -MT CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -sys-header-deps -I/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include -I/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11 -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/backward -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include -internal-externc-isystem /include -internal-externc-isystem /usr/include -O2 -fdeprecated-macro -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -fcxx-exceptions -fexceptions -vectorize-loops -vectorize-slp -mllvm -disable-hir-generate-mkl-call -mllvm -loopopt=1 -floopopt-pipeline=light -mllvm -intel-abi-compatible=true -D__GCC_HAVE_DWARF2_CFI_ASM=1 -fintel-compatibility -fintel-libirc-allowed -fintel-libimf-allowed -o CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -x c++ /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeCXXCompilerABI.cpp]
+        ignore line: [clang -cc1 version 20.0.0git based upon LLVM 20.0.0git default target x86_64-unknown-linux-gnu]
+        ignore line: [ignoring nonexistent directory "/usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include"]
+        ignore line: [ignoring nonexistent directory "/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include]
+        ignore line: [ /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11]
+        ignore line: [ /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux]
+        ignore line: [ /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/backward]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include]
+        ignore line: [ /usr/local/include]
+        ignore line: [ /usr/include]
+        ignore line: [End of search list.]
+        ignore line: [Linking CXX executable cmTC_6a1e0]
+        ignore line: [/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E cmake_link_script CMakeFiles/cmTC_6a1e0.dir/link.txt --verbose=1]
+        ignore line: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx  -v -rdynamic CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_6a1e0 ]
+        ignore line: [Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler]
+        ignore line: [Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icpx.cfg]
+        ignore line: [Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Candidate multilib: 32]
+        ignore line: [@m32]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [Found CUDA installation: /usr/local/cuda  version 12.5]
+        link line: [ "/usr/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -export-dynamic -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_6a1e0 /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o /usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/usr/lib/gcc/x86_64-redhat-linux/11 -L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib -L/lib -L/usr/lib -L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib -rpath /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o -Bstatic -lsvml -Bdynamic -Bstatic -lirng -Bdynamic -lstdc++ -Bstatic -limf -Bdynamic -lm -lgcc_s -lgcc -Bstatic -lirc -Bdynamic -ldl -lgcc_s -lgcc -lc -lgcc_s -lgcc -Bstatic -lirc_s -Bdynamic /usr/lib/gcc/x86_64-redhat-linux/11/crtend.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o]
+          arg [/usr/bin/ld] ==> ignore
+          arg [--hash-style=gnu] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [-export-dynamic] ==> ignore
+          arg [-dynamic-linker] ==> ignore
+          arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_6a1e0] ==> ignore
+          arg [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o] ==> obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o]
+          arg [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o] ==> obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o]
+          arg [/usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o] ==> obj [/usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/usr/lib/gcc/x86_64-redhat-linux/11] ==> dir [/usr/lib/gcc/x86_64-redhat-linux/11]
+          arg [-L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64] ==> dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64]
+          arg [-L/lib/../lib64] ==> dir [/lib/../lib64]
+          arg [-L/usr/lib/../lib64] ==> dir [/usr/lib/../lib64]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib]
+          arg [-L/lib] ==> dir [/lib]
+          arg [-L/usr/lib] ==> dir [/usr/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib] ==> dir [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+          arg [-rpath] ==> ignore
+          arg [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> ignore
+          arg [CMakeFiles/cmTC_6a1e0.dir/CMakeCXXCompilerABI.cpp.o] ==> ignore
+          arg [-Bstatic] ==> search static
+          arg [-lsvml] ==> lib [svml]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-Bstatic] ==> search static
+          arg [-lirng] ==> lib [irng]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-lstdc++] ==> lib [stdc++]
+          arg [-Bstatic] ==> search static
+          arg [-limf] ==> lib [imf]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-lm] ==> lib [m]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-Bstatic] ==> search static
+          arg [-lirc] ==> lib [irc]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-ldl] ==> lib [dl]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lc] ==> lib [c]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-Bstatic] ==> search static
+          arg [-lirc_s] ==> lib [irc_s]
+          arg [-Bdynamic] ==> search dynamic
+          arg [/usr/lib/gcc/x86_64-redhat-linux/11/crtend.o] ==> obj [/usr/lib/gcc/x86_64-redhat-linux/11/crtend.o]
+          arg [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o] ==> obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o]
+        collapse obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o] ==> [/usr/lib64/crt1.o]
+        collapse obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o] ==> [/usr/lib64/crti.o]
+        collapse obj [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o] ==> [/usr/lib64/crtn.o]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/usr/lib/gcc/x86_64-redhat-linux/11] ==> [/usr/lib/gcc/x86_64-redhat-linux/11]
+        collapse library dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64] ==> [/usr/lib64]
+        collapse library dir [/lib/../lib64] ==> [/lib64]
+        collapse library dir [/usr/lib/../lib64] ==> [/usr/lib64]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/lib]
+        collapse library dir [/lib] ==> [/lib]
+        collapse library dir [/usr/lib] ==> [/usr/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib] ==> [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        implicit libs: [svml;irng;stdc++;imf;m;gcc_s;gcc;irc;dl;gcc_s;gcc;c;gcc_s;gcc;irc_s]
+        implicit objs: [/usr/lib64/crt1.o;/usr/lib64/crti.o;/usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o;/usr/lib/gcc/x86_64-redhat-linux/11/crtend.o;/usr/lib64/crtn.o]
+        implicit dirs: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu;/usr/lib/gcc/x86_64-redhat-linux/11;/usr/lib64;/lib64;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/lib;/lib;/usr/lib;/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib]
+        implicit fwks: []
+      
+      
+...
+
+---
+events:
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/FindOpenMP.cmake:219 (try_compile)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/FindOpenMP.cmake:483 (_OPENMP_GET_FLAGS)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeFindDependencyMacro.cmake:76 (find_package)"
+      - "/home/bmkelle/BlakeKK/GR_OpenMP/kokkos-install/lib64/cmake/Kokkos/KokkosConfig.cmake:39 (FIND_DEPENDENCY)"
+      - "CMakeLists.txt:3 (find_package)"
+    description: "Detecting C OpenMP compiler info"
+    directories:
+      source: "/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY"
+      binary: "/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_C_fiopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY'
+        
+        Run Build Command(s): /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_4da7a/fast
+        gmake: Warning: File 'Makefile' has modification time 81 s in the future
+        /usr/bin/gmake  -f CMakeFiles/cmTC_4da7a.dir/build.make CMakeFiles/cmTC_4da7a.dir/build
+        gmake[1]: Entering directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY'
+        gmake[1]: Warning: File 'CMakeFiles/cmTC_4da7a.dir/flags.make' has modification time 81 s in the future
+        Building C object CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o
+        /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icx   -fiopenmp -v -MD -MT CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -MF CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o.d -o CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -c /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY/OpenMPTryFlag.c
+        Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler
+        Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icx.cfg
+        Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Candidate multilib: .;@m64
+        Candidate multilib: 32;@m32
+        Selected multilib: .;@m64
+        Found CUDA installation: /usr/local/cuda, version 12.5
+         (in-process)
+         "/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/clang" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name OpenMPTryFlag.c -mrelocation-model static -fveclib=SVML -faltmathlib=SVMLAltMathLibrary -mframe-pointer=none -fapprox-func -funsafe-math-optimizations -fno-signed-zeros -mreassociate -freciprocal-math -fdenormal-fp-math=preserve-sign,preserve-sign -ffp-contract=fast -fno-rounding-math -complex-range=promoted -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -mllvm -x86-enable-unaligned-vector-move=true -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY -v -fcoverage-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY -fclang-abi-compat=17 -resource-dir /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20 -dependency-file CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o.d -MT CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -sys-header-deps -I/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include -I/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include -internal-externc-isystem /include -internal-externc-isystem /usr/include -O2 -ferror-limit 19 -fopenmp-late-outline -fopenmp-threadprivate-legacy -fopenmp -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -vectorize-loops -vectorize-slp -mllvm -disable-hir-generate-mkl-call -mllvm -loopopt=1 -floopopt-pipeline=light -mllvm -intel-abi-compatible=true -mllvm -paropt=31 -D__GCC_HAVE_DWARF2_CFI_ASM=1 -fintel-compatibility -fintel-libirc-allowed -fintel-libimf-allowed -o CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -x c /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY/OpenMPTryFlag.c
+        clang -cc1 version 20.0.0git based upon LLVM 20.0.0git default target x86_64-unknown-linux-gnu
+        ignoring nonexistent directory "/usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include"
+        ignoring nonexistent directory "/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include
+         /usr/local/include
+         /usr/include
+        End of search list.
+        Linking C executable cmTC_4da7a
+        /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E cmake_link_script CMakeFiles/cmTC_4da7a.dir/link.txt --verbose=1
+        /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icx  -fiopenmp -v CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -o cmTC_4da7a  -v 
+        Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler
+        Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icx.cfg
+        Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Candidate multilib: .;@m64
+        Candidate multilib: 32;@m32
+        Selected multilib: .;@m64
+        Found CUDA installation: /usr/local/cuda, version 12.5
+         "/usr/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_4da7a /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o /usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/usr/lib/gcc/x86_64-redhat-linux/11 -L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib -L/lib -L/usr/lib -L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib -rpath /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -Bstatic -lsvml -Bdynamic -Bstatic -lirng -Bdynamic -Bstatic -limf -Bdynamic -lm -lgcc --as-needed -lgcc_s --no-as-needed -Bstatic -lirc -Bdynamic -ldl -liomp5 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib -lgcc --as-needed -lgcc_s --no-as-needed -lpthread -lc -lgcc --as-needed -lgcc_s --no-as-needed -Bstatic -lirc_s -Bdynamic /usr/lib/gcc/x86_64-redhat-linux/11/crtend.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o
+        gmake[1]: warning:  Clock skew detected.  Your build may be incomplete.
+        gmake[1]: Leaving directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY'
+        gmake: warning:  Clock skew detected.  Your build may be incomplete.
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/FindOpenMP.cmake:262 (message)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/FindOpenMP.cmake:483 (_OPENMP_GET_FLAGS)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeFindDependencyMacro.cmake:76 (find_package)"
+      - "/home/bmkelle/BlakeKK/GR_OpenMP/kokkos-install/lib64/cmake/Kokkos/KokkosConfig.cmake:39 (FIND_DEPENDENCY)"
+      - "CMakeLists.txt:3 (find_package)"
+    message: |
+      Parsed C OpenMP implicit link information from above output:
+        link line regex: [^( *|.*[/\\])(ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        ignore line: [Change Dir: '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY']
+        ignore line: []
+        ignore line: [Run Build Command(s): /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_4da7a/fast]
+        ignore line: [gmake: Warning: File 'Makefile' has modification time 81 s in the future]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_4da7a.dir/build.make CMakeFiles/cmTC_4da7a.dir/build]
+        ignore line: [gmake[1]: Entering directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY']
+        ignore line: [gmake[1]: Warning: File 'CMakeFiles/cmTC_4da7a.dir/flags.make' has modification time 81 s in the future]
+        ignore line: [Building C object CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o]
+        ignore line: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icx   -fiopenmp -v -MD -MT CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -MF CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o.d -o CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -c /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY/OpenMPTryFlag.c]
+        ignore line: [Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler]
+        ignore line: [Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icx.cfg]
+        ignore line: [Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Candidate multilib: 32]
+        ignore line: [@m32]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [Found CUDA installation: /usr/local/cuda  version 12.5]
+        ignore line: [ (in-process)]
+        ignore line: [ "/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/clang" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name OpenMPTryFlag.c -mrelocation-model static -fveclib=SVML -faltmathlib=SVMLAltMathLibrary -mframe-pointer=none -fapprox-func -funsafe-math-optimizations -fno-signed-zeros -mreassociate -freciprocal-math -fdenormal-fp-math=preserve-sign preserve-sign -ffp-contract=fast -fno-rounding-math -complex-range=promoted -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -mllvm -x86-enable-unaligned-vector-move=true -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY -v -fcoverage-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY -fclang-abi-compat=17 -resource-dir /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20 -dependency-file CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o.d -MT CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -sys-header-deps -I/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include -I/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include -internal-externc-isystem /include -internal-externc-isystem /usr/include -O2 -ferror-limit 19 -fopenmp-late-outline -fopenmp-threadprivate-legacy -fopenmp -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -vectorize-loops -vectorize-slp -mllvm -disable-hir-generate-mkl-call -mllvm -loopopt=1 -floopopt-pipeline=light -mllvm -intel-abi-compatible=true -mllvm -paropt=31 -D__GCC_HAVE_DWARF2_CFI_ASM=1 -fintel-compatibility -fintel-libirc-allowed -fintel-libimf-allowed -o CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -x c /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-BpRnzY/OpenMPTryFlag.c]
+        ignore line: [clang -cc1 version 20.0.0git based upon LLVM 20.0.0git default target x86_64-unknown-linux-gnu]
+        ignore line: [ignoring nonexistent directory "/usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include"]
+        ignore line: [ignoring nonexistent directory "/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include]
+        ignore line: [ /usr/local/include]
+        ignore line: [ /usr/include]
+        ignore line: [End of search list.]
+        ignore line: [Linking C executable cmTC_4da7a]
+        ignore line: [/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E cmake_link_script CMakeFiles/cmTC_4da7a.dir/link.txt --verbose=1]
+        ignore line: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icx  -fiopenmp -v CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -o cmTC_4da7a  -v ]
+        ignore line: [Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler]
+        ignore line: [Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icx.cfg]
+        ignore line: [Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Candidate multilib: 32]
+        ignore line: [@m32]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [Found CUDA installation: /usr/local/cuda  version 12.5]
+        link line: [ "/usr/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_4da7a /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o /usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/usr/lib/gcc/x86_64-redhat-linux/11 -L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib -L/lib -L/usr/lib -L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib -rpath /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o -Bstatic -lsvml -Bdynamic -Bstatic -lirng -Bdynamic -Bstatic -limf -Bdynamic -lm -lgcc --as-needed -lgcc_s --no-as-needed -Bstatic -lirc -Bdynamic -ldl -liomp5 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib -lgcc --as-needed -lgcc_s --no-as-needed -lpthread -lc -lgcc --as-needed -lgcc_s --no-as-needed -Bstatic -lirc_s -Bdynamic /usr/lib/gcc/x86_64-redhat-linux/11/crtend.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o]
+          arg [/usr/bin/ld] ==> ignore
+          arg [--hash-style=gnu] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [-dynamic-linker] ==> ignore
+          arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_4da7a] ==> ignore
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/usr/lib/gcc/x86_64-redhat-linux/11] ==> dir [/usr/lib/gcc/x86_64-redhat-linux/11]
+          arg [-L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64] ==> dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64]
+          arg [-L/lib/../lib64] ==> dir [/lib/../lib64]
+          arg [-L/usr/lib/../lib64] ==> dir [/usr/lib/../lib64]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib]
+          arg [-L/lib] ==> dir [/lib]
+          arg [-L/usr/lib] ==> dir [/usr/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib] ==> dir [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+          arg [-rpath] ==> ignore
+          arg [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> ignore
+          arg [CMakeFiles/cmTC_4da7a.dir/OpenMPTryFlag.c.o] ==> ignore
+          arg [-Bstatic] ==> search static
+          arg [-lsvml] ==> lib [svml]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-Bstatic] ==> search static
+          arg [-lirng] ==> lib [irng]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-Bstatic] ==> search static
+          arg [-limf] ==> lib [imf]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-lm] ==> lib [m]
+          arg [-lgcc] ==> lib [gcc]
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--no-as-needed] ==> ignore
+          arg [-Bstatic] ==> search static
+          arg [-lirc] ==> lib [irc]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-ldl] ==> lib [dl]
+          arg [-liomp5] ==> lib [iomp5]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib]
+          arg [-lgcc] ==> lib [gcc]
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--no-as-needed] ==> ignore
+          arg [-lpthread] ==> lib [pthread]
+          arg [-lc] ==> lib [c]
+          arg [-lgcc] ==> lib [gcc]
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--no-as-needed] ==> ignore
+          arg [-Bstatic] ==> search static
+          arg [-lirc_s] ==> lib [irc_s]
+          arg [-Bdynamic] ==> search dynamic
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/usr/lib/gcc/x86_64-redhat-linux/11] ==> [/usr/lib/gcc/x86_64-redhat-linux/11]
+        collapse library dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64] ==> [/usr/lib64]
+        collapse library dir [/lib/../lib64] ==> [/lib64]
+        collapse library dir [/usr/lib/../lib64] ==> [/usr/lib64]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/lib]
+        collapse library dir [/lib] ==> [/lib]
+        collapse library dir [/usr/lib] ==> [/usr/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib] ==> [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib]
+        implicit libs: [svml;irng;imf;m;gcc;gcc_s;irc;dl;iomp5;gcc;gcc_s;pthread;c;gcc;gcc_s;irc_s]
+        implicit objs: []
+        implicit dirs: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu;/usr/lib/gcc/x86_64-redhat-linux/11;/usr/lib64;/lib64;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/lib;/lib;/usr/lib;/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/FindOpenMP.cmake:219 (try_compile)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/FindOpenMP.cmake:483 (_OPENMP_GET_FLAGS)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeFindDependencyMacro.cmake:76 (find_package)"
+      - "/home/bmkelle/BlakeKK/GR_OpenMP/kokkos-install/lib64/cmake/Kokkos/KokkosConfig.cmake:39 (FIND_DEPENDENCY)"
+      - "CMakeLists.txt:3 (find_package)"
+    description: "Detecting CXX OpenMP compiler info"
+    directories:
+      source: "/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p"
+      binary: "/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "OpenMP_COMPILE_RESULT_CXX_fiopenmp"
+      cached: true
+      stdout: |
+        Change Dir: '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p'
+        
+        Run Build Command(s): /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_1603e/fast
+        gmake: Warning: File 'Makefile' has modification time 81 s in the future
+        /usr/bin/gmake  -f CMakeFiles/cmTC_1603e.dir/build.make CMakeFiles/cmTC_1603e.dir/build
+        gmake[1]: Entering directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p'
+        gmake[1]: Warning: File 'CMakeFiles/cmTC_1603e.dir/flags.make' has modification time 81 s in the future
+        Building CXX object CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o
+        /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx   -fiopenmp -v -MD -MT CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -c /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p/OpenMPTryFlag.cpp
+        Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler
+        Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icpx.cfg
+        Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Candidate multilib: .;@m64
+        Candidate multilib: 32;@m32
+        Selected multilib: .;@m64
+        Found CUDA installation: /usr/local/cuda, version 12.5
+         (in-process)
+         "/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/clang" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name OpenMPTryFlag.cpp -mrelocation-model static -fveclib=SVML -faltmathlib=SVMLAltMathLibrary -mframe-pointer=none -fapprox-func -funsafe-math-optimizations -fno-signed-zeros -mreassociate -freciprocal-math -fdenormal-fp-math=preserve-sign,preserve-sign -ffp-contract=fast -fno-rounding-math -complex-range=promoted -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -mllvm -x86-enable-unaligned-vector-move=true -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p -v -fcoverage-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p -fclang-abi-compat=17 -resource-dir /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20 -dependency-file CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o.d -MT CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -sys-header-deps -I/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include -I/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11 -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/backward -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include -internal-externc-isystem /include -internal-externc-isystem /usr/include -O2 -fdeprecated-macro -ferror-limit 19 -fopenmp-late-outline -fopenmp-threadprivate-legacy -fopenmp -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -fcxx-exceptions -fexceptions -vectorize-loops -vectorize-slp -mllvm -disable-hir-generate-mkl-call -mllvm -loopopt=1 -floopopt-pipeline=light -mllvm -intel-abi-compatible=true -mllvm -paropt=31 -D__GCC_HAVE_DWARF2_CFI_ASM=1 -fintel-compatibility -fintel-libirc-allowed -fintel-libimf-allowed -o CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -x c++ /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p/OpenMPTryFlag.cpp
+        clang -cc1 version 20.0.0git based upon LLVM 20.0.0git default target x86_64-unknown-linux-gnu
+        ignoring nonexistent directory "/usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include"
+        ignoring nonexistent directory "/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include
+         /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11
+         /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux
+         /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/backward
+         /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include
+         /usr/local/include
+         /usr/include
+        End of search list.
+        Linking CXX executable cmTC_1603e
+        /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E cmake_link_script CMakeFiles/cmTC_1603e.dir/link.txt --verbose=1
+        /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx  -fiopenmp -v CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -o cmTC_1603e  -v 
+        Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)
+        Target: x86_64-unknown-linux-gnu
+        Thread model: posix
+        InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler
+        Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icpx.cfg
+        Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11
+        Candidate multilib: .;@m64
+        Candidate multilib: 32;@m32
+        Selected multilib: .;@m64
+        Found CUDA installation: /usr/local/cuda, version 12.5
+         "/usr/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_1603e /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o /usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/usr/lib/gcc/x86_64-redhat-linux/11 -L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib -L/lib -L/usr/lib -L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib -rpath /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -Bstatic -lsvml -Bdynamic -Bstatic -lirng -Bdynamic -lstdc++ -Bstatic -limf -Bdynamic -lm -lgcc_s -lgcc -Bstatic -lirc -Bdynamic -ldl -liomp5 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib -lgcc_s -lgcc -lpthread -lc -lgcc_s -lgcc -Bstatic -lirc_s -Bdynamic /usr/lib/gcc/x86_64-redhat-linux/11/crtend.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o
+        gmake[1]: warning:  Clock skew detected.  Your build may be incomplete.
+        gmake[1]: Leaving directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p'
+        gmake: warning:  Clock skew detected.  Your build may be incomplete.
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/FindOpenMP.cmake:262 (message)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/FindOpenMP.cmake:483 (_OPENMP_GET_FLAGS)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeFindDependencyMacro.cmake:76 (find_package)"
+      - "/home/bmkelle/BlakeKK/GR_OpenMP/kokkos-install/lib64/cmake/Kokkos/KokkosConfig.cmake:39 (FIND_DEPENDENCY)"
+      - "CMakeLists.txt:3 (find_package)"
+    message: |
+      Parsed CXX OpenMP implicit link information from above output:
+        link line regex: [^( *|.*[/\\])(ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        ignore line: [Change Dir: '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p']
+        ignore line: []
+        ignore line: [Run Build Command(s): /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_1603e/fast]
+        ignore line: [gmake: Warning: File 'Makefile' has modification time 81 s in the future]
+        ignore line: [/usr/bin/gmake  -f CMakeFiles/cmTC_1603e.dir/build.make CMakeFiles/cmTC_1603e.dir/build]
+        ignore line: [gmake[1]: Entering directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p']
+        ignore line: [gmake[1]: Warning: File 'CMakeFiles/cmTC_1603e.dir/flags.make' has modification time 81 s in the future]
+        ignore line: [Building CXX object CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o]
+        ignore line: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx   -fiopenmp -v -MD -MT CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -MF CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o.d -o CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -c /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p/OpenMPTryFlag.cpp]
+        ignore line: [Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler]
+        ignore line: [Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icpx.cfg]
+        ignore line: [Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Candidate multilib: 32]
+        ignore line: [@m32]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [Found CUDA installation: /usr/local/cuda  version 12.5]
+        ignore line: [ (in-process)]
+        ignore line: [ "/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/clang" -cc1 -triple x86_64-unknown-linux-gnu -emit-obj -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name OpenMPTryFlag.cpp -mrelocation-model static -fveclib=SVML -faltmathlib=SVMLAltMathLibrary -mframe-pointer=none -fapprox-func -funsafe-math-optimizations -fno-signed-zeros -mreassociate -freciprocal-math -fdenormal-fp-math=preserve-sign preserve-sign -ffp-contract=fast -fno-rounding-math -complex-range=promoted -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -mllvm -x86-enable-unaligned-vector-move=true -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p -v -fcoverage-compilation-dir=/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p -fclang-abi-compat=17 -resource-dir /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20 -dependency-file CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o.d -MT CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -sys-header-deps -I/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include -I/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11 -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/backward -internal-isystem /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include -internal-isystem /usr/local/include -internal-isystem /usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include -internal-externc-isystem /include -internal-externc-isystem /usr/include -O2 -fdeprecated-macro -ferror-limit 19 -fopenmp-late-outline -fopenmp-threadprivate-legacy -fopenmp -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -fcxx-exceptions -fexceptions -vectorize-loops -vectorize-slp -mllvm -disable-hir-generate-mkl-call -mllvm -loopopt=1 -floopopt-pipeline=light -mllvm -intel-abi-compatible=true -mllvm -paropt=31 -D__GCC_HAVE_DWARF2_CFI_ASM=1 -fintel-compatibility -fintel-libirc-allowed -fintel-libimf-allowed -o CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -x c++ /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-FD0v2p/OpenMPTryFlag.cpp]
+        ignore line: [clang -cc1 version 20.0.0git based upon LLVM 20.0.0git default target x86_64-unknown-linux-gnu]
+        ignore line: [ignoring nonexistent directory "/usr/lib/gcc/x86_64-redhat-linux/11/../../../../x86_64-redhat-linux/include"]
+        ignore line: [ignoring nonexistent directory "/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/include]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/include]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/include]
+        ignore line: [ /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11]
+        ignore line: [ /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/x86_64-redhat-linux]
+        ignore line: [ /usr/lib/gcc/x86_64-redhat-linux/11/../../../../include/c++/11/backward]
+        ignore line: [ /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/include]
+        ignore line: [ /usr/local/include]
+        ignore line: [ /usr/include]
+        ignore line: [End of search list.]
+        ignore line: [Linking CXX executable cmTC_1603e]
+        ignore line: [/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E cmake_link_script CMakeFiles/cmTC_1603e.dir/link.txt --verbose=1]
+        ignore line: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx  -fiopenmp -v CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -o cmTC_1603e  -v ]
+        ignore line: [Intel(R) oneAPI DPC++/C++ Compiler 2025.1.1 (2025.1.1.20250418)]
+        ignore line: [Target: x86_64-unknown-linux-gnu]
+        ignore line: [Thread model: posix]
+        ignore line: [InstalledDir: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler]
+        ignore line: [Configuration file: /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../icpx.cfg]
+        ignore line: [Found candidate GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Selected GCC installation: /usr/lib/gcc/x86_64-redhat-linux/11]
+        ignore line: [Candidate multilib: .]
+        ignore line: [@m64]
+        ignore line: [Candidate multilib: 32]
+        ignore line: [@m32]
+        ignore line: [Selected multilib: .]
+        ignore line: [@m64]
+        ignore line: [Found CUDA installation: /usr/local/cuda  version 12.5]
+        link line: [ "/usr/bin/ld" --hash-style=gnu --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_1603e /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crt1.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crti.o /usr/lib/gcc/x86_64-redhat-linux/11/crtbegin.o -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/usr/lib/gcc/x86_64-redhat-linux/11 -L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib -L/lib -L/usr/lib -L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib -rpath /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o -Bstatic -lsvml -Bdynamic -Bstatic -lirng -Bdynamic -lstdc++ -Bstatic -limf -Bdynamic -lm -lgcc_s -lgcc -Bstatic -lirc -Bdynamic -ldl -liomp5 -L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib -lgcc_s -lgcc -lpthread -lc -lgcc_s -lgcc -Bstatic -lirc_s -Bdynamic /usr/lib/gcc/x86_64-redhat-linux/11/crtend.o /usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64/crtn.o]
+          arg [/usr/bin/ld] ==> ignore
+          arg [--hash-style=gnu] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [-dynamic-linker] ==> ignore
+          arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_1603e] ==> ignore
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/usr/lib/gcc/x86_64-redhat-linux/11] ==> dir [/usr/lib/gcc/x86_64-redhat-linux/11]
+          arg [-L/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64] ==> dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64]
+          arg [-L/lib/../lib64] ==> dir [/lib/../lib64]
+          arg [-L/usr/lib/../lib64] ==> dir [/usr/lib/../lib64]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib]
+          arg [-L/lib] ==> dir [/lib]
+          arg [-L/usr/lib] ==> dir [/usr/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib] ==> dir [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+          arg [-rpath] ==> ignore
+          arg [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> ignore
+          arg [CMakeFiles/cmTC_1603e.dir/OpenMPTryFlag.cpp.o] ==> ignore
+          arg [-Bstatic] ==> search static
+          arg [-lsvml] ==> lib [svml]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-Bstatic] ==> search static
+          arg [-lirng] ==> lib [irng]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-lstdc++] ==> lib [stdc++]
+          arg [-Bstatic] ==> search static
+          arg [-limf] ==> lib [imf]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-lm] ==> lib [m]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-Bstatic] ==> search static
+          arg [-lirc] ==> lib [irc]
+          arg [-Bdynamic] ==> search dynamic
+          arg [-ldl] ==> lib [dl]
+          arg [-liomp5] ==> lib [iomp5]
+          arg [-L/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib] ==> dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lpthread] ==> lib [pthread]
+          arg [-lc] ==> lib [c]
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-Bstatic] ==> search static
+          arg [-lirc_s] ==> lib [irc_s]
+          arg [-Bdynamic] ==> search dynamic
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/usr/lib/gcc/x86_64-redhat-linux/11] ==> [/usr/lib/gcc/x86_64-redhat-linux/11]
+        collapse library dir [/usr/lib/gcc/x86_64-redhat-linux/11/../../../../lib64] ==> [/usr/lib64]
+        collapse library dir [/lib/../lib64] ==> [/lib64]
+        collapse library dir [/usr/lib/../lib64] ==> [/usr/lib64]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/compiler/../../opt/compiler/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/lib]
+        collapse library dir [/lib] ==> [/lib]
+        collapse library dir [/usr/lib] ==> [/usr/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib] ==> [/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib]
+        collapse library dir [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib] ==> [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib]
+        implicit libs: [svml;irng;stdc++;imf;m;gcc_s;gcc;irc;dl;iomp5;gcc_s;gcc;pthread;c;gcc_s;gcc;irc_s]
+        implicit objs: []
+        implicit dirs: [/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/lib/clang/20/lib/x86_64-unknown-linux-gnu;/usr/lib/gcc/x86_64-redhat-linux/11;/usr/lib64;/lib64;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/opt/compiler/lib;/lib;/usr/lib;/projects/x86-64-icelake-rocky8/tpls/intel-oneapi-mkl/2025.1.0/intel-oneapi-compilers/2025.1.0/base/mai6uxj/mkl/2025.1/lib;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/umf/0.10/lib;/projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/FindOpenMP.cmake:419 (try_compile)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/FindOpenMP.cmake:557 (_OPENMP_GET_SPEC_DATE)"
+      - "/projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/share/cmake-3.27/Modules/CMakeFindDependencyMacro.cmake:76 (find_package)"
+      - "/home/bmkelle/BlakeKK/GR_OpenMP/kokkos-install/lib64/cmake/Kokkos/KokkosConfig.cmake:39 (FIND_DEPENDENCY)"
+      - "CMakeLists.txt:3 (find_package)"
+    description: "Detecting CXX OpenMP version"
+    directories:
+      source: "/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-8pGc28"
+      binary: "/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-8pGc28"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "OpenMP_SPECTEST_CXX_"
+      cached: true
+      stdout: |
+        Change Dir: '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-8pGc28'
+        
+        Run Build Command(s): /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_5512d/fast
+        gmake: Warning: File 'Makefile' has modification time 81 s in the future
+        /usr/bin/gmake  -f CMakeFiles/cmTC_5512d.dir/build.make CMakeFiles/cmTC_5512d.dir/build
+        gmake[1]: Entering directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-8pGc28'
+        gmake[1]: Warning: File 'CMakeFiles/cmTC_5512d.dir/flags.make' has modification time 81 s in the future
+        Building CXX object CMakeFiles/cmTC_5512d.dir/OpenMPCheckVersion.cpp.o
+        /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx   -fiopenmp -MD -MT CMakeFiles/cmTC_5512d.dir/OpenMPCheckVersion.cpp.o -MF CMakeFiles/cmTC_5512d.dir/OpenMPCheckVersion.cpp.o.d -o CMakeFiles/cmTC_5512d.dir/OpenMPCheckVersion.cpp.o -c /home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-8pGc28/OpenMPCheckVersion.cpp
+        Linking CXX executable cmTC_5512d
+        /projects/x86-64-icelake-rocky8/utilities/cmake/3.27.4/gcc/8.5.0/base/x67p75m/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5512d.dir/link.txt --verbose=1
+        /projects/x86-64-icelake-rocky8/compilers-test/intel-oneapi-compilers/2025.1.1/none/none/base/6mnjcfh/compiler/2025.1/bin/icpx  -fiopenmp CMakeFiles/cmTC_5512d.dir/OpenMPCheckVersion.cpp.o -o cmTC_5512d 
+        gmake[1]: warning:  Clock skew detected.  Your build may be incomplete.
+        gmake[1]: Leaving directory '/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/CMakeScratch/TryCompile-8pGc28'
+        gmake: warning:  Clock skew detected.  Your build may be incomplete.
+        
+      exitCode: 0
+...

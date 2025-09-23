@@ -1,0 +1,3 @@
+/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/spmv.dir
+/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/edit_cache.dir
+/home/bmkelle/BlakeKK/GR_OpenMP/spmv/build/CMakeFiles/rebuild_cache.dir
