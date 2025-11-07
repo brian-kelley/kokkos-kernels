@@ -70,8 +70,7 @@ struct InclusiveParallelPrefixSum {
  * \param arr: the array for which the prefix sum will be performed.
  */
 template <typename MyExecSpace, typename view_t>
-inline void kk_exclusive_parallel_prefix_sum(const MyExecSpace &exec, typename view_t::value_type num_elements,
-                                             view_t arr) {
+inline void kk_exclusive_parallel_prefix_sum(const MyExecSpace &exec, size_t num_elements, view_t arr) {
   typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
   Kokkos::parallel_scan("KokkosKernels::Common::PrefixSum", my_exec_space(exec, 0, num_elements),
                         ExclusiveParallelPrefixSum<view_t>(arr));
@@ -84,7 +83,7 @@ inline void kk_exclusive_parallel_prefix_sum(const MyExecSpace &exec, typename v
  * \param arr: the array for which the prefix sum will be performed.
  */
 template <typename MyExecSpace, typename view_t>
-inline void kk_exclusive_parallel_prefix_sum(typename view_t::value_type num_elements, view_t arr) {
+inline void kk_exclusive_parallel_prefix_sum(size_t num_elements, view_t arr) {
   kk_exclusive_parallel_prefix_sum(MyExecSpace(), num_elements, arr);
 }
 
@@ -99,8 +98,8 @@ inline void kk_exclusive_parallel_prefix_sum(typename view_t::value_type num_ele
  * prefix sum.
  */
 template <typename MyExecSpace, typename view_t>
-inline void kk_exclusive_parallel_prefix_sum(const MyExecSpace &exec, typename view_t::value_type num_elements,
-                                             view_t arr, typename view_t::non_const_value_type &finalSum) {
+inline void kk_exclusive_parallel_prefix_sum(const MyExecSpace &exec, size_t num_elements, view_t arr,
+                                             typename view_t::non_const_value_type &finalSum) {
   typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
   Kokkos::parallel_scan("KokkosKernels::Common::PrefixSum", my_exec_space(exec, 0, num_elements),
                         ExclusiveParallelPrefixSum<view_t>(arr), finalSum);
@@ -116,7 +115,7 @@ inline void kk_exclusive_parallel_prefix_sum(const MyExecSpace &exec, typename v
  * prefix sum.
  */
 template <typename MyExecSpace, typename view_t>
-inline void kk_exclusive_parallel_prefix_sum(typename view_t::value_type num_elements, view_t arr,
+inline void kk_exclusive_parallel_prefix_sum(size_t num_elements, view_t arr,
                                              typename view_t::non_const_value_type &finalSum) {
   kk_exclusive_parallel_prefix_sum(MyExecSpace(), num_elements, arr, finalSum);
 }
@@ -129,8 +128,7 @@ inline void kk_exclusive_parallel_prefix_sum(typename view_t::value_type num_ele
 /// \param arr: the array for which the prefix sum will be performed.
 ///
 template <typename MyExecSpace, typename forward_array_type>
-void kk_inclusive_parallel_prefix_sum(MyExecSpace my_exec_space, typename forward_array_type::value_type num_elements,
-                                      forward_array_type arr) {
+void kk_inclusive_parallel_prefix_sum(MyExecSpace my_exec_space, size_t num_elements, forward_array_type arr) {
   typedef Kokkos::RangePolicy<MyExecSpace> range_policy_t;
   Kokkos::parallel_scan("KokkosKernels::Common::PrefixSum", range_policy_t(my_exec_space, 0, num_elements),
                         InclusiveParallelPrefixSum<forward_array_type>(arr));
@@ -143,7 +141,7 @@ void kk_inclusive_parallel_prefix_sum(MyExecSpace my_exec_space, typename forwar
 /// \param arr: the array for which the prefix sum will be performed.
 ///
 template <typename MyExecSpace, typename forward_array_type>
-void kk_inclusive_parallel_prefix_sum(typename forward_array_type::value_type num_elements, forward_array_type arr) {
+void kk_inclusive_parallel_prefix_sum(size_t num_elements, forward_array_type arr) {
   MyExecSpace my_exec_space;
   return kk_inclusive_parallel_prefix_sum(my_exec_space, num_elements, arr);
 }

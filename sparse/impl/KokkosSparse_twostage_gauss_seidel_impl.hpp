@@ -828,7 +828,7 @@ class TwostageGaussSeidel {
       NumSweeps *= 2;
     }
     if (init_zero_x_vector) {
-      KokkosKernels::Impl::zero_vector<x_value_array_type, execution_space>(nrhs, localX);
+      Kokkos::deep_copy(execution_space(), localX, scalar_t(0));
     }
     for (int sweep = 0; sweep < NumSweeps; ++sweep) {
       bool forward_sweep = (direction == GS_FORWARD || (direction == GS_SYMMETRIC && sweep % 2 == 0));

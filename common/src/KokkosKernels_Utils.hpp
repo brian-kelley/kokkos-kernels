@@ -362,19 +362,18 @@ struct Fill_Reverse_Map {
 };
 
 template <typename forward_array_type, typename MyExecSpace>
-void inclusive_parallel_prefix_sum(MyExecSpace my_exec_space, typename forward_array_type::value_type num_elements,
-                                   forward_array_type arr) {
+void inclusive_parallel_prefix_sum(MyExecSpace my_exec_space, size_t num_elements, forward_array_type arr) {
   return kk_inclusive_parallel_prefix_sum(my_exec_space, num_elements, arr);
 }
 
 template <typename forward_array_type, typename MyExecSpace>
-void inclusive_parallel_prefix_sum(typename forward_array_type::value_type num_elements, forward_array_type arr) {
+void inclusive_parallel_prefix_sum(size_t num_elements, forward_array_type arr) {
   MyExecSpace my_exec_space;
   return inclusive_parallel_prefix_sum(my_exec_space, num_elements, arr);
 }
 
 template <typename forward_array_type, typename MyExecSpace>
-void exclusive_parallel_prefix_sum(typename forward_array_type::value_type num_elements, forward_array_type arr) {
+void exclusive_parallel_prefix_sum(size_t num_elements, forward_array_type arr) {
   kk_exclusive_parallel_prefix_sum<MyExecSpace>(num_elements, arr);
 }
 
@@ -401,14 +400,12 @@ struct PropogataMaxValstoZeros {
 };
 
 template <typename out_array_t, typename in_array_t, typename scalar_1, typename scalar_2, typename MyExecSpace>
-void a_times_x_plus_b(typename in_array_t::value_type num_elements, in_array_t out_arr, in_array_t in_arr, scalar_1 a,
-                      scalar_2 b) {
+void a_times_x_plus_b(size_t num_elements, in_array_t out_arr, in_array_t in_arr, scalar_1 a, scalar_2 b) {
   kk_a_times_x_plus_b<out_array_t, in_array_t, scalar_1, scalar_2, MyExecSpace>(num_elements, out_arr, in_arr, a, b);
 }
 
 template <typename out_array_type, typename in_array_type, typename MyExecSpace>
-void modular_view(typename in_array_type::value_type num_elements, out_array_type out_arr, in_array_type in_arr,
-                  int mod_factor_) {
+void modular_view(size_t num_elements, out_array_type out_arr, in_array_type in_arr, int mod_factor_) {
   kk_modular_view<out_array_type, in_array_type, MyExecSpace>(num_elements, out_arr, in_arr, mod_factor_);
 }
 
@@ -422,14 +419,14 @@ struct LinearInitialization {
   void operator()(const size_t ii) const { array_sum(ii) = ii; }
 };
 template <typename array_type, typename MyExecSpace>
-void linear_init(typename array_type::value_type num_elements, array_type arr) {
+void linear_init(size_t num_elements, array_type arr) {
   typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
   Kokkos::parallel_for("KokkosKernels::Common::LinearInit", my_exec_space(0, num_elements),
                        LinearInitialization<array_type>(arr));
 }
 
 template <typename forward_array_type, typename MyExecSpace>
-void remove_zeros_in_xadj_vector(typename forward_array_type::value_type num_elements, forward_array_type arr) {
+void remove_zeros_in_xadj_vector(size_t num_elements, forward_array_type arr) {
   typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
   Kokkos::parallel_scan("KokkosKernels::Common::RemoveZerosInXadjVector", my_exec_space(0, num_elements),
                         PropogataMaxValstoZeros<forward_array_type>(arr));
@@ -656,9 +653,8 @@ struct PermuteVector {
 };
 
 template <typename value_array_type, typename out_value_array_type, typename idx_array_type, typename MyExecSpace>
-void permute_vector(MyExecSpace my_exec_space, typename idx_array_type::value_type num_elements,
-                    idx_array_type &old_to_new_index_map, value_array_type &old_vector,
-                    out_value_array_type &new_vector) {
+void permute_vector(MyExecSpace my_exec_space, size_t num_elements, idx_array_type &old_to_new_index_map,
+                    value_array_type &old_vector, out_value_array_type &new_vector) {
   using range_policy_t = Kokkos::RangePolicy<MyExecSpace>;
 
   Kokkos::parallel_for("KokkosKernels::Common::PermuteVector", range_policy_t(my_exec_space, 0, num_elements),
@@ -667,8 +663,8 @@ void permute_vector(MyExecSpace my_exec_space, typename idx_array_type::value_ty
 }
 
 template <typename value_array_type, typename out_value_array_type, typename idx_array_type, typename MyExecSpace>
-void permute_vector(typename idx_array_type::value_type num_elements, idx_array_type &old_to_new_index_map,
-                    value_array_type &old_vector, out_value_array_type &new_vector) {
+void permute_vector(size_t num_elements, idx_array_type &old_to_new_index_map, value_array_type &old_vector,
+                    out_value_array_type &new_vector) {
   permute_vector(MyExecSpace(), num_elements, old_to_new_index_map, old_vector, new_vector);
 }
 
@@ -701,7 +697,7 @@ struct PermuteBlockVector {
 };
 
 template <typename value_array_type, typename out_value_array_type, typename idx_array_type, typename MyExecSpace>
-void permute_block_vector(MyExecSpace my_exec_space, typename idx_array_type::value_type num_elements, int block_size,
+void permute_block_vector(MyExecSpace my_exec_space, size_t num_elements, int block_size,
                           idx_array_type &old_to_new_index_map, value_array_type &old_vector,
                           out_value_array_type &new_vector) {
   using range_policy_t = Kokkos::RangePolicy<MyExecSpace>;
@@ -711,29 +707,9 @@ void permute_block_vector(MyExecSpace my_exec_space, typename idx_array_type::va
 }
 
 template <typename value_array_type, typename out_value_array_type, typename idx_array_type, typename MyExecSpace>
-void permute_block_vector(typename idx_array_type::value_type num_elements, int block_size,
-                          idx_array_type &old_to_new_index_map, value_array_type &old_vector,
-                          out_value_array_type &new_vector) {
+void permute_block_vector(size_t num_elements, int block_size, idx_array_type &old_to_new_index_map,
+                          value_array_type &old_vector, out_value_array_type &new_vector) {
   permute_block_vector(MyExecSpace(), num_elements, block_size, old_to_new_index_map, old_vector, new_vector);
-}
-
-// TODO BMK: clean this up by removing 1st argument. It is unused but
-// its name gives the impression that only num_elements of the vector are
-// zeroed, when really it's always the whole thing.
-template <class ExecSpaceIn, typename value_array_type>
-void zero_vector(ExecSpaceIn &exec_space_in, typename value_array_type::value_type /* num_elements */,
-                 value_array_type &vector) {
-  typedef typename value_array_type::non_const_value_type val_type;
-  Kokkos::deep_copy(exec_space_in, vector, KokkosKernels::ArithTraits<val_type>::zero());
-  exec_space_in.fence();
-}
-
-template <typename value_array_type, typename MyExecSpace>
-void zero_vector(typename value_array_type::value_type /* num_elements */, value_array_type &vector) {
-  using ne_tmp_t  = typename value_array_type::value_type;
-  ne_tmp_t ne_tmp = ne_tmp_t(0);
-  MyExecSpace my_exec_space;
-  zero_vector(my_exec_space, ne_tmp, vector);
 }
 
 template <typename v1, typename v2, typename v3>
