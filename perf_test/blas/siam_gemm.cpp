@@ -14,9 +14,9 @@ int main()
     ExecSpace().print_configuration(std::cout);
     RandPool pool(123);
     Kokkos::Timer t;
-    int numTrials = 1000;
+    int numTrials = 10000;
     //for(int n = 256; n <= 2048; n += 32)
-    int n = 2048;
+    int n = 512;
     {
       // Construct inputs
       DualV A("A", n, n);
