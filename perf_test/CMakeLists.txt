@@ -36,4 +36,12 @@ if (KokkosKernels_ENABLE_PERFTESTS)
     ADD_SUBDIRECTORY(performance)
     #ADD_SUBDIRECTORY(common)
 
+    KOKKOSKERNELS_ADD_EXECUTABLE(
+        resnet
+        SOURCES resnet.cpp
+    )
+    KOKKOSKERNELS_ADD_EXECUTABLE(
+        mala 
+        SOURCES mala.cpp
+    )
 endif()
