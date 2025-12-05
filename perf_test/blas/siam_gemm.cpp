@@ -14,7 +14,7 @@ int main()
     ExecSpace().print_configuration(std::cout);
     RandPool pool(123);
     Kokkos::Timer t;
-    int numTrials = 10000;
+    int numTrials = 100000;
     //for(int n = 256; n <= 2048; n += 32)
     int n = 512;
     {
