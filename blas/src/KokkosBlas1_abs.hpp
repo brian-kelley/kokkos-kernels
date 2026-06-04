@@ -61,17 +61,11 @@ void abs(const execution_space& space, const RMV& R, const XMV& X) {
 
   // Create unmanaged versions of the input Views.  RMV and XMV may be
   // rank 1 or rank 2.
-  using RMV_Internal = Kokkos::View<typename std::conditional<RMV::rank == 1, typename RMV::non_const_value_type*,
-                                                              typename RMV::non_const_value_type**>::type,
-                                    typename KokkosKernels::Impl::GetUnifiedLayout<RMV>::array_layout,
-                                    typename RMV::device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
-  using XMV_Internal = Kokkos::View<typename std::conditional<XMV::rank == 1, typename XMV::const_value_type*,
-                                                              typename XMV::const_value_type**>::type,
-                                    typename KokkosKernels::Impl::GetUnifiedLayout<XMV>::array_layout,
-                                    typename XMV::device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
-
-  RMV_Internal R_internal = R;
-  XMV_Internal X_internal = X;
+  using RMV_Internal = KokkosKernels::Impl::InternalView_t<RMV, /* const */ false, KokkosKernels::default_layout>; 
+  using XMV_Internal = KokkosKernels::Impl::InternalView_t<XMV, /* const */ true, typename RMV_Internal::array_layout>;
+  
+  auto R_internal = KokkosKernels::Impl::unifyView<RMV_Internal>(R);
+  auto X_internal = KokkosKernels::Impl::unifyView<XMV_Internal>(X);
 
   Impl::Abs<execution_space, RMV_Internal, XMV_Internal>::abs(space, R_internal, X_internal);
 }
