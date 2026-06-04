@@ -7,23 +7,10 @@
 #include "Kokkos_Core.hpp"         //for LayoutLeft/LayoutRight
 #include <KokkosKernels_config.h>  //for all the ETI #cmakedefine macros
 
-// define a deprecated symbol = type in the global namespace
-// and a non-deprecated version in Kokkos Kernels
-// these deprecations were done in 4.4.
-// Intel 19 doesn't seem to like deprecating a type alias
-#if defined(KOKKOS_COMPILER_INTEL) && (KOKKOS_COMPILER_INTEL < 2000)
 #define KK_IMPL_MAKE_TYPE_ALIAS(symbol, type) \
-  using symbol = type;                        \
   namespace KokkosKernels {                   \
   using symbol = type;                        \
   }
-#else
-#define KK_IMPL_MAKE_TYPE_ALIAS(symbol, type)                            \
-  using symbol [[deprecated("use KokkosKernels::" #symbol ".")]] = type; \
-  namespace KokkosKernels {                                              \
-  using symbol = type;                                                   \
-  }
-#endif
 
 #if defined(KOKKOSKERNELS_INST_ORDINAL_INT)
 KK_IMPL_MAKE_TYPE_ALIAS(default_lno_t, int)
@@ -77,6 +64,51 @@ KK_IMPL_MAKE_TYPE_ALIAS(default_device, Kokkos::Threads)
 #else
 KK_IMPL_MAKE_TYPE_ALIAS(default_device, Kokkos::Serial)
 #endif
+
+namespace KokkosKernels {
+template <typename exec_space>
+struct default_memspace {
+  static_assert(Kokkos::is_execution_space_v<exec_space>,
+                "default_memspace<T> requires that T is an execution space type.");
+  using type = typename exec_space::memory_space;
+};
+
+#if defined(KOKKOS_ENABLE_CUDA)
+template <>
+struct default_memspace<Kokkos::Cuda> {
+#if defined(KOKKOSKERNELS_INST_MEMSPACE_CUDAUVMSPACE) && !defined(KOKKOSKERNELS_INST_MEMSPACE_CUDASPACE)
+  using type = Kokkos::CudaUVMSpace;
+#else
+  using type = Kokkos::CudaSpace;
+#endif
+};
+#endif
+
+#if defined(KOKKOS_ENABLE_HIP)
+template <>
+struct default_memspace<Kokkos::HIP> {
+#if defined(KOKKOSKERNELS_INST_MEMSPACE_HIPMANAGEDSPACE) && !defined(KOKKOSKERNELS_INST_MEMSPACE_HIPSPACE)
+  using type = Kokkos::HIPManagedSpace;
+#else
+  using type = Kokkos::HIPSpace;
+#endif
+};
+#endif
+
+#if defined(KOKKOS_ENABLE_SYCL)
+template <>
+struct default_memspace<Kokkos::SYCL> {
+#if defined(KOKKOSKERNELS_INST_MEMSPACE_SYCLSHAREDSPACE) && !defined(KOKKOSKERNELS_INST_MEMSPACE_SYCLSPACE)
+  using type = Kokkos::SYCLSharedUSMSpace;
+#else
+  using type = Kokkos::SYCLDeviceUSMSpace;
+#endif
+};
+#endif
+
+template <typename exec_space>
+using default_memspace_t = typename default_memspace<exec_space>::type;
+}  // namespace KokkosKernels
 
 #undef KK_IMPL_MAKE_TYPE_ALIAS
 
