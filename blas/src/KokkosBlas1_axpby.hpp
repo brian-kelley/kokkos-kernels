@@ -107,21 +107,18 @@ void axpby(const execution_space& exec_space, const AV& a, const XMV& X, const B
     }
   }
   // Get unified types (all preferring the layout of the InternalTypeX)
-  using PreferredLayout = typename KokkosKernels::Impl::GetUnifiedLayout<XMV>::array_layout;
-  using InternalTypeX   = Kokkos::View<typename XMV::const_data_type, PreferredLayout, typename XMV::device_type,
-                                     Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
-  using InternalTypeY =
-      Kokkos::View<typename YMV::non_const_data_type,
-                   typename KokkosKernels::Impl::GetUnifiedLayoutPreferring<YMV, PreferredLayout>::array_layout,
-                   typename YMV::device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
-  InternalTypeX internal_X = X;
-  InternalTypeY internal_Y = Y;
+  using InternalTypeX = KokkosKernels::Impl::InternalView_t<XMV, execution_space, KokkosKernels::default_layout, /* const */ true>;
+  using PreferredLayout = typename InternalTypeX::array_layout;
+  using InternalTypeY = KokkosKernels::Impl::InternalView_t<YMV, execution_space,PreferredLayout, /* const */ false>;
+  
+  auto internal_X = KokkosKernels::Impl::unifyView<InternalTypeX>(X);
+  auto internal_Y = KokkosKernels::Impl::unifyView<InternalTypeY>(Y);
   // Run the rank-1 or rank-2 cases, with the appropriate coefficient unification
   if constexpr ((int)XMV::rank == 1) {
     using InternalTypeA =
-        typename KokkosBlas::Impl::UnifiedAxpbyCoeff<AV, typename XMV::non_const_value_type, PreferredLayout>::type;
+        typename KokkosBlas::Impl::UnifiedAxpbyCoeff<AV, execution_space, typename XMV::non_const_value_type, PreferredLayout>::type;
     using InternalTypeB =
-        typename KokkosBlas::Impl::UnifiedAxpbyCoeff<BV, typename YMV::non_const_value_type, PreferredLayout>::type;
+        typename KokkosBlas::Impl::UnifiedAxpbyCoeff<BV, execution_space, typename YMV::non_const_value_type, PreferredLayout>::type;
     InternalTypeA internal_a = KokkosBlas::Impl::unifyAxpbyCoeff<InternalTypeA>(a);
     InternalTypeB internal_b = KokkosBlas::Impl::unifyAxpbyCoeff<InternalTypeB>(b);
     Impl::Axpby<execution_space, InternalTypeA, InternalTypeX, InternalTypeB, InternalTypeY>::axpby(
@@ -132,9 +129,9 @@ void axpby(const execution_space& exec_space, const AV& a, const XMV& X, const B
     // If TPL support is added for axpby_mv, we need to handle this case at runtime because TPLs likely won't support
     // it.
     using InternalTypeA =
-        typename KokkosBlas::Impl::UnifiedAxpbyMvCoeff<AV, typename XMV::non_const_value_type, PreferredLayout>::type;
+        typename KokkosBlas::Impl::UnifiedAxpbyMvCoeff<AV, execution_space, typename XMV::non_const_value_type, PreferredLayout>::type;
     using InternalTypeB =
-        typename KokkosBlas::Impl::UnifiedAxpbyMvCoeff<BV, typename YMV::non_const_value_type, PreferredLayout>::type;
+        typename KokkosBlas::Impl::UnifiedAxpbyMvCoeff<BV, execution_space, typename YMV::non_const_value_type, PreferredLayout>::type;
     InternalTypeA internal_a = KokkosBlas::Impl::unifyAxpbyMvCoeff<InternalTypeA>(a);
     InternalTypeB internal_b = KokkosBlas::Impl::unifyAxpbyMvCoeff<InternalTypeB>(b);
     Impl::Axpby<execution_space, InternalTypeA, InternalTypeX, InternalTypeB, InternalTypeY>::axpby(

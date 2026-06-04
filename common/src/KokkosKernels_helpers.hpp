@@ -51,35 +51,38 @@ struct GetUnifiedScalarViewType<T, TX, true, true> {
       type;
 };
 
-template <class Device>
-struct GetUnifiedDeviceType {
- private:
-  using exec_space          = typename Device::execution_space;
-  using preferred_mem_space = KokkosKernels::default_memspace_t<exec_space>;
-  // This is a shortcut for checking whether Device::memory_space is a host-pinned space.
-  // In these cases, we want to keep the original host-pinned space instead of unifying to preferred_mem_space.
-  constexpr static bool compatible = std::is_same_v<typename preferred_mem_space::execution_space, exec_space>;
-  using unified_mem_space          = std::conditional_t<compatible, preferred_mem_space, typename Device::memory_space>;
+template <class execution_space, class original_device_type>
+class GetUnifiedDeviceType {
+  static_assert(Kokkos::is_execution_space_v<execution_space>,
+      "GetUnifiedDeviceType requires its template argument to be a Kokkos execution space.");
 
- public:
-  using type = Kokkos::Device<exec_space, unified_mem_space>;
+  using preferred_memory_space = KokkosKernels::default_memspace_t<execution_space>;
+  // This line provides extra caution if original_device_type uses a host-pinned memory space.
+  // We avoid having a unified view pretend that its underlying host-pinned memory is
+  // normal device memory. For example, Kokkos may use CUDA's _ldg intrinsic on CudaSpace and
+  // CudaUVMSpace Views, but not CudaHostPinnedSpace.
+  static constexpr bool compatible = std::is_same_v<execution_space, typename original_device_type::memory_space::execution_space>;
+  using memory_space = std::conditional_t<compatible, preferred_memory_space, typename original_device_type::memory_space>;
+public:
+  using type = Kokkos::Device<execution_space, memory_space>;
 };
 
 // InternalView<...>::type gives the unmanaged View type to be used inside the unification layer.
 // Its layout will be PreferredLayout if possible, and InputView::array_layout if not.
-template <typename InputView, bool constData, typename PreferredLayout>
-struct InternalView {
+template <typename InputView, typename ExecSpace, typename PreferredLayout, bool constData, bool keepDevice = false>
+class InternalView {
   using DataInternal =
       std::conditional_t<constData, typename InputView::const_data_type, typename InputView::non_const_data_type>;
   using LayoutInternal =
-      typename KokkosKernels::Impl::GetUnifiedLayoutPreferring<InputView, PreferredLayout>::array_layout;
-  using DeviceInternal = typename KokkosKernels::Impl::GetUnifiedDeviceType<typename InputView::device_type>::type;
-
+      typename GetUnifiedLayoutPreferring<InputView, PreferredLayout>::array_layout;
+  using OriginalDevice = typename InputView::device_type;
+  using DeviceInternal = std::conditional_t<keepDevice, OriginalDevice, typename GetUnifiedDeviceType<ExecSpace, OriginalDevice>::type>;
+public:
   using type = Kokkos::View<DataInternal, LayoutInternal, DeviceInternal, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
 };
 
-template <typename InputView, bool constData, typename PreferredLayout>
-using InternalView_t = typename InternalView<InputView, constData, PreferredLayout>::type;
+template <typename InputView, typename ExecSpace, typename PreferredLayout, bool constData, bool keepDevice = false>
+using InternalView_t = typename InternalView<InputView, ExecSpace, PreferredLayout, constData, keepDevice>::type;
 
 // Get the internal version of a View for the unification layer.
 // Internal can be determined using InternalView_t.
@@ -87,7 +90,7 @@ template <typename Internal, typename Input>
 Internal unifyView(const Input& v) {
   // The unified device type may not always be directly 'assignable' from the input device type.
   // So first create a view with type Internal, but with the same device as Input.
-  // Then we can construct the unified view using a pointer and layout.
+  // Then we can finish constructing the unified view using a pointer and layout.
   using DataInternal   = typename Internal::data_type;
   using LayoutInternal = typename Internal::array_layout;
   using TempView =

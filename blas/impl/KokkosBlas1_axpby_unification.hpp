@@ -31,22 +31,23 @@ constexpr KOKKOS_INLINE_FUNCTION bool isRank1View() {
 // all have the same layout.
 
 // General case for isView == false
-template <typename Coeff, typename PreferredScalar, typename PreferredLayout, bool isView = Kokkos::is_view_v<Coeff>>
+template <typename Coeff, typename ExecSpace, typename PreferredScalar, typename PreferredLayout, bool isView = Kokkos::is_view_v<Coeff>>
 struct UnifiedAxpbyCoeff {
   using type = PreferredScalar;
 };
 
 // Specialization for isView == true
-template <typename Coeff, typename PreferredScalar, typename PreferredLayout>
-struct UnifiedAxpbyCoeff<Coeff, PreferredScalar, PreferredLayout, true> {
+template <typename Coeff, typename ExecSpace, typename PreferredScalar, typename PreferredLayout>
+struct UnifiedAxpbyCoeff<Coeff, ExecSpace, PreferredScalar, PreferredLayout, true> {
   static constexpr bool IsRank0 = (int)Coeff::rank == 0;
   static constexpr bool IsHostAccessible =
       Kokkos::SpaceAccessibility<Kokkos::DefaultHostExecutionSpace, typename Coeff::memory_space>::accessible;
 
+  using UnifiedDevice = typename KokkosKernels::Impl::GetUnifiedDeviceType<ExecSpace, typename Coeff::device_type>::type;
   using UnifiedViewType =
       Kokkos::View<typename Coeff::const_value_type*,
                    typename KokkosKernels::Impl::GetUnifiedLayoutPreferring<Coeff, PreferredLayout>::array_layout,
-                   typename Coeff::device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
+                   UnifiedDevice, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
 
   using type = std::conditional_t<IsRank0 && IsHostAccessible, PreferredScalar, UnifiedViewType>;
 };
@@ -62,7 +63,7 @@ UnifiedCoeff unifyAxpbyCoeff(const Coeff& coeff) {
     return coeff();
   } else if constexpr (isRank1View<Coeff>()) {
     // Directly convert to unified type
-    return coeff;
+    return KokkosKernels::Impl::unifyView<UnifiedCoeff>(coeff);
   } else if constexpr (isRank1View<UnifiedCoeff>()) {
     // UnifiedCoeff is a rank-1 View but Coeff is rank-0.
     // Convert rank-0 Coeff to rank-1 UnifiedCoeff
@@ -75,23 +76,19 @@ UnifiedCoeff unifyAxpbyCoeff(const Coeff& coeff) {
 
 // For AxpbyMv, the unified coefficient type is the same as above except that
 // we do not change rank-0 Views to rank-1.
-template <typename Coeff, typename PreferredScalar, typename PreferredLayout, bool isView = Kokkos::is_view_v<Coeff>>
+template <typename Coeff, typename ExecSpace, typename PreferredScalar, typename PreferredLayout, bool isView = Kokkos::is_view_v<Coeff>>
 struct UnifiedAxpbyMvCoeff {
   using type = PreferredScalar;
 };
 
 // Specialization for isView == true
-template <typename Coeff, typename PreferredScalar, typename PreferredLayout>
-struct UnifiedAxpbyMvCoeff<Coeff, PreferredScalar, PreferredLayout, true> {
+template <typename Coeff, typename ExecSpace, typename PreferredScalar, typename PreferredLayout>
+struct UnifiedAxpbyMvCoeff<Coeff, ExecSpace, PreferredScalar, PreferredLayout, true> {
   static constexpr bool IsRank0 = (int)Coeff::rank == 0;
   static constexpr bool IsHostAccessible =
       Kokkos::SpaceAccessibility<Kokkos::DefaultHostExecutionSpace, typename Coeff::memory_space>::accessible;
 
-  using UnifiedViewType =
-      Kokkos::View<typename Coeff::const_data_type,
-                   typename KokkosKernels::Impl::GetUnifiedLayoutPreferring<Coeff, PreferredLayout>::array_layout,
-                   typename Coeff::device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
-
+  using UnifiedViewType = KokkosKernels::Impl::InternalView_t<Coeff, ExecSpace, PreferredLayout, /* const*/ true>;
   using type = std::conditional_t<IsRank0 && IsHostAccessible, PreferredScalar, UnifiedViewType>;
 };
 
@@ -104,7 +101,11 @@ UnifiedCoeff unifyAxpbyMvCoeff(const Coeff& coeff) {
         Kokkos::SpaceAccessibility<Kokkos::DefaultHostExecutionSpace, typename Coeff::memory_space>::accessible,
         "unifyAxpbyCoeff: in this case Coeff needs to be a host accessible View");
     return coeff();
-  } else {
+  } else if constexpr (Kokkos::is_view_v<UnifiedCoeff>) {
+    return KokkosKernels::Impl::unifyView<UnifiedCoeff>(coeff);
+  }
+  else {
+    // coeff is a scalar
     return coeff;
   }
 }

@@ -61,9 +61,9 @@ void abs(const execution_space& space, const RMV& R, const XMV& X) {
 
   // Create unmanaged versions of the input Views.  RMV and XMV may be
   // rank 1 or rank 2.
-  using RMV_Internal = KokkosKernels::Impl::InternalView_t<RMV, /* const */ false, KokkosKernels::default_layout>; 
-  using XMV_Internal = KokkosKernels::Impl::InternalView_t<XMV, /* const */ true, typename RMV_Internal::array_layout>;
-  
+  using XMV_Internal = KokkosKernels::Impl::InternalView_t<XMV, execution_space, KokkosKernels::default_layout, /* const */ true>;
+  using PreferredLayout = typename XMV_Internal::array_layout;
+  using RMV_Internal = KokkosKernels::Impl::InternalView_t<RMV, execution_space, PreferredLayout, /* const */ false>; 
   auto R_internal = KokkosKernels::Impl::unifyView<RMV_Internal>(R);
   auto X_internal = KokkosKernels::Impl::unifyView<XMV_Internal>(X);
 
