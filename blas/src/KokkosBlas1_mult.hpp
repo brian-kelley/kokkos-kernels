@@ -66,24 +66,15 @@ void mult(const execution_space& space, typename YMV::const_value_type& gamma, c
     KokkosKernels::Impl::throw_runtime_exception(os.str());
   }
 
-  using YUnifiedLayout = typename KokkosKernels::Impl::GetUnifiedLayout<YMV>::array_layout;
-  using AUnifiedLayout = typename KokkosKernels::Impl::GetUnifiedLayoutPreferring<AV, YUnifiedLayout>::array_layout;
-  using XUnifiedLayout = typename KokkosKernels::Impl::GetUnifiedLayoutPreferring<XMV, YUnifiedLayout>::array_layout;
+  using YMV_Internal =
+      KokkosKernels::Impl::InternalView_t<YMV, execution_space, KokkosKernels::default_layout, /* const */ false>;
+  using PreferredLayout = typename YMV_Internal::array_layout;
+  using AV_Internal     = KokkosKernels::Impl::InternalView_t<AV, execution_space, PreferredLayout, /* const */ true>;
+  using XMV_Internal    = KokkosKernels::Impl::InternalView_t<XMV, execution_space, PreferredLayout, /* const */ true>;
 
-  // Create unmanaged versions of the input Views.
-  typedef Kokkos::View<typename YMV::non_const_data_type, YUnifiedLayout, typename YMV::device_type,
-                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >
-      YMV_Internal;
-  typedef Kokkos::View<typename AV::const_value_type*, AUnifiedLayout, typename AV::device_type,
-                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >
-      AV_Internal;
-  typedef Kokkos::View<typename XMV::const_data_type, XUnifiedLayout, typename XMV::device_type,
-                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >
-      XMV_Internal;
-
-  YMV_Internal Y_internal = Y;
-  AV_Internal A_internal  = A;
-  XMV_Internal X_internal = X;
+  auto A_internal = KokkosKernels::Impl::unifyView<AV_Internal>(A);
+  auto X_internal = KokkosKernels::Impl::unifyView<XMV_Internal>(X);
+  auto Y_internal = KokkosKernels::Impl::unifyView<YMV_Internal>(Y);
 
   Impl::Mult<execution_space, YMV_Internal, AV_Internal, XMV_Internal>::mult(space, gamma, Y_internal, alpha,
                                                                              A_internal, X_internal);

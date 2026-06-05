@@ -54,8 +54,7 @@ struct nrminf_eti_spec_avail {
   struct nrminf_eti_spec_avail<                                                                         \
       EXEC_SPACE,                                                                                       \
       Kokkos::View<typename KokkosKernels::Details::InnerProductSpaceTraits<SCALAR>::mag_type*, LAYOUT, \
-                   Kokkos::Device<Kokkos::DefaultHostExecutionSpace, Kokkos::HostSpace>,                \
-                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                           \
+                   Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                        \
       Kokkos::View<const SCALAR**, LAYOUT, Kokkos::Device<EXEC_SPACE, MEM_SPACE>,                       \
                    Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                           \
       2> {                                                                                              \
@@ -201,8 +200,7 @@ struct NrmInf<execution_space, RV, XMV, 2, false, KOKKOSKERNELS_IMPL_COMPILE_LIB
   extern template struct NrmInf<                                                                        \
       EXEC_SPACE,                                                                                       \
       Kokkos::View<typename KokkosKernels::Details::InnerProductSpaceTraits<SCALAR>::mag_type*, LAYOUT, \
-                   Kokkos::Device<Kokkos::DefaultHostExecutionSpace, Kokkos::HostSpace>,                \
-                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                           \
+                   Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                        \
       Kokkos::View<const SCALAR*, LAYOUT, Kokkos::Device<EXEC_SPACE, MEM_SPACE>,                        \
                    Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                           \
       2, false, true>;
@@ -212,13 +210,12 @@ struct NrmInf<execution_space, RV, XMV, 2, false, KOKKOSKERNELS_IMPL_COMPILE_LIB
 // KokkosBlas::Impl::NrmInf for rank == 2.  This is NOT for users!!!  We
 // use this macro in one or more .cpp files in this directory.
 //
-#define KOKKOSBLAS1_NRMINF_MV_ETI_SPEC_INST(SCALAR, LAYOUT, EXEC_SPACE, MEM_SPACE)                                  \
-  template struct NrmInf<EXEC_SPACE,                                                                                \
-                         Kokkos::View<typename KokkosKernels::Details::InnerProductSpaceTraits<SCALAR>::mag_type*,  \
-                                      LAYOUT, Kokkos::Device<Kokkos::DefaultHostExecutionSpace, Kokkos::HostSpace>, \
-                                      Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                    \
-                         Kokkos::View<const SCALAR**, LAYOUT, Kokkos::Device<EXEC_SPACE, MEM_SPACE>,                \
-                                      Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                    \
+#define KOKKOSBLAS1_NRMINF_MV_ETI_SPEC_INST(SCALAR, LAYOUT, EXEC_SPACE, MEM_SPACE)                                 \
+  template struct NrmInf<EXEC_SPACE,                                                                               \
+                         Kokkos::View<typename KokkosKernels::Details::InnerProductSpaceTraits<SCALAR>::mag_type*, \
+                                      LAYOUT, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >,        \
+                         Kokkos::View<const SCALAR**, LAYOUT, Kokkos::Device<EXEC_SPACE, MEM_SPACE>,               \
+                                      Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                   \
                          2, false, true>;
 
 #include <KokkosBlas1_nrminf_tpl_spec_decl.hpp>

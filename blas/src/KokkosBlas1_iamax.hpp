@@ -37,9 +37,11 @@ typename XVector::size_type iamax(const execution_space& space, const XVector& x
 
   typedef typename XVector::size_type index_type;
 
-  using XVector_Internal = KokkosKernels::Impl::InternalView_t<XVector, execution_space, KokkosKernels::default_layout, /* const */ true>;
+  using XVector_Internal =
+      KokkosKernels::Impl::InternalView_t<XVector, execution_space, KokkosKernels::default_layout, /* const */ true>;
   using PreferredLayout = typename XVector_Internal::array_layout;
-  using RVector_Internal = Kokkos::View<index_type, PreferredLayout, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> > ;
+  using RVector_Internal =
+      Kokkos::View<index_type, PreferredLayout, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
 
   index_type result;
   RVector_Internal R = RVector_Internal(&result, PreferredLayout());
@@ -119,9 +121,11 @@ void iamax(const execution_space& space, const RV& R, const XMV& X,
     KokkosKernels::Impl::throw_runtime_exception(os.str());
   }
 
-  using XMV_Internal = KokkosKernels::Impl::InternalView_t<XMV, execution_space, KokkosKernels::default_layout, /* const */ true>;
-  using PreferredLayout = typename XMV_Internal::array_layout;
-  using RV_Internal = KokkosKernels::Impl::InternalView_t<RV, execution_space, PreferredLayout, /* const */ false>;
+  using XMV_Internal =
+      KokkosKernels::Impl::InternalView_t<XMV, execution_space, KokkosKernels::default_layout, /* const */ true>;
+  using PreferredLayout   = typename XMV_Internal::array_layout;
+  using RV_Internal       = KokkosKernels::Impl::InternalView_t<RV, execution_space, PreferredLayout, /* const */ false,
+                                                          /* reducerOutput */ true>;
   RV_Internal R_internal  = KokkosKernels::Impl::unifyView<RV_Internal>(R);
   XMV_Internal X_internal = KokkosKernels::Impl::unifyView<XMV_Internal>(X);
 

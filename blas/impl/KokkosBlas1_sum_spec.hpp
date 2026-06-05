@@ -47,16 +47,14 @@ struct sum_eti_spec_avail {
 // We may spread out definitions (see _DEF macro below) across one or
 // more .cpp files.
 //
-#define KOKKOSBLAS1_SUM_MV_ETI_SPEC_AVAIL(SCALAR, LAYOUT, EXEC_SPACE, MEM_SPACE)                          \
-  template <>                                                                                             \
-  struct sum_eti_spec_avail<                                                                              \
-      EXEC_SPACE,                                                                                         \
-      Kokkos::View<SCALAR*, LAYOUT, Kokkos::Device<Kokkos::DefaultHostExecutionSpace, Kokkos::HostSpace>, \
-                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                             \
-      Kokkos::View<const SCALAR**, LAYOUT, Kokkos::Device<EXEC_SPACE, MEM_SPACE>,                         \
-                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                             \
-      2> {                                                                                                \
-    enum : bool { value = true };                                                                         \
+#define KOKKOSBLAS1_SUM_MV_ETI_SPEC_AVAIL(SCALAR, LAYOUT, EXEC_SPACE, MEM_SPACE)                              \
+  template <>                                                                                                 \
+  struct sum_eti_spec_avail<                                                                                  \
+      EXEC_SPACE, Kokkos::View<SCALAR*, LAYOUT, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
+      Kokkos::View<const SCALAR**, LAYOUT, Kokkos::Device<EXEC_SPACE, MEM_SPACE>,                             \
+                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                                 \
+      2> {                                                                                                    \
+    enum : bool { value = true };                                                                             \
   };
 
 // Include the actual specialization declarations
@@ -203,13 +201,11 @@ struct Sum<execution_space, RV, XMV, 2, false, KOKKOSKERNELS_IMPL_COMPILE_LIBRAR
 // We may spread out definitions (see _DEF macro below) across one or
 // more .cpp files.
 //
-#define KOKKOSBLAS1_SUM_MV_ETI_SPEC_DECL(SCALAR, LAYOUT, EXEC_SPACE, MEM_SPACE)                           \
-  extern template struct Sum<                                                                             \
-      EXEC_SPACE,                                                                                         \
-      Kokkos::View<SCALAR*, LAYOUT, Kokkos::Device<Kokkos::DefaultHostExecutionSpace, Kokkos::HostSpace>, \
-                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                             \
-      Kokkos::View<const SCALAR*, LAYOUT, Kokkos::Device<EXEC_SPACE, MEM_SPACE>,                          \
-                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                             \
+#define KOKKOSBLAS1_SUM_MV_ETI_SPEC_DECL(SCALAR, LAYOUT, EXEC_SPACE, MEM_SPACE)                               \
+  extern template struct Sum<                                                                                 \
+      EXEC_SPACE, Kokkos::View<SCALAR*, LAYOUT, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
+      Kokkos::View<const SCALAR*, LAYOUT, Kokkos::Device<EXEC_SPACE, MEM_SPACE>,                              \
+                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                                 \
       2, false, true>;
 
 //
@@ -217,14 +213,12 @@ struct Sum<execution_space, RV, XMV, 2, false, KOKKOSKERNELS_IMPL_COMPILE_LIBRAR
 // KokkosBlas::Impl::Sum for rank == 2.  This is NOT for users!!!  We
 // use this macro in one or more .cpp files in this directory.
 //
-#define KOKKOSBLAS1_SUM_MV_ETI_SPEC_INST(SCALAR, LAYOUT, EXEC_SPACE, MEM_SPACE)                           \
-  template struct Sum<                                                                                    \
-      EXEC_SPACE,                                                                                         \
-      Kokkos::View<SCALAR*, LAYOUT, Kokkos::Device<Kokkos::DefaultHostExecutionSpace, Kokkos::HostSpace>, \
-                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                             \
-      Kokkos::View<const SCALAR**, LAYOUT, Kokkos::Device<EXEC_SPACE, MEM_SPACE>,                         \
-                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                             \
-      2, false, true>;
+#define KOKKOSBLAS1_SUM_MV_ETI_SPEC_INST(SCALAR, LAYOUT, EXEC_SPACE, MEM_SPACE)                                   \
+  template struct Sum<EXEC_SPACE,                                                                                 \
+                      Kokkos::View<SCALAR*, LAYOUT, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >, \
+                      Kokkos::View<const SCALAR**, LAYOUT, Kokkos::Device<EXEC_SPACE, MEM_SPACE>,                 \
+                                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >,                                     \
+                      2, false, true>;
 
 #include <KokkosBlas1_sum_tpl_spec_decl.hpp>
 #include <generated_specializations_hpp/KokkosBlas1_sum_eti_spec_decl.hpp>

@@ -50,9 +50,11 @@ typename KokkosKernels::Details::InnerProductSpaceTraits<typename XVector::non_c
     KokkosKernels::Impl::throw_runtime_exception(os.str());
   }
 
-  using XVector_Internal = KokkosKernels::Impl::InternalView_t<XVector, execution_space, KokkosKernels::default_layout, /* const */ true>;
+  using XVector_Internal =
+      KokkosKernels::Impl::InternalView_t<XVector, execution_space, KokkosKernels::default_layout, /* const */ true>;
   using PreferredLayout = typename XVector_Internal::array_layout;
-  using YVector_Internal = KokkosKernels::Impl::InternalView_t<YVector, execution_space, PreferredLayout, /* const */ true>;
+  using YVector_Internal =
+      KokkosKernels::Impl::InternalView_t<YVector, execution_space, PreferredLayout, /* const */ true>;
 
   using dot_type =
       typename KokkosKernels::Details::InnerProductSpaceTraits<typename XVector::non_const_value_type>::dot_type;
@@ -63,7 +65,8 @@ typename KokkosKernels::Details::InnerProductSpaceTraits<typename XVector::non_c
   using result_type = typename KokkosBlas::Impl::DotAccumulatingScalar<dot_type>::type;
   using RVector_Internal =
       Kokkos::View<dot_type, PreferredLayout, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
-  using RVector_Result = Kokkos::View<result_type, PreferredLayout, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
+  using RVector_Result =
+      Kokkos::View<result_type, PreferredLayout, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
 
   XVector_Internal X = KokkosKernels::Impl::unifyView<XVector_Internal>(x);
   YVector_Internal Y = KokkosKernels::Impl::unifyView<YVector_Internal>(y);
@@ -202,12 +205,14 @@ void dot(const execution_space& space, const RV& R, const XMV& X, const YMV& Y,
   }
 
   // Create unmanaged versions of the input Views.
-  using XMV_Internal = KokkosKernels::Impl::InternalView_t<XMV, execution_space, KokkosKernels::default_layout, /* const */ true>;
+  using XMV_Internal =
+      KokkosKernels::Impl::InternalView_t<XMV, execution_space, KokkosKernels::default_layout, /* const */ true>;
   using PreferredLayout = typename XMV_Internal::array_layout;
 
-  using RV_Internal = KokkosKernels::Impl::InternalView_t<RV, execution_space, PreferredLayout, /* const */ false, /* keepDevice */ true>;
+  using RV_Internal  = KokkosKernels::Impl::InternalView_t<RV, execution_space, PreferredLayout, /* const */ false,
+                                                          /* reducerOutput */ true>;
   using YMV_Internal = KokkosKernels::Impl::InternalView_t<YMV, execution_space, PreferredLayout, /* const */ true>;
-  
+
   auto R_internal = KokkosKernels::Impl::unifyView<RV_Internal>(R);
   auto X_internal = KokkosKernels::Impl::unifyView<XMV_Internal>(X);
   auto Y_internal = KokkosKernels::Impl::unifyView<YMV_Internal>(Y);

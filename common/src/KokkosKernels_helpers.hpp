@@ -54,35 +54,45 @@ struct GetUnifiedScalarViewType<T, TX, true, true> {
 template <class execution_space, class original_device_type>
 class GetUnifiedDeviceType {
   static_assert(Kokkos::is_execution_space_v<execution_space>,
-      "GetUnifiedDeviceType requires its template argument to be a Kokkos execution space.");
+                "GetUnifiedDeviceType requires its template argument to be a Kokkos execution space.");
 
   using preferred_memory_space = KokkosKernels::default_memspace_t<execution_space>;
   // This line provides extra caution if original_device_type uses a host-pinned memory space.
   // We avoid having a unified view pretend that its underlying host-pinned memory is
   // normal device memory. For example, Kokkos may use CUDA's _ldg intrinsic on CudaSpace and
   // CudaUVMSpace Views, but not CudaHostPinnedSpace.
-  static constexpr bool compatible = std::is_same_v<execution_space, typename original_device_type::memory_space::execution_space>;
-  using memory_space = std::conditional_t<compatible, preferred_memory_space, typename original_device_type::memory_space>;
-public:
+  static constexpr bool compatible =
+      std::is_same_v<execution_space, typename original_device_type::memory_space::execution_space>;
+  using memory_space =
+      std::conditional_t<compatible, preferred_memory_space, typename original_device_type::memory_space>;
+
+ public:
   using type = Kokkos::Device<execution_space, memory_space>;
 };
 
 // InternalView<...>::type gives the unmanaged View type to be used inside the unification layer.
 // Its layout will be PreferredLayout if possible, and InputView::array_layout if not.
-template <typename InputView, typename ExecSpace, typename PreferredLayout, bool constData, bool keepDevice = false>
+// Some kernels like dot can execute on device but store output on host. For these cases, set reducerOutput to true.
+// To match what gets ETI'd, we use the following logic when reducerOutput = true:
+//  - if InputView is host-accessible, then use Device<DefaultHostExecutionSpace, HostSpace> as the internal device
+//  type.
+//  - otherwise, use the normal unification logic (GetUnifiedDeviceType)
+template <typename InputView, typename ExecSpace, typename PreferredLayout, bool constData, bool reducerOutput = false>
 class InternalView {
   using DataInternal =
       std::conditional_t<constData, typename InputView::const_data_type, typename InputView::non_const_data_type>;
-  using LayoutInternal =
-      typename GetUnifiedLayoutPreferring<InputView, PreferredLayout>::array_layout;
-  using OriginalDevice = typename InputView::device_type;
-  using DeviceInternal = std::conditional_t<keepDevice, OriginalDevice, typename GetUnifiedDeviceType<ExecSpace, OriginalDevice>::type>;
-public:
+  using LayoutInternal = typename GetUnifiedLayoutPreferring<InputView, PreferredLayout>::array_layout;
+  static constexpr bool useHostSpace =
+      reducerOutput && std::is_same_v<typename InputView::memory_space, Kokkos::HostSpace>;
+  using UnifiedDeviceType = typename GetUnifiedDeviceType<ExecSpace, typename InputView::device_type>::type;
+  using DeviceInternal    = std::conditional_t<useHostSpace, Kokkos::HostSpace, UnifiedDeviceType>;
+
+ public:
   using type = Kokkos::View<DataInternal, LayoutInternal, DeviceInternal, Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
 };
 
-template <typename InputView, typename ExecSpace, typename PreferredLayout, bool constData, bool keepDevice = false>
-using InternalView_t = typename InternalView<InputView, ExecSpace, PreferredLayout, constData, keepDevice>::type;
+template <typename InputView, typename ExecSpace, typename PreferredLayout, bool constData, bool reducerOutput = false>
+using InternalView_t = typename InternalView<InputView, ExecSpace, PreferredLayout, constData, reducerOutput>::type;
 
 // Get the internal version of a View for the unification layer.
 // Internal can be determined using InternalView_t.
