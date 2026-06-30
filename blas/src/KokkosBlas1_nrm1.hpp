@@ -115,8 +115,7 @@ void nrm1(const execution_space& space, const RV& R, const XMV& X,
 
   // Create unmanaged versions of the input Views.  RV and XMV may be
   // rank 1 or rank 2.
-  using XMV_Internal =
-      KokkosKernels::Impl::InternalView_t<XMV, execution_space, KokkosKernels::default_layout, /* const */ true>;
+  using XMV_Internal = KokkosKernels::Impl::InternalView_t<XMV, execution_space, KokkosKernels::default_layout, /* const */ true>;
   using PreferredLayout = typename XMV_Internal::array_layout;
   using RV_Internal     = KokkosKernels::Impl::InternalView_t<RV, execution_space, PreferredLayout, /* const */ false,
                                                           /* reducerOutput */ true>;

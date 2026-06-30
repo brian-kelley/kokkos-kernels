@@ -62,19 +62,11 @@ void reciprocal(const execution_space& space, const RMV& R, const XMV& X) {
 
   // Create unmanaged versions of the input Views.  RMV and XMV may be
   // rank 1 or rank 2.
-  typedef Kokkos::View<typename std::conditional<RMV::rank == 1, typename RMV::non_const_value_type*,
-                                                 typename RMV::non_const_value_type**>::type,
-                       typename KokkosKernels::Impl::GetUnifiedLayout<RMV>::array_layout, typename RMV::device_type,
-                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >
-      RMV_Internal;
-  typedef Kokkos::View<typename std::conditional<XMV::rank == 1, typename XMV::const_value_type*,
-                                                 typename XMV::const_value_type**>::type,
-                       typename KokkosKernels::Impl::GetUnifiedLayout<XMV>::array_layout, typename XMV::device_type,
-                       Kokkos::MemoryTraits<Kokkos::Unmanaged> >
-      XMV_Internal;
-
-  RMV_Internal R_internal = R;
-  XMV_Internal X_internal = X;
+  using XMV_Internal = KokkosKernels::Impl::InternalView_t<XMV, execution_space, KokkosKernels::default_layout, /* const */ true>;
+  using PreferredLayout = typename XMV_Internal::array_layout;
+  using RMV_Internal     = KokkosKernels::Impl::InternalView_t<RMV, execution_space, PreferredLayout, /* const */ false>;
+  auto R_internal       = KokkosKernels::Impl::unifyView<RV_Internal>(R);
+  auto X_internal       = KokkosKernels::Impl::unifyView<XMV_Internal>(X);
 
   Impl::Reciprocal<execution_space, RMV_Internal, XMV_Internal>::reciprocal(space, R_internal, X_internal);
 }

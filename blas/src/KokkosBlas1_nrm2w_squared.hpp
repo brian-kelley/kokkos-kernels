@@ -39,19 +39,16 @@ nrm2w_squared(const execution_space& space, const XVector& x, const XVector& w) 
   using mag_type =
       typename KokkosKernels::Details::InnerProductSpaceTraits<typename XVector::non_const_value_type>::mag_type;
 
-  using XVector_Internal = Kokkos::View<typename XVector::const_value_type*,
-                                        typename KokkosKernels::Impl::GetUnifiedLayout<XVector>::array_layout,
-                                        typename XVector::device_type, Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
-
+  using XVector_Internal =
+      KokkosKernels::Impl::InternalView_t<XVector, execution_space, KokkosKernels::default_layout, /* const */ true>;
   using layout_t = typename XVector_Internal::array_layout;
-
   using RVector_Internal =
       Kokkos::View<mag_type, layout_t, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
 
   mag_type result;
   RVector_Internal R = RVector_Internal(&result, layout_t());
-  XVector_Internal X = x;
-  XVector_Internal W = w;
+  XVector_Internal X = KokkosKernels::Impl::unifyView<XVector_Internal>(x);
+  XVector_Internal W = KokkosKernels::Impl::unifyView<XVector_Internal>(w);
 
   Impl::Nrm2w<execution_space, RVector_Internal, XVector_Internal>::nrm2w(space, R, X, W, false);
   space.fence();
@@ -129,19 +126,13 @@ void nrm2w_squared(const execution_space& space, const RV& R, const XMV& X, cons
     KokkosKernels::Impl::throw_runtime_exception(os.str());
   }
 
-  using UnifiedXLayout  = typename KokkosKernels::Impl::GetUnifiedLayout<XMV>::array_layout;
-  using UnifiedRVLayout = typename KokkosKernels::Impl::GetUnifiedLayoutPreferring<RV, UnifiedXLayout>::array_layout;
-
-  // Create unmanaged versions of the input Views.  RV and XMV may be
-  // rank 1 or rank 2.
-  using RV_Internal  = Kokkos::View<typename RV::non_const_data_type, UnifiedRVLayout, typename RV::device_type,
-                                   Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
-  using XMV_Internal = Kokkos::View<typename XMV::const_data_type, UnifiedXLayout, typename XMV::device_type,
-                                    Kokkos::MemoryTraits<Kokkos::Unmanaged> >;
-
-  RV_Internal R_internal  = R;
-  XMV_Internal X_internal = X;
-  XMV_Internal W_internal = W;
+  // Create unmanaged versions of the input Views.  RV and XMV may be rank 1 or rank 2.
+  using XMV_Internal = KokkosKernels::Impl::InternalView_t<XMV, execution_space, KokkosKernels::default_layout, /* const */ true>;
+  using PreferredLayout = typename XMV_Internal::array_layout;
+  using RV_Internal     = KokkosKernels::Impl::InternalView_t<RV, execution_space, PreferredLayout, /* const */ false, /* reducerOutput */ true>;
+  auto R_internal       = KokkosKernels::Impl::unifyView<RV_Internal>(R);
+  auto X_internal       = KokkosKernels::Impl::unifyView<XMV_Internal>(X);
+  auto W_internal       = KokkosKernels::Impl::unifyView<XMV_Internal>(W);
 
   Impl::Nrm2w<execution_space, RV_Internal, XMV_Internal>::nrm2w(space, R_internal, X_internal, W_internal, false);
 }
