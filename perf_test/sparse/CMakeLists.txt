@@ -56,3 +56,5 @@ kokkoskernels_add_executable(sparse_mdf              SOURCES KokkosSparse_mdf.cp
 if(KokkosKernels_ENABLE_SORT_CRS_PERFTEST)
   kokkoskernels_add_executable(sparse_sort_crs SOURCES KokkosSparse_sort_crs.cpp)
 endif()
+
+kokkoskernels_add_executable(sparse_sort_crs_stress SOURCES KokkosSparse_sort_crs_stress.cpp)
