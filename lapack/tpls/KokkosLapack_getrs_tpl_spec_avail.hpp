@@ -25,7 +25,7 @@ struct getrs_tpl_spec_avail {
                    Kokkos::MemoryTraits<Kokkos::Unmanaged>>,                                    \
       Kokkos::View<int*, Kokkos::LayoutLeft, Kokkos::Device<EXEC, Kokkos::HostSpace>,           \
                    Kokkos::MemoryTraits<Kokkos::Unmanaged>>> {                                  \
-    enum : bool { value = true };                                                               \
+    enum : bool { value = false };                                                               \
   };
 #ifdef KOKKOS_ENABLE_SERIAL
 KOKKOSLAPACK_GETRS_TPL_SPEC_AVAIL_HOST(float, Kokkos::Serial)

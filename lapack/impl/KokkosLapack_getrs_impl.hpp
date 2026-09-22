@@ -21,10 +21,11 @@ struct laswp_functor {
 
   laswp_functor(const IpivView& Ipiv, const BMatrix& B) : m_Ipiv(Ipiv), m_B(B) {}
 
-  void KOKKOS_FUNCTION operator()(const int rowIdx) const {
-    const int piv = m_Ipiv(rowIdx);
+  void KOKKOS_FUNCTION operator()(const int colIdx) const {
     typename BMatrix::non_const_value_type tmp;
-    for (int colIdx = 0; colIdx < m_B.extent_int(1); ++colIdx) {
+    // Apply pivots sequentially over rows, processing each column independently
+    for (int rowIdx = 0; rowIdx < m_Ipiv.extent_int(0); ++rowIdx) {
+      const int piv = m_Ipiv(rowIdx) - 1;  // Convert from 1-based to 0-based
       tmp                 = m_B(rowIdx, colIdx);
       m_B(rowIdx, colIdx) = m_B(piv, colIdx);
       m_B(piv, colIdx)    = tmp;
@@ -39,13 +40,13 @@ void getrs_impl(const ExecutionSpace& space, const char trans[], const AMatrix& 
 
   laswp_functor swapper(Ipiv, B);
   if (trans[0] == 'N' || trans[0] == 'n') {
-    Kokkos::parallel_for(Kokkos::RangePolicy(space, 0, B.extent(0)), swapper);
+    Kokkos::parallel_for(Kokkos::RangePolicy(space, 0, B.extent(1)), swapper);
     KokkosBlas::trsm(space, "L", "L", "N", "U", one, A, B);
     KokkosBlas::trsm(space, "L", "U", "N", "N", one, A, B);
   } else {
     KokkosBlas::trsm(space, "L", "U", trans, "N", one, A, B);
     KokkosBlas::trsm(space, "L", "L", trans, "U", one, A, B);
-    Kokkos::parallel_for(Kokkos::RangePolicy(space, 0, B.extent(0)), swapper);
+    Kokkos::parallel_for(Kokkos::RangePolicy(space, 0, B.extent(1)), swapper);
   }
 }
 
