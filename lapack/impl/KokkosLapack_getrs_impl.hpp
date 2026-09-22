@@ -18,17 +18,30 @@ template <class IpivView, class BMatrix>
 struct laswp_functor {
   IpivView m_Ipiv;
   BMatrix m_B;
+  bool m_forward;
 
-  laswp_functor(const IpivView& Ipiv, const BMatrix& B) : m_Ipiv(Ipiv), m_B(B) {}
+  laswp_functor(const IpivView& Ipiv, const BMatrix& B, bool forward)
+      : m_Ipiv(Ipiv), m_B(B), m_forward(forward) {}
 
   void KOKKOS_FUNCTION operator()(const int colIdx) const {
     typename BMatrix::non_const_value_type tmp;
-    // Apply pivots sequentially over rows, processing each column independently
-    for (int rowIdx = 0; rowIdx < m_Ipiv.extent_int(0); ++rowIdx) {
-      const int piv = m_Ipiv(rowIdx) - 1;  // Convert from 1-based to 0-based
-      tmp                 = m_B(rowIdx, colIdx);
-      m_B(rowIdx, colIdx) = m_B(piv, colIdx);
-      m_B(piv, colIdx)    = tmp;
+    const int npiv = m_Ipiv.extent_int(0);
+    if (m_forward) {
+      // Forward: apply pivots from first to last (used for trans='N')
+      for (int rowIdx = 0; rowIdx < npiv; ++rowIdx) {
+        const int piv       = m_Ipiv(rowIdx) - 1;  // Convert from 1-based to 0-based
+        tmp                 = m_B(rowIdx, colIdx);
+        m_B(rowIdx, colIdx) = m_B(piv, colIdx);
+        m_B(piv, colIdx)    = tmp;
+      }
+    } else {
+      // Backward: apply pivots in reverse order (used for trans='T'/'C', applies P^T)
+      for (int rowIdx = npiv - 1; rowIdx >= 0; --rowIdx) {
+        const int piv       = m_Ipiv(rowIdx) - 1;  // Convert from 1-based to 0-based
+        tmp                 = m_B(rowIdx, colIdx);
+        m_B(rowIdx, colIdx) = m_B(piv, colIdx);
+        m_B(piv, colIdx)    = tmp;
+      }
     }
   }
 };
@@ -38,15 +51,14 @@ void getrs_impl(const ExecutionSpace& space, const char trans[], const AMatrix& 
                 const BMatrix& B, const InfoView& /* Info */) {
   auto one = KokkosKernels::ArithTraits<typename AMatrix::non_const_value_type>::one();
 
-  laswp_functor swapper(Ipiv, B);
   if (trans[0] == 'N' || trans[0] == 'n') {
-    Kokkos::parallel_for(Kokkos::RangePolicy(space, 0, B.extent(1)), swapper);
+    Kokkos::parallel_for(Kokkos::RangePolicy(space, 0, B.extent(1)), laswp_functor(Ipiv, B, true));
     KokkosBlas::trsm(space, "L", "L", "N", "U", one, A, B);
     KokkosBlas::trsm(space, "L", "U", "N", "N", one, A, B);
   } else {
     KokkosBlas::trsm(space, "L", "U", trans, "N", one, A, B);
     KokkosBlas::trsm(space, "L", "L", trans, "U", one, A, B);
-    Kokkos::parallel_for(Kokkos::RangePolicy(space, 0, B.extent(1)), swapper);
+    Kokkos::parallel_for(Kokkos::RangePolicy(space, 0, B.extent(1)), laswp_functor(Ipiv, B, false));
   }
 }
 
