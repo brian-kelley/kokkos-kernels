@@ -7,6 +7,8 @@
 #include "KokkosKernels_Utils.hpp"
 #include "KokkosSparse_Utils.hpp"
 #include <Kokkos_Core.hpp>
+#include <sstream>
+#include "KokkosKernels_Error.hpp"
 #include <Kokkos_Bitset.hpp>
 #include "KokkosGraph_Distance1Color.hpp"
 #include "KokkosKernels_Uniform_Initialized_MemoryPool.hpp"
@@ -899,8 +901,15 @@ class PointGaussSeidel {
         level_1_mem      = shmem_size_to_use;
         num_values_in_l1 = (shmem_size_to_use / suggested_team_size - ((block_size / 8) + 1) * 8 * sizeof(nnz_lno_t)) /
                            sizeof(nnz_scalar_t) / block_size;
-        if (((block_size / 8) + 1) * 8 * sizeof(nnz_lno_t) > shmem_size_to_use / suggested_team_size)
-          throw "Shared memory size is to small for the given block size\n";
+        if (((block_size / 8) + 1) * 8 * sizeof(nnz_lno_t) > shmem_size_to_use / suggested_team_size) {
+          std::ostringstream os;
+          os << "KokkosSparse::PointGaussSeidel::initialize_symbolic: shared memory size (" << shmem_size_to_use
+             << " bytes) is too small for block size " << block_size << " with team size " << suggested_team_size
+             << " (vector size " << suggested_vector_size << "): need at least "
+             << ((block_size / 8) + 1) * 8 * sizeof(nnz_lno_t) << " bytes per team member, but only "
+             << shmem_size_to_use / suggested_team_size << " are available. Increase it with handle->set_shmem_size().";
+          KokkosKernels::Impl::throw_runtime_exception(os.str());
+        }
         if (num_values_in_l1 >= (nnz_lno_t)(max_row_size)) {
           num_values_in_l2 = 0;
           level_2_mem      = 0;

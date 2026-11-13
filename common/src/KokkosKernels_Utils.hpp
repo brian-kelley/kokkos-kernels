@@ -97,6 +97,15 @@ struct FillSymmetricEdges {
   }
 };
 
+// Build the (src, dst) key used by the symmetrization hashmaps below. Vertex indices may be
+// computed in the (wider) offset type, but always fit in the ordinal type used by the key.
+template <typename hashmap_t, typename T>
+KOKKOS_INLINE_FUNCTION typename hashmap_t::key_type make_edge_key(T a, T b) {
+  using key_t = typename hashmap_t::key_type;
+  using ord_t = typename key_t::first_type;
+  return key_t(static_cast<ord_t>(a), static_cast<ord_t>(b));
+}
+
 template <typename in_lno_row_view_t, typename in_lno_nnz_view_t, typename hashmap_t, typename out_lno_row_view_t,
           typename team_member>
 struct FillSymmetricEdgesHashMap {
@@ -126,14 +135,14 @@ struct FillSymmetricEdgesHashMap {
       idx colIndex = adj[adjind];
       if (colIndex < num_rows) {
         if (colIndex < ii) {
-          Kokkos::UnorderedMapInsertResult r = umap.insert(Kokkos::pair<idx, idx>(colIndex, ii));
+          Kokkos::UnorderedMapInsertResult r = umap.insert(make_edge_key<hashmap_t>(colIndex, ii));
           if (r.success()) {
             Kokkos::atomic_fetch_add(&(pre_pps(ii)), atomic_incr_type(1));
 
             Kokkos::atomic_fetch_add(&(pre_pps(colIndex)), atomic_incr_type(1));
           }
         } else if (colIndex > ii) {
-          Kokkos::UnorderedMapInsertResult r = umap.insert(Kokkos::pair<idx, idx>(ii, colIndex));
+          Kokkos::UnorderedMapInsertResult r = umap.insert(make_edge_key<hashmap_t>(ii, colIndex));
           if (r.success()) {
             Kokkos::atomic_fetch_add(&(pre_pps(colIndex)), atomic_incr_type(1));
 
@@ -177,12 +186,12 @@ struct FillSymmetricLowerEdgesHashMap {
       idx colIndex = adj[adjind];
       if (colIndex < num_rows) {
         if (colIndex < ii) {
-          Kokkos::UnorderedMapInsertResult r = umap.insert(Kokkos::pair<idx, idx>(colIndex, ii));
+          Kokkos::UnorderedMapInsertResult r = umap.insert(make_edge_key<hashmap_t>(colIndex, ii));
           if (r.success()) {
             Kokkos::atomic_fetch_add(&(pre_pps(colIndex)), atomic_incr_type(1));
           }
         } else if (colIndex > ii) {
-          Kokkos::UnorderedMapInsertResult r = umap.insert(Kokkos::pair<idx, idx>(ii, colIndex));
+          Kokkos::UnorderedMapInsertResult r = umap.insert(make_edge_key<hashmap_t>(ii, colIndex));
           if (r.success()) {
             Kokkos::atomic_fetch_add(&(pre_pps(ii)), atomic_incr_type(1));
           }
@@ -229,14 +238,14 @@ struct FillSymmetricCRS_HashMap {
       idx colIndex = adj[adjind];
       if (colIndex < num_rows) {
         if (colIndex < ii) {
-          if (umap.insert(Kokkos::pair<idx, idx>(colIndex, ii)).success()) {
+          if (umap.insert(make_edge_key<hashmap_t>(colIndex, ii)).success()) {
             idx cAdjInd      = Kokkos::atomic_fetch_add(&(pre_pps(colIndex)), atomic_incr_type(1));
             idx iAdjInd      = Kokkos::atomic_fetch_add(&(pre_pps(ii)), atomic_incr_type(1));
             sym_adj[cAdjInd] = ii;
             sym_adj[iAdjInd] = colIndex;
           }
         } else if (colIndex > ii) {
-          if (umap.insert(Kokkos::pair<idx, idx>(ii, colIndex)).success()) {
+          if (umap.insert(make_edge_key<hashmap_t>(ii, colIndex)).success()) {
             idx cAdjInd      = Kokkos::atomic_fetch_add(&(pre_pps(colIndex)), atomic_incr_type(1));
             idx iAdjInd      = Kokkos::atomic_fetch_add(&(pre_pps(ii)), atomic_incr_type(1));
             sym_adj[cAdjInd] = ii;
@@ -290,13 +299,13 @@ struct FillSymmetricEdgeList_HashMap {
       idx colIndex = adj[adjind];
       if (colIndex < num_rows) {
         if (colIndex < ii) {
-          if (umap.insert(Kokkos::pair<idx, idx>(colIndex, ii)).success()) {
+          if (umap.insert(make_edge_key<hashmap_t>(colIndex, ii)).success()) {
             idx cAdjInd      = Kokkos::atomic_fetch_add(&(pps(colIndex)), atomic_incr_type(1));
             sym_src[cAdjInd] = colIndex;
             sym_dst[cAdjInd] = ii;
           }
         } else if (colIndex > ii) {
-          if (umap.insert(Kokkos::pair<idx, idx>(ii, colIndex)).success()) {
+          if (umap.insert(make_edge_key<hashmap_t>(ii, colIndex)).success()) {
             idx cAdjInd      = Kokkos::atomic_fetch_add(&(pps(ii)), atomic_incr_type(1));
             sym_src[cAdjInd] = ii;
             sym_dst[cAdjInd] = colIndex;
@@ -717,7 +726,11 @@ void symmetrize_and_get_lower_diagonal_edge_list(typename in_lno_nnz_view_t::val
   // typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
 
   // TODO: Should change this to temporary memory space?
-  typedef Kokkos::UnorderedMap<Kokkos::pair<idx, idx>, void, MyExecSpace> hashmap_t;
+  // Keys are (vertex, vertex) pairs, so use the ordinal (entries) type rather than the
+  // offset (row map) type. With int ordinals and size_t offsets this keeps the key at
+  // 8 bytes, so UnorderedMap can use lock-free atomics instead of lock-based ones.
+  typedef typename in_lno_nnz_view_t::non_const_value_type edge_key_ordinal_t;
+  typedef Kokkos::UnorderedMap<Kokkos::pair<edge_key_ordinal_t, edge_key_ordinal_t>, void, MyExecSpace> hashmap_t;
 
   out_lno_row_view_t pre_pps_("pre_pps", num_rows_to_symmetrize + 1);
 
@@ -787,7 +800,11 @@ void symmetrize_graph_symbolic_hashmap(typename in_lno_row_view_t::value_type nu
   // typedef Kokkos::RangePolicy<MyExecSpace> my_exec_space;
 
   // TODO: Should change this to temporary memory space?
-  typedef Kokkos::UnorderedMap<Kokkos::pair<idx, idx>, void, MyExecSpace> hashmap_t;
+  // Keys are (vertex, vertex) pairs, so use the ordinal (entries) type rather than the
+  // offset (row map) type. With int ordinals and size_t offsets this keeps the key at
+  // 8 bytes, so UnorderedMap can use lock-free atomics instead of lock-based ones.
+  typedef typename in_lno_nnz_view_t::non_const_value_type edge_key_ordinal_t;
+  typedef Kokkos::UnorderedMap<Kokkos::pair<edge_key_ordinal_t, edge_key_ordinal_t>, void, MyExecSpace> hashmap_t;
 
   out_lno_row_view_t pre_pps_("pre_pps", num_rows_to_symmetrize + 1);
 

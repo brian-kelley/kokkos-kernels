@@ -43,9 +43,13 @@ struct GSTestParams {
   std::vector<KokkosSparse::GSAlgorithm> gs_algorithms = {KokkosSparse::GS_DEFAULT};
   std::vector<size_t> shmem_sizes                      = {
       32128,
-      2008  // make the shmem small on gpus so that it will test 2 level
-            // algorithm.
-  };
+      // make the shmem small on gpus so that it will test 2 level
+      // algorithm. The block GS symbolic phase requires at least
+      // ((block_size / 8) + 1) * 8 * sizeof(lno_t) bytes per team member
+      // (see KokkosSparse_gauss_seidel_impl.hpp), so scale with sizeof(lno_t).
+      // Otherwise, backends with large team sizes (SYCL: vector length is
+      // capped at 8 -> team size 32 -> 62 bytes/thread) throw for int64_t.
+      2008 * (sizeof(lno_t) > sizeof(int) ? sizeof(lno_t) / sizeof(int) : 1)};
   std::vector<GSApplyType> apply_types = {symmetric, forward_sweep, backward_sweep};
 
   GSTestParams() = default;
