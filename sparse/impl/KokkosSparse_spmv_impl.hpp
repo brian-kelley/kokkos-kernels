@@ -1084,9 +1084,16 @@ static void spmv_alpha_beta_mv_no_transpose(const execution_space& exec,
     typename AMatrix::const_ordinal_type nrow = A.numRows();
 
     const ordinal_type rows_per_thread = RowsPerThread<execution_space>(NNZPerRow);
-    const ordinal_type team_size =
+    ordinal_type team_size =
         Kokkos::TeamPolicy<execution_space>(exec, rows_per_thread, Kokkos::AUTO, vector_length)
             .team_size_recommended(op, Kokkos::ParallelForTag());
+#ifdef KOKKOS_ENABLE_SYCL
+    if constexpr(std::is_same_v<execution_space, Kokkos::SYCL>) {
+      if(team_size * vector_length > 512) {
+        team_size = 512 / vector_length;
+      }
+    }
+#endif
     const ordinal_type rows_per_team = rows_per_thread * team_size;
     const size_type nteams           = (nrow + rows_per_team - 1) / rows_per_team;
     Kokkos::parallel_for("KokkosSparse::spmv<MV,NoTranspose>",
@@ -1102,9 +1109,16 @@ static void spmv_alpha_beta_mv_no_transpose(const execution_space& exec,
     OpType op(alpha, A, x, beta, y, RowsPerThread<execution_space>(NNZPerRow), vector_length);
 
     const ordinal_type rows_per_thread = RowsPerThread<execution_space>(NNZPerRow);
-    const ordinal_type team_size =
+    ordinal_type team_size =
         Kokkos::TeamPolicy<execution_space>(exec, rows_per_thread, Kokkos::AUTO, vector_length)
             .team_size_recommended(op, Kokkos::ParallelForTag());
+#ifdef KOKKOS_ENABLE_SYCL
+    if constexpr(std::is_same_v<execution_space, Kokkos::SYCL>) {
+      if(team_size * vector_length > 512) {
+        team_size = 512 / vector_length;
+      }
+    }
+#endif
     const ordinal_type rows_per_team = rows_per_thread * team_size;
     const size_type nteams           = (nrow + rows_per_team - 1) / rows_per_team;
     Kokkos::parallel_for("KokkosSparse::spmv<MV,NoTranspose>",
