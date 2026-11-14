@@ -22,6 +22,10 @@ SPDX-License-Identifier: (BSD-3-Clause)
 #include <CL/sycl.hpp>
 #endif
 
+#ifdef DESUL_IMPL_DEBUG_SYCL_LOCK_ARRAYS
+#include <cstdio>
+#endif
+
 namespace desul {
 namespace Impl {
 
@@ -89,12 +93,30 @@ static
 
 #define SYCL_SPACE_ATOMIC_MASK 0x1FFFF
 
+#ifdef DESUL_IMPL_DEBUG_SYCL_LOCK_ARRAYS
+// Debugging aid (opt-in, define DESUL_IMPL_DEBUG_SYCL_LOCK_ARRAYS): detect a lock
+// array pointer that was never copied into this device image's device_global.
+// Prints a message and skips locking instead of faulting on the null pointer.
+#define DESUL_IMPL_SYCL_CHECK_LOCK_ARRAY(LOCKS, WHICH)                                   \
+  if ((LOCKS).get() == nullptr) {                                                        \
+    sycl::ext::oneapi::experimental::printf(                                             \
+        "%s", "desul: SYCL " WHICH " lock array is NULL in this kernel's device image\n"); \
+    return true;                                                                         \
+  }
+#define DESUL_IMPL_SYCL_CHECK_UNLOCK_ARRAY(LOCKS) \
+  if ((LOCKS).get() == nullptr) return;
+#else
+#define DESUL_IMPL_SYCL_CHECK_LOCK_ARRAY(LOCKS, WHICH)
+#define DESUL_IMPL_SYCL_CHECK_UNLOCK_ARRAY(LOCKS)
+#endif
+
 /// \brief Acquire a lock for the address
 ///
 /// This function tries to acquire the lock for the hash value derived
 /// from the provided ptr. If the lock is successfully acquired the
 /// function returns true. Otherwise it returns false.
 inline bool lock_address_sycl(void* ptr, MemoryScopeDevice) {
+  DESUL_IMPL_SYCL_CHECK_LOCK_ARRAY(SYCL_SPACE_ATOMIC_LOCKS_DEVICE, "device")
   size_t offset = size_t(ptr);
   offset = offset >> 2;
   offset = offset & SYCL_SPACE_ATOMIC_MASK;
@@ -107,6 +129,7 @@ inline bool lock_address_sycl(void* ptr, MemoryScopeDevice) {
 }
 
 inline bool lock_address_sycl(void* ptr, MemoryScopeNode) {
+  DESUL_IMPL_SYCL_CHECK_LOCK_ARRAY(SYCL_SPACE_ATOMIC_LOCKS_NODE, "node")
   size_t offset = size_t(ptr);
   offset = offset >> 2;
   offset = offset & SYCL_SPACE_ATOMIC_MASK;
@@ -126,6 +149,7 @@ inline bool lock_address_sycl(void* ptr, MemoryScopeNode) {
  * acquiring a lock with lock_address.
  */
 inline void unlock_address_sycl(void* ptr, MemoryScopeDevice) {
+  DESUL_IMPL_SYCL_CHECK_UNLOCK_ARRAY(SYCL_SPACE_ATOMIC_LOCKS_DEVICE)
   size_t offset = size_t(ptr);
   offset = offset >> 2;
   offset = offset & SYCL_SPACE_ATOMIC_MASK;
@@ -138,6 +162,7 @@ inline void unlock_address_sycl(void* ptr, MemoryScopeDevice) {
 }
 
 inline void unlock_address_sycl(void* ptr, MemoryScopeNode) {
+  DESUL_IMPL_SYCL_CHECK_UNLOCK_ARRAY(SYCL_SPACE_ATOMIC_LOCKS_NODE)
   size_t offset = size_t(ptr);
   offset = offset >> 2;
   offset = offset & SYCL_SPACE_ATOMIC_MASK;
@@ -157,6 +182,14 @@ inline static
     void
     copy_sycl_lock_arrays_to_device(sycl::queue q) {
   static bool once = [&q]() {
+#ifdef DESUL_IMPL_DEBUG_SYCL_LOCK_ARRAYS
+    std::fprintf(stderr,
+                 "desul: copying SYCL lock arrays (device=%p node=%p) into device_global "
+                 "instance %p (one instance per translation unit)\n",
+                 (void*)SYCL_SPACE_ATOMIC_LOCKS_DEVICE_h,
+                 (void*)SYCL_SPACE_ATOMIC_LOCKS_NODE_h,
+                 (void*)&SYCL_SPACE_ATOMIC_LOCKS_DEVICE);
+#endif
 #ifdef SYCL_EXT_ONEAPI_DEVICE_GLOBAL
     q.memcpy(SYCL_SPACE_ATOMIC_LOCKS_DEVICE,
              &SYCL_SPACE_ATOMIC_LOCKS_DEVICE_h,
