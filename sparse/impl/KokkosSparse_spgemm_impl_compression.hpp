@@ -487,8 +487,9 @@ struct KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_, a_scalar_nnz_v
       Kokkos::parallel_for(Kokkos::ThreadVectorRange(teamMember, vector_size), [&](nnz_lno_t i) {
         result_keys[i] = -1;
         // This is required for Nvidia architectures with "independent thread
-        // scheduling"
-#ifdef KOKKOSKERNELS_CUDA_INDEPENDENT_THREADS
+        // scheduling", and for SYCL (vector lanes are not guaranteed to be in
+        // lockstep; lost bits observed on Intel PVC with int ordinal/size_t offset)
+#if defined(KOKKOSKERNELS_CUDA_INDEPENDENT_THREADS) || defined(KOKKOS_ENABLE_SYCL)
         result_vals[i] = 0;
 #endif
       });
@@ -515,7 +516,7 @@ struct KokkosSPGEMM<HandleType, a_row_view_t_, a_lno_nnz_view_t_, a_scalar_nnz_v
               // the warp. once the keys are set, some other vector lane might
               // be doing a fetch_or before we set with n_set. Therefore it is
               // necessary to do atomic, and set it with zero as above.
-#ifdef KOKKOSKERNELS_CUDA_INDEPENDENT_THREADS
+#if defined(KOKKOSKERNELS_CUDA_INDEPENDENT_THREADS) || defined(KOKKOS_ENABLE_SYCL)
               Kokkos::atomic_fetch_or(result_vals + new_hash, n_set);
 #else
                   result_vals[new_hash] = n_set;
